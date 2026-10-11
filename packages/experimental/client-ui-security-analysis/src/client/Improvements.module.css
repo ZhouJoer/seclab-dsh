@@ -2,7 +2,8 @@
 .header, .actions, .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
 .header { justify-content: space-between; }
 .header h2, .detail h3 { font-weight: 500; }
-.header p, .meta { color: var(--dsw-alias-label-secondary); }
+.header h2 { margin: 0; }
+.meta { color: var(--dsw-alias-label-secondary); }
 .filters label, .form label, .import { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .filters label { flex: 1 1 180px; }
 .root input, .root select, .root textarea { min-width: 0; padding: 8px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 5px; background: var(--dsw-alias-bg-layer-1); color: inherit; font: inherit; }

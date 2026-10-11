@@ -32,6 +32,7 @@ export const phaseSchema = z.enum(['recon', 'surface', 'assessment', 'validation
 /** A research direction may span turns and recur after other phases. */
 export const checkpointSchema = z.object({
   id: z.string().min(1).transform(brandString<SecurityCheckpointId>), engagementId: z.string().min(1),
+  previousCheckpointId: z.string().min(1).transform(brandString<SecurityCheckpointId>).optional(),
   phase: phaseSchema, title: z.string().trim().min(1).max(100),
   reason: z.string().max(300), summary: z.string().max(300), next: z.string().max(300),
   evidenceIds: z.array(z.string()),
@@ -165,7 +166,8 @@ export const reviewSchema = z.object({
 /** Immutable report exports for one observed project revision. */
 export const reportSchema = z.object({
   id, engagementId: id, revision: z.number().int().nonnegative(),
-  markdown: artifactSchema, json: artifactSchema, findingsMarkdown: artifactSchema.optional(), createdAt: z.number().int().nonnegative(),
+  markdown: artifactSchema, json: artifactSchema, findingsMarkdown: artifactSchema.optional(),
+  recommendationsMarkdown: artifactSchema.optional(), createdAt: z.number().int().nonnegative(),
 }).strict()
 /** A resolved, immutable request submitted to one analysis provider. */
 export const operationSchema = z

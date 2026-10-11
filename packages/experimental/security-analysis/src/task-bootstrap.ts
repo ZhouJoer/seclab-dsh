@@ -1,5 +1,6 @@
 /** Resolve explicitly configured workspace intake for authenticated user tasks. @module */
 import { isAbsolute, resolve } from 'node:path'
+import { isIP } from 'node:net'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type { SecurityCommand } from './workbench/controller.ts'
 
@@ -31,6 +32,39 @@ export interface WorkspaceTaskAdmission {
   hasBindingHistory: boolean
   /** Validated deployment configuration; omission disables automatic intake. */
   config: TaskIntakeConfig | undefined
+  /** Deployment environments that permit Host or Docker HTTP target registration. */
+  httpEnvironmentIds: readonly string[]
+}
+interface LiteralHttpTarget {
+  origin: string
+  pathPrefix: string
+  allowedAddresses: string[]
+  environmentId: string
+  label: string
+}
+
+/** Resolve one unambiguous literal-IP HTTP target from the authenticated task text. */
+function literalHttpTarget(objective: string, environmentIds: readonly string[],
+  httpEnvironmentIds: readonly string[]) {
+  const available = environmentIds.filter(id => httpEnvironmentIds.includes(id))
+  const environmentId = available.length === 1 ? available[0] : undefined
+  if (!environmentId) return undefined
+  const targets = new Map<string, LiteralHttpTarget>()
+  for (const match of objective.matchAll(/https?:\/\/[^\s<>"'，。；、]+/giu)) {
+    try {
+      const matched = match[0]
+      if (!matched) continue
+      const url = new URL(matched.replace(/[),.!！?？]+$/u, ''))
+      const address = url.hostname.replace(/^\[|\]$/gu, '')
+      if (!isIP(address) || url.username || url.password || url.search || url.hash) continue
+      const pathPrefix = url.pathname || '/'
+      const key = `${url.origin}${pathPrefix}`
+      targets.set(key, { origin: url.origin, pathPrefix, allowedAddresses: [address], environmentId, label: key })
+    } catch (_error) {
+      // Ignore text that only resembles a URL; task creation remains available without an inferred target.
+    }
+  }
+  return targets.size === 1 ? [...targets.values()][0] : undefined
 }
 
 /** Normalize a Host workspace directory for exact configuration lookup.
@@ -95,10 +129,12 @@ export function resolveWorkspaceTaskAdmission(input: WorkspaceTaskAdmission):
   if (!resources) return undefined
   const objective = input.message.content.filter(part => part.type === 'text').map(part => part.text).join('\n').trim()
   if (objective === '') return undefined
+  const target = literalHttpTarget(objective, resources.environmentIds, input.httpEnvironmentIds)
   return {
     kind: 'create',
     title: objective.replace(/\r?\n.*$/su, ''),
     objective,
     ...resources,
+    ...(target ? { target } : {}),
   }
 }

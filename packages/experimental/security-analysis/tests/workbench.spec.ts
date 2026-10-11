@@ -33,7 +33,10 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
   const artifacts = new ArtifactStore(root, 65536)
   const controller = new SecurityController(journal, artifacts, {
     importRoots: [root],
-    environments: [{ id: 'local', kind: 'local', label: 'Lab', cwd: root, tools: [] }],
+    environments: [{ id: 'local', kind: 'local', label: 'Lab', cwd: root, tools: [] },
+      { id: 'kali', kind: 'docker', label: 'Kali', cwd: root,
+        externalContainer: { name: 'kali-linux', workdir: '/workspace' },
+        tools: [{ id: 'docker', command: 'docker', versionArgs: ['--version'], source: 'Host' }] }],
     maxDurationMs: 1000,
     maxOutputBytes: 32768,
     approvalTtlMs: 60000,
@@ -43,6 +46,7 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
   }, generateReport ?? (async (prompt) => {
     const data = JSON.parse(prompt.split('\nData: ')[1]!) as { findings: { index: number; status: string }[] }
     return JSON.stringify({ assessment: 'Only recorded implementation paths were assessed.',
+      scope: [], attackPath: [], objectives: [],
       findings: data.findings.filter(item => item.status !== 'refuted').map(item => ({ index: item.index, mechanism: 'Target behavior requires review',
         conditions: 'Owned sample', impact: 'Potential security impact', location: 'sample', fix: 'Check the implementation' })),
       excludedIndices: data.findings.filter(item => item.status === 'refuted').map(item => item.index),
@@ -253,6 +257,8 @@ describe('security workbench', () => {
     const steps = controller.view('parent').records.filter(item => item.kind === 'checkpoint')
     expect(steps.map(item => item.value.phase)).toEqual(['recon', 'assessment', 'recon'])
     expect(steps[0]?.value.summary).toBe('Two entry points identified')
+    expect(steps[1]?.value.previousCheckpointId).toBe(steps[0]?.value.id)
+    expect(steps[2]?.value.previousCheckpointId).toBe(steps[1]?.value.id)
     await expect(send({ ...checkpoint, id })).rejects.toThrow('current research direction')
     await expect(send({ ...checkpoint, evidenceIds: ['foreign'] })).rejects.toThrow('foreign')
     await expect(send(checkpoint, false, 'child')).rejects.toThrow('role')
@@ -544,6 +550,27 @@ describe('security workbench', () => {
     const revision = journal.view().revision
     await controller.admitTask('first-task', 'intake-first', action, signal)
     expect(journal.view().revision).toBe(revision)
+  })
+
+  it('registers an admitted literal HTTP target with the new task', async () => {
+    const { controller } = await harness()
+    const action = { kind: 'create' as const, title: 'Local target', objective: 'Inspect the target',
+      environmentIds: ['local'], maxAttempts: 3, target: { environmentId: 'local', label: 'Loopback target',
+        origin: 'http://127.0.0.1:18081', pathPrefix: '/', allowedAddresses: ['127.0.0.1'] } }
+    const admitted = await controller.admitTask('target-task', 'intake-target', action, new AbortController().signal)
+    expect(admitted.records.find(item => item.kind === 'asset')?.value).toMatchObject({ kind: 'external-web',
+      label: 'Loopback target', origin: 'http://127.0.0.1:18081', pathPrefix: '/', allowedAddresses: ['127.0.0.1'] })
+  })
+
+  it('adds a selected Kali environment when registering a Web target in an existing task', async () => {
+    const { send } = await harness()
+    const updated = await send({ kind: 'external-web-target', environmentId: 'kali', label: 'Kali target',
+      origin: 'http://172.18.0.2:8080', pathPrefix: '/', allowedAddresses: ['172.18.0.0/16'] }, true)
+    const engagement = updated.records.find(item => item.kind === 'engagement')
+    if (engagement?.kind !== 'engagement') throw new Error('Missing project')
+    expect(engagement.value.environmentIds).toEqual(['local', 'kali'])
+    expect(updated.records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'external-web')?.value)
+      .toMatchObject({ environmentId: 'kali', origin: 'http://172.18.0.2:8080' })
   })
 
   it('keeps the first project when two admitted messages target the same Session', async () => {
@@ -1085,7 +1112,7 @@ it('generates a report outside the journal queue and rejects stale analysis', as
   const second = controller.command('parent', command)
   await entered.promise
   await send({ kind: 'remember', entry })
-  output.resolve(JSON.stringify({ assessment: 'Binary safety has not been assessed.', findings: [], excludedIndices: [],
+  output.resolve(JSON.stringify({ assessment: 'Binary safety has not been assessed.', scope: [], attackPath: [], objectives: [], findings: [], excludedIndices: [],
     lessons: [], uncovered: ['No implementation paths were examined.'] }))
   await expect(first).rejects.toThrow(/changed/)
   await expect(second).rejects.toThrow(/changed/)
@@ -1094,7 +1121,7 @@ it('generates a report outside the journal queue and rejects stale analysis', as
 })
 
 it('replays a completed report without another model request', async () => {
-  const generate = vi.fn(async () => JSON.stringify({ assessment: 'Binary safety has not been assessed.', findings: [],
+  const generate = vi.fn(async () => JSON.stringify({ assessment: 'Binary safety has not been assessed.', scope: [], attackPath: [], objectives: [], findings: [],
     excludedIndices: [], lessons: [], uncovered: ['Only file identity is known.'] }))
   const { controller, journal } = await harness(generate)
   const command = { operationId: 'report-once', expectedRevision: journal.view().revision, action: { kind: 'report' } }
@@ -1113,7 +1140,7 @@ it('does not publish a report after its request is cancelled', async () => {
     expectedRevision: journal.view().revision, action: { kind: 'report' } }, false, abort.signal)
   await entered.promise
   abort.abort(new Error('Cancelled'))
-  output.resolve(JSON.stringify({ assessment: 'Unknown safety.', findings: [], excludedIndices: [],
+  output.resolve(JSON.stringify({ assessment: 'Unknown safety.', scope: [], attackPath: [], objectives: [], findings: [], excludedIndices: [],
     lessons: [], uncovered: ['No implementation was inspected.'] }))
   await expect(pending).rejects.toThrow('Cancelled')
   expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(false)

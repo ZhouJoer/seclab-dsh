@@ -1,7 +1,7 @@
 /** Security command validation and durable project authority. @module */
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { commandSchema, type SecurityCommand } from './commands.ts'
+import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
 import {
   engagementSchema,
   checkpointSchema,
@@ -54,6 +54,9 @@ import {
 export { commandSchema, type SecurityCommand } from './commands.ts'
 
 const text = z.string().trim().min(1)
+function supportsExternalHttp(environment: SecurityEnvironment | undefined): environment is SecurityEnvironment {
+  return environment !== undefined && (environment.kind === 'local' || environment.kind === 'docker')
+}
 /** Fixed deployment limits and import authority. */
 export interface WorkbenchOptions {
   importRoots: string[]
@@ -475,8 +478,7 @@ export class SecurityController {
   private async importMaterialsImpl(sessionId: string, input: unknown): Promise<WorkbenchView> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       material: materialInputSchema.optional(),
-      target: externalWebAssetSchema.pick({ origin: true, pathPrefix: true,
-        allowedAddresses: true, environmentId: true, label: true }).optional(),
+      target: externalTargetInput.optional(),
 
       task: commandSchema.shape.action.options[0].omit({ kind: true }).optional(),
     }).strict().parse(input)
@@ -495,7 +497,13 @@ export class SecurityController {
       const records: SecurityRecord[] = [...created]
       if (request.target) {
         const environment = this.options.environments.find(item => item.id === request.target?.environmentId)
-        if (!environment || environment.kind !== 'local' || !project.environmentIds.includes(environment.id)) throw new Error('External HTTP requires a local environment in the task scope')
+        if (!supportsExternalHttp(environment)) throw new Error('External HTTP requires a configured Host or Docker environment')
+        if (!project.environmentIds.includes(environment.id)) {
+          const expanded = { ...project, environmentIds: [...project.environmentIds, environment.id] }
+          const index = records.findIndex(item => item.kind === 'engagement' && item.value.id === project.id)
+          if (index < 0) records.push({ kind: 'engagement', value: expanded })
+          else records[index] = { kind: 'engagement', value: expanded }
+        }
         records.push({ kind: 'asset', value: externalWebAssetSchema.parse({ ...request.target, ...validateExternalTarget(request.target),
           kind: 'external-web', id: randomUUID(), engagementId: project.id }) })
       }
@@ -589,15 +597,20 @@ export class SecurityController {
   private createRecords(sessionId: string, action: Extract<SecurityCommand['action'], { kind: 'create' }>): SecurityRecord[] {
     if (action.environmentIds.some(id => !this.options.environments.some(env => env.id === id)))
       throw new Error('Unknown environment')
+    const targetEnvironment = action.target
+      ? this.options.environments.find(item => item.id === action.target?.environmentId)
+      : undefined
+    if (action.target && !supportsExternalHttp(targetEnvironment))
+      throw new Error('External HTTP requires a configured Host or Docker environment')
     const project = engagementSchema.parse({
       title: action.title,
       objective: action.objective,
-      environmentIds: action.environmentIds,
+      environmentIds: [...new Set([...action.environmentIds, ...(targetEnvironment ? [targetEnvironment.id] : [])])],
       maxAttempts: action.maxAttempts,
       id: randomUUID(),
       stopped: false,
     })
-    return [
+    const records: SecurityRecord[] = [
       { kind: 'engagement', value: project },
       {
         kind: 'binding',
@@ -609,6 +622,11 @@ export class SecurityController {
         }),
       },
     ]
+    if (action.target) {
+      records.push({ kind: 'asset', value: externalWebAssetSchema.parse({ ...action.target,
+        ...validateExternalTarget(action.target), kind: 'external-web', id: randomUUID(), engagementId: project.id }) })
+    }
+    return records
   }
 
   /**
@@ -679,15 +697,20 @@ export class SecurityController {
         }
         switch (action.kind) {
           case 'external-web-target': {
-            const environment = this.environment(project.id, action.environmentId)
-            if (environment.kind !== 'local') throw new Error('External HTTP targets require a local Host environment')
+            const environment = this.options.environments.find(item => item.id === action.environmentId)
+            if (!supportsExternalHttp(environment)) throw new Error('External HTTP targets require a configured Host or Docker environment')
             const target = validateExternalTarget(action)
-            return [{ kind: 'asset', value: externalWebAssetSchema.parse({ ...target, kind: 'external-web',
-              id: randomUUID(), engagementId: project.id, label: action.label, environmentId: environment.id }) }]
+            return [
+              ...(project.environmentIds.includes(environment.id) ? [] : [{ kind: 'engagement' as const,
+                value: { ...project, environmentIds: [...project.environmentIds, environment.id] } }]),
+              { kind: 'asset', value: externalWebAssetSchema.parse({ ...target, kind: 'external-web',
+                id: randomUUID(), engagementId: project.id, label: action.label, environmentId: environment.id }) }]
           }
           case 'checkpoint': {
             evidence(action.evidenceIds)
-            const current = view.records.filter(item => item.kind === 'checkpoint').filter(item => item.value.engagementId === project.id).at(-1)?.value
+            const checkpoints = view.records.filter(item => item.kind === 'checkpoint')
+              .filter(item => item.value.engagementId === project.id).map(item => item.value)
+            const current = checkpoints.at(-1)
             if (action.id && current?.id !== action.id) throw new Error('Only the current research direction can be updated')
             if (action.id && (current?.phase !== action.phase || current.title !== action.title))
               throw new Error('Create a new checkpoint when the research phase or subject changes')
@@ -700,6 +723,9 @@ export class SecurityController {
             const { kind: _kind, findingIds: _findingIds, ...fields } = action
             return [{ kind: 'checkpoint', value: checkpointSchema.parse({ ...fields,
               id: action.id ?? sameDirection?.id ?? randomUUID(), engagementId: project.id, findings,
+              previousCheckpointId: sameDirection
+                ? sameDirection.previousCheckpointId ?? checkpoints.at(-2)?.id
+                : current?.id,
               createdAt: sameDirection?.createdAt ?? Date.now(), updatedAt: Date.now(),
             }) }]
           }
@@ -971,7 +997,8 @@ export class SecurityController {
             if (item.kind !== 'check' || item.value.assetId !== action.operation.assetId)
               throw new Error('Plan must use the check asset')
             const sample = asset(item.value.assetId)
-            const environment = this.environment(project.id, action.operation.environmentId)
+            const environment = this.environment(project.id, action.operation.environmentId,
+              action.operation.provider === 'external-web')
             if (action.durationMs > this.options.maxDurationMs)
               throw new Error('Plan duration exceeds deployment limit')
             let operation = action.operation
@@ -1108,13 +1135,15 @@ export class SecurityController {
       const markdown = await this.artifacts.put(Buffer.from(rendered.markdown), 'text/markdown')
       const findingsMarkdown = rendered.findingsMarkdown === undefined ? undefined
         : await this.artifacts.put(Buffer.from(rendered.findingsMarkdown), 'text/markdown')
+      const recommendationsMarkdown = rendered.recommendationsMarkdown === undefined ? undefined
+        : await this.artifacts.put(Buffer.from(rendered.recommendationsMarkdown), 'text/markdown')
       const json = await this.artifacts.put(Buffer.from(JSON.stringify({ revision: snapshot.revision, records })), 'application/json')
       await this.journal.commit(command.operationId, undefined, input, (view) => {
         combined.throwIfAborted()
         if (this.requireBinding(view, sessionId).engagementId !== project.id || this.project(view, project.id).stopped ||
           JSON.stringify(recordsOf(view)) !== source) throw new Error('Project analysis changed; generate the report again')
         return [{ kind: 'report', value: reportSchema.parse({ id: randomUUID(), engagementId: project.id,
-          revision: snapshot.revision, createdAt: Date.now(), markdown, json, findingsMarkdown }) }]
+          revision: snapshot.revision, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown }) }]
       })
       return this.view(sessionId)
     })()
@@ -1197,12 +1226,12 @@ export class SecurityController {
     if (record?.kind !== 'engagement') throw new Error('Unknown security project')
     return record.value
   }
-  private environment(projectId: string, environmentId: string): SecurityEnvironment {
+  private environment(projectId: string, environmentId: string, allowExternalContainer: boolean = false): SecurityEnvironment {
     const project = this.project(this.journal.view(), projectId)
     const environment = this.options.environments.find(item => item.id === environmentId)
     if (!project.environmentIds.includes(environmentId) || !environment)
       throw new Error('Environment is outside project scope')
-    if (environment.externalContainer)
+    if (environment.externalContainer && !allowExternalContainer)
       throw new Error('Dedicated analysis providers require managed file access; use the external container catalog command for native execution')
     return environment
   }
@@ -1311,7 +1340,8 @@ export class SecurityController {
     )
     if (entry?.kind !== 'plan') throw new Error('Unknown validation plan')
     const plan = entry.value
-    const environment = this.environment(binding.engagementId, plan.operation.environmentId)
+    const environment = this.environment(binding.engagementId, plan.operation.environmentId,
+      plan.operation.provider === 'external-web')
     if (this.environmentHash(environment) !== plan.environmentHash)
       throw new Error('Environment configuration changed; prepare another plan')
     const sample = this.view(sessionId).records.find(item => item.kind === 'asset' && item.value.id === plan.operation.assetId)

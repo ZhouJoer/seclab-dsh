@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { expect, it, onTestFinished } from 'vitest'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { HttpIdentities } from '../src/http-auth.ts'
@@ -39,12 +40,13 @@ async function fixture(handler: (request: IncomingMessage, response: ServerRespo
   const scope = { origin: `http://127.0.0.1:${address.port}`, pathPrefix: '/', allowedAddresses: ['127.0.0.1/32'] }
   const asset = externalWebAssetSchema.parse({ ...scope, kind: 'external-web', id: 'target', engagementId: 'project', environmentId: 'local', label: 'Owned fixture' })
   const identities = new HttpIdentities(ctx.credentials)
-  const provider = new ExternalWebProvider(identities, { maxSteps: 32, maxFieldBytes: 2048, maxRequestBytes: 32768 })
+  const provider = new ExternalWebProvider(ctx, identities, { maxSteps: 32, maxFieldBytes: 2048,
+    maxRequestBytes: 32768, graceMs: 3000 })
   const context: AnalysisContext = { asset, environment: { id: 'local', kind: 'local', label: 'Host', cwd: root, tools: [] },
     artifacts: new ArtifactStore(root, 262144), signal: new AbortController().signal, durationMs: 10000, maxOutputBytes: 131072 }
   const prepare = (steps: unknown[]) => provider.prepare(operationSchema.parse({ provider: 'external-web', operation: 'sequence', assetId: asset.id,
     environmentId: 'local', impact: 'observe', parameters: { steps } }), context)
-  return { scope, identities, provider, context, prepare }
+  return { ctx, scope, identities, provider, context, prepare }
 }
 const step = (id: string, path: string, extra: object = {}) => ({ id, label: id, method: 'GET', path, ...extra })
 
@@ -186,6 +188,41 @@ it('does not follow redirects and rejects addresses or paths outside the registe
   await expect(sendScopedHttp({ ...f.scope, pathPrefix: '/api' }, '/admin', 'GET', {}, undefined, new AbortController().signal, 1024)).rejects.toThrow()
   expect(httpAddressAllowed('::1', ['::1/128'])).toBe(true)
   expect(() => validateExternalTarget({ ...f.scope, origin: f.scope.origin + '/api' })).toThrow()
+})
+
+it('runs a prepared external HTTP request inside the selected Kali container', async () => {
+  const f = await fixture((_, response) => { response.end('Host transport must not run') })
+  const outputs = ['3.13.7\n', JSON.stringify({ status: 200, headers: [['content-type', 'text/plain']],
+    body: 'observed from kali', bytes: 18, incomplete: false })]
+  const calls: SubprocessSpawnSpec[] = []
+  const subprocess = { resolveExecutable: async (command: string) => command,
+    spawn: (spec: SubprocessSpawnSpec): SubprocessHandle => {
+      calls.push(spec)
+      const stdout = outputs.shift() ?? ''
+      return { stdin: undefined, stdout: undefined, stderr: undefined, control: undefined,
+        done: Promise.resolve({ exitCode: 0, signal: null }),
+        collected: { stdout: { readFrom: () => ({ text: stdout, nextOffset: Buffer.byteLength(stdout), lossy: false }) },
+          stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } },
+        terminate: () => {}, waitForExit: async () => true }
+    } }
+  Object.assign(f.context, { environment: { id: 'kali', kind: 'docker', label: 'Kali', cwd: f.context.environment.cwd,
+    externalContainer: { name: 'kali-linux', workdir: '/workspace' }, tools: [
+      { id: 'docker', command: 'docker', prefixArgs: ['--context', 'lab'], versionArgs: ['--version'], source: 'Host' },
+    ] }, asset: { ...f.context.asset, environmentId: 'kali' } })
+  Object.assign(f.ctx, { subprocess })
+  const request = operationSchema.parse({ provider: 'external-web', operation: 'sequence', assetId: f.context.asset.id,
+    environmentId: 'kali', impact: 'observe', parameters: { prepared: true, identities: [],
+      transport: { kind: 'python', command: 'python3', prefixArgs: [], version: '3.13.7' },
+      steps: [step('read', '/')] } })
+  const result = await f.provider.run(request, f.context)
+  expect(result.failure).toBeUndefined()
+  expect(httpEvidenceSchema.parse(JSON.parse(result.bytes.toString())).exchanges[0]?.body).toBe('observed from kali')
+  expect(calls).toHaveLength(2)
+  expect(calls[1]?.argv).toEqual(expect.arrayContaining([
+    'docker', '--context', 'lab', 'exec', '-i', '--workdir', '/workspace', 'kali-linux', 'python3', '-I', '-u', '-B', '-c',
+  ]))
+  const input = calls[1]?.stdio.stdin
+  expect(typeof input === 'object' ? input.data : '').toContain('"origin"')
 })
 
 it('retains partial responses on cancellation and never sends subsequent steps', async () => {

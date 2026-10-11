@@ -1,8 +1,23 @@
 /** Validated security commands shared by Host execution and browser consumers. @module */
 import { z } from 'zod'
-import { checkSchema, findingSchema, knowledgeEntrySchema, operationSchema, phaseSchema } from './model.ts'
+import {
+  checkSchema,
+  externalWebAssetSchema,
+  findingSchema,
+  knowledgeEntrySchema,
+  operationSchema,
+  phaseSchema,
+} from './model.ts'
 
 const text = z.string().trim().min(1)
+/** External HTTP target accepted while creating or importing a task. */
+export const externalTargetInput = externalWebAssetSchema.pick({
+  origin: true,
+  pathPrefix: true,
+  allowedAddresses: true,
+  environmentId: true,
+  label: true,
+})
 const checkInput = checkSchema.omit({
   id: true,
   engagementId: true,
@@ -19,6 +34,7 @@ const actions = z.discriminatedUnion('kind', [
       objective: text,
       environmentIds: z.array(text),
       maxAttempts: z.number().int().positive(),
+      target: externalTargetInput.optional(),
     })
     .strict(),
   z.object({ kind: z.literal('select'), engagementId: text }).strict(),

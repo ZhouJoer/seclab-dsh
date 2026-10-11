@@ -1904,8 +1904,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'securityExternalWeb',
-    summary: 'Optional Host owner for external HTTP execution and target credentials.',
-    description: 'Optional Host owner for external HTTP execution and target credentials.',
+    summary: 'Optional Host and Docker owner for external HTTP execution and target credentials.',
+    description: 'Optional Host and Docker owner for external HTTP execution and target credentials.',
     methods: [
       {
         signature: 'readonly identities: HttpIdentities',
@@ -2104,7 +2104,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'settled project records.',
       },
       {
-        signature: '@Remote(\'report\') async report(projectId: string, reportId: string, format: \'markdown\' | \'json\' | \'findingsMarkdown\'): Promise<string>',
+        signature: '@Remote(\'report\') async report(projectId: string, reportId: string, format: \'markdown\' | \'json\' | \'findingsMarkdown\' | \'recommendationsMarkdown\'): Promise<string>',
         description: 'Read a report after reopening its project without a chat Session.',
         parameters: [{ name: 'projectId', description: 'owning project.' }, { name: 'reportId', description: 'saved report.' }, { name: 'format', description: 'Markdown or JSON.' }],
         returns: 'complete immutable report text.',

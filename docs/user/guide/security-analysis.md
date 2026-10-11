@@ -54,6 +54,8 @@ Copy the [environment example](../../../apps/cli/config/examples/security-analys
 
 The example uses the current Docker context. Set the Docker installation's `prefixArgs` to `["--context", "YOUR_CONTEXT"]` to select another configured context, including a remote daemon reached through SSH or TLS. The Host needs that context's credentials and transport helpers. `externalContainer` attaches to a running container without creating mounts, starting services, changing networks or managing its lifetime. Tool arguments use the container's filesystem; Host files are not uploaded automatically. Network reachability follows the selected container and daemon.
 
+When registering an external Web target, select `kali` as its run environment. The explicit registration adds Kali to an existing task scope, and approved HTTP sequences run through Python in that container. The target origin and allowed IP/CIDR ranges must be reachable from the container. Credentials and response redaction remain on the Host. If Docker, the container or Python is unavailable, plan preparation fails instead of falling back to Host networking.
+
 Install Metasploit through Kali's package manager in the selected container. The existing `metasploit` definition discovers `msfconsole` through the container's PATH. No absolute installation path or separate DSH plugin is required. Verify the configured environment from the repository root:
 
 ```sh

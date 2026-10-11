@@ -40,7 +40,7 @@ kind: "package-reference"
 
 内置[分析脚本库](src/analysis-scripts.ts) 将可复用文件保存在 `resources/analysis-scripts/{tshark,mqtt,dynamic}/`。编写新分析代码前，加载 `security-packet-analysis`、`security-mqtt` 或 `security-dynamic` 获取分析思路、绝对资源目录、参数和示例。离线 Python 脚本使用明确选择的 TShark 可执行文件读取 pcap/pcapng，保留 MQTT 消息边界和重组信息，并返回有界 JSON，包含输入与脚本摘要、工具版本、参数和不完整原因。时间、帧数、解码字节和结果字节上限均为必填参数。输出路径必须是尚不存在的绝对路径，结果保存在任务的 `outputs/` 中。动态 `prepare.py` 在任务的 `scripts/` 中生成参数化 JavaScript，交给现有不可变 Frida 验证计划；准备工具不会附加进程。模板观察原生模块或导出函数，达到事件上限时证据标记为不完整。内置资源保持不变。脚本运行在本机 Host；不提供在线 MQTT、Android Java 模板或自定义目录导入。`scriptCatalog` 支持无需选择项目或环境的只读浏览。
 
-自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件、注册网络目标或批准执行。
+自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。若已认证请求仅含一个 IP 字面量 HTTP(S) 地址且只选择一个本机或 Docker HTTP 环境，入口会按该字面地址登记 URL 的 origin 与路径；域名、多目标和多个可用环境仍需操作者显式登记。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件或批准执行。
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
@@ -63,7 +63,7 @@ toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分�
 
 包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./ghidra`、`./frida`、`./android` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
 
-Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测与原生 Shell 调用；分析 provider 操作会拒绝它们，因为尚不支持传输宿主制品。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
+Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测、原生 Shell 调用和 `external-web` 请求；需要传输 Host 制品的 provider 会拒绝它们。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
 
 [GhidraMCP 1.4](https://github.com/LaurieWired/GhidraMCP/tree/1.4) 需要应用[受管理补丁](resources/ghidra/patch_upstream.py)。对固定上游 Java 文件应用补丁，使用对应 Ghidra 发行版构建扩展，然后在 GUI 打开导入的程序。启动前设置 `DSH_GHIDRA_TOKEN`、`DSH_GHIDRA_SHA256` 、`DSH_GHIDRA_PROGRAM` 和 `DSH_GHIDRA_PORT`；端口 0 选择空闲端口。可选 `DSH_GHIDRA_READY` 指定保存实际端口的新文件。在 Ghidra provider 的 `programs` 中配置相同 token、实测哈希和 domain-file 路径。补丁绑定稳定程序，只监听本地地址，认证每个请求，并拒绝已关闭或身份不符的程序。切换 GUI 当前程序不会改变查询目标。查询、改名、注释及原型操作走专用适配器；数据库写入需要计划。
 
@@ -163,7 +163,7 @@ Host 运行期间，配置成对的 `knowledgeProvider` 和 `knowledgeModel` 后
 
 `deviceDirectory` 只读取进程内诊断缓存，不触发检测。显式调用 `deviceInventory` 或 `security_environment` 的 `devices: true` 检查 Windows 本机 Python/TShark 安装、Npcap 驱动、抓包及 nRF extcap 接口和 COM/PnP 身份。接口检查失败保留上次观测及其时间。通用串口不自动识别为 Tufty，不打开串口，真机采集能力保持未验证；发现过程不安装工具、不修改驱动。非 Windows 或非本机环境不支持设备检查。
 
-`external-web` provider 接受操作者登记的 HTTP(S) origin、路径前缀、明确的 IP/CIDR 范围和本地环境。它在审批前准备有限请求序列、展开配置的登录步骤并固定身份版本。每次审批仅允许一次执行；重试同一执行 ID 不会重发请求。重复验证需要新草稿和新审批。每次连接核验并固定解析地址，验证 TLS，拒绝代理路由、自动跳转和自动请求重试。
+`external-web` provider 接受操作者登记的 HTTP(S) origin、路径前缀、明确的 IP/CIDR 范围和本机或 Docker 环境。在已有任务中选择已配置的 Kali/Docker 环境会将该环境加入任务范围。准备阶段核验并记录容器内的 Python 传输，执行时从该容器发送已批准请求；凭据、Cookie、提取与脱敏仍保留在 Host 内存。每次审批仅允许一次执行；重试同一执行 ID 不会重发请求。重复验证需要新草稿和新审批。每次连接核验并固定执行环境内解析的地址，验证 TLS，拒绝代理路由、自动跳转和自动请求重试。
 
 Cookie、Bearer、Basic 和表单/JSON 登录身份保存在 Host credentials 服务中。模板使用具名秘密引用和提取变量。登录支持隐藏表单字段、JSON Pointer 和响应头提取，最后一步必须有成功断言。提取缺失或歧义、凭据变化、断言失败、超时和取消都会停止后续步骤。每个身份使用独立临时 Cookie jar。登录正文被省略；保存响应前移除已捕获的秘密、Cookie 和提取值。永久删除项目会删除其身份。静态存储保护由 credentials 后端决定；此能力不提供独立加密保险库。
 
@@ -238,7 +238,7 @@ flowchart LR
 
 ./web 和 ./laboratory 插件提供批准后的 HTTP 证据采集与操作者显式管理的靶场生命周期。配置见 [Web 靶场指南](../../../docs/user/guide/security-analysis.zh.md#local-web-laboratory)，未验收或延后项见 [交付范围](../../../docs/roadmaps/security-analysis.zh.md#web-delivery-scope-2026-09-22)。版本化配方使用官方 Kali，记录已安装软件包，并以已知 yescrypt 向量检测作为构建条件。操作者可从本地 Docker 镜像库复用 `existingImage`（默认 `vxcontrol/kali-linux:latest`），不拉取或构建工具箱。复用会固定镜像 ID，在自有断网容器内检测工具，记录 yescrypt 失败而不阻塞 HTTP；缺少 Python 运行时则拒绝登记。每次复用或构建产生独立版本，升级时保留已有靶场。安装 Nuclei 和 Metasploit 不会增加专用 provider 接口；原生 Shell 调用遵循 DSH 权限。
 
-独立复核绑定发现内容、同目标证据和复核子 Session。完整的静态实现材料可支持独立复核后的确认或反驳；身份、版本及字符串线索不能单独确认。运行验证结论仍须具备已完成的批准计划。报告生成通过一次禁用工具的模型调用整理安全判断与覆盖，并核对每条发现的去向。报告输入区分用户请求与已保存的发现状态、已接受的复核裁决；完成静态复核不代表完成运行验证。输出可以是独立 JSON 对象，或包在单个 JSON 或未标注语言的 Markdown 代码围栏中；夹杂说明文字、多个代码块及无效报告字段均会被拒绝。Markdown 正文是简短安全报告，多余的目标发现进入可选附表；JSON 保留项目记录。`reportMaxChars` 默认以 1,200 字为写作目标，不作为硬性截断上限，`reportInputBytes` 默认 131,072，`reportOutputTokens` 默认 4,096，`reportMaxFindings` 默认五条，`reportMaxLessons` 默认三条。未配置专用模型时，报告沿用发起会话的模型。生成失败或超限时不发布报告。
+独立复核绑定发现内容、同目标证据和复核子 Session。完整的静态实现材料可支持独立复核后的确认或反驳；身份、版本及字符串线索不能单独确认。运行验证结论仍须具备已完成的批准计划。报告生成通过一次禁用工具的模型调用整理安全判断与覆盖，并核对每条发现的去向。报告输入区分用户请求与已保存的发现状态、已接受的复核裁决；完成静态复核不代表完成运行验证。输出可以是独立 JSON 对象，或包在单个 JSON 或未标注语言的 Markdown 代码围栏中；夹杂说明文字、多个代码块及无效报告字段均会被拒绝。Markdown 主报告按 OSCP 风格依次包含执行摘要、范围、测试方法、攻击路径、目标或旗帜结果、技术发现与限制，且不渲染修复文字。修复内容存为独立的建议产物，并在导出包中保存为 `recommendations.md`；多余的目标发现仍进入可选附表，JSON 保留项目记录。`reportMaxChars` 默认以 1,200 字为写作目标，不作为硬性截断上限，`reportInputBytes` 默认 131,072，`reportOutputTokens` 默认 4,096，`reportMaxFindings` 默认五条，`reportMaxLessons` 默认三条。未配置专用模型时，报告沿用发起会话的模型。生成失败或超限时不发布报告。
 
 使用 `security_command` 的 `checkpoint` 动作保存简短的方向标题、阶段、转向原因、结论、下一步及证据或发现引用。同一问题的多轮研究按 ID 更新当前段；问题或阶段改变时新建一段。保存第一个检查点时，会关联该项目中同一协调会话此前未归类的调用；其他会话及已有阶段的调用保持原归属。子任务调用保留委派时的进展归属。Provider 请求及原生 Shell/PTC 后台任务根据实际执行记录计数，活动独立持久化，不改变审批修订号。命令文本只能识别待确认的工具候选，安装检测不计分析次数。失败、中断、重启后的未知结果及不完整输出与安全结论分别显示。协调者回合结束时将有长度上限的可见回复简报保存到当前方向，预算收尾也适用。`activityPageSize` 默认为 20，每页可配置 1–100 条调用详情。
 
@@ -251,7 +251,7 @@ flowchart LR
 
 服务的 `evolution.auto` 默认为 false，安全 profile 将其设为 true。新增活动后，`idleMs` 默认等待 300,000 毫秒；协调会话、子任务、检查和后台作业须全部空闲。手动请求也等待空闲，但不等待静默间隔。每个任务保留一个请求；`concurrency` 默认为一。新增活动取消分析并重新等待。停止、归档和卸载会取消并等待执行结束。待处理请求跨重启保留；中断运行重新排队，失败则等待新增活动或手动重试。历史任务不自动回溯。可见事件、项目记录、活动摘要和按相关性排序的归并候选轮流进入完整请求预算，并准确记录省略数量。过大条目会被跳过；指令或任意可用观察均无法装入时明确报错。命令文本相同不代表脚本或输入未变，活动摘要未含诊断也不代表原日志缺失。
 
-专用 `evolution.provider` 与 `model` 必须一起配置；否则沿用最近观察到的协调者已解析 provider/model。独立分析沿用模型默认推理强度；`evolution.reasoningEffort` 可显式选择受支持的强度，不支持的值会在发送请求前报错。该设置不改变协调者。在推理与正文共用额度的服务商上，`outputTokens` 同时限制两者。默认 `inputBytes: 131072`、`excerptBytes: 2048`、`outputTokens: 24576`、`timeoutMs: 300000`、`maxCandidates: 20` 和 `maxSuggestions: 5`。输入包含有界可见记录、准确 Session 序号、任务记录、运行版本、截断标记和历史资料缺口。事件发生时确定归属；工具结果保留调用所属任务。不收集推理流。候选筛选匹配组件、适用条件和预期改动的中英文关键词；模型归并保留人工进度，准确来源去重。已验证建议收到新依据时提示复查，不改变状态。
+专用 `evolution.provider` 与 `model` 必须一起配置；否则沿用最近观察到的协调者已解析 provider/model。独立分析沿用模型默认推理强度；`evolution.reasoningEffort` 可显式选择受支持的强度，不支持的值会在发送请求前报错。该设置不改变协调者。在推理与正文共用额度的服务商上，`outputTokens` 同时限制两者。默认 `inputBytes: 131072`、`excerptBytes: 2048`、`outputTokens: 65536`、`timeoutMs: 300000`、`maxCandidates: 20` 和 `maxSuggestions: 5`。输入包含有界可见记录、准确 Session 序号、任务记录、运行版本、截断标记和历史资料缺口。事件发生时确定归属；工具结果保留调用所属任务。不收集推理流。候选筛选匹配组件、适用条件和预期改动的中英文关键词；模型归并保留人工进度，准确来源去重。已验证建议收到新依据时提示复查，不改变状态。
 
 独立 `security_evolution` 存储域串行提交包含运行、记录、建议和回执的原子状态记录，其修订号不改变安全审批修订号。永久删除接入现有可恢复清理，移除任务记录与快照，保留共享建议中其他任务的贡献。导出即时生成，仅附有界摘录，不附样本或完整会话。原始及复盘 Session 沿用现有保留规则；用途标记继续保留，禁止将复盘 Session 作为普通 Agent 续聊。
 

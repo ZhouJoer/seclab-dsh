@@ -39,6 +39,7 @@ export async function reportExportResponse(store: ArtifactStore, report: Report,
   add(report.json, 'snapshot.json', 'report-snapshot', report.id, bytes)
   add(report.markdown, 'report.md', 'report', report.id)
   if (report.findingsMarkdown) add(report.findingsMarkdown, 'findings.md', 'findings-appendix', report.id)
+  if (report.recommendationsMarkdown) add(report.recommendationsMarkdown, 'recommendations.md', 'recommendations', report.id)
   for (const record of snapshot.records) {
     if (record.kind !== 'evidence') continue
     add(record.value.artifact, `artifacts/${record.value.artifact.sha256}`, 'evidence', record.value.id)

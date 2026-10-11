@@ -38,7 +38,8 @@ export interface WorkbenchActions extends ActivityActions, ToolPreferenceActions
   execute(sessionId: SessionId, planId: string, operationId: string, revision: number): Promise<WorkbenchView>
   search(sessionId: SessionId, query: string, shared: boolean): Promise<WorkbenchView>
   artifact(sessionId: SessionId, sha256: string): Promise<string>
-  report(projectId: string, reportId: string, format: 'markdown' | 'json' | 'findingsMarkdown'): Promise<string>
+  report(projectId: string, reportId: string,
+    format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown'): Promise<string>
 }
 /** Framework-derived input dock props. */
 export type WorkbenchProps = Pick<PropsRuntime<'conversation.input.dock'>, 'sessionId' | 'useSession'> &
@@ -59,6 +60,7 @@ export function Workbench(props: WorkbenchProps) {
   const running = props.useSession(snapshot => snapshot.running)
   const [open, setOpen] = useState(props.autoOpen ?? false)
   const [tab, setTab] = useState<Tab>(props.initialTab ?? 'overview')
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(props.initialTab && advancedTabKeys.includes(props.initialTab)))
   const [view, setView] = useState<WorkbenchView>({ revision: 0, records: [] })
   const [configuration, setConfiguration] = useState<WorkbenchConfiguration>()
   const [draft, setDraft] = useState<Record<string, string>>({})
@@ -85,9 +87,14 @@ export function Workbench(props: WorkbenchProps) {
     setDetail('')
     setSearchResults(undefined)
     setTab(props.initialTab ?? 'overview')
+    setAdvancedOpen(Boolean(props.initialTab && advancedTabKeys.includes(props.initialTab)))
     setShared(false)
   }, [sessionId])
-  useEffect(() => { setTab(props.initialTab ?? 'overview') }, [props.initialTab])
+  useEffect(() => {
+    const next = props.initialTab ?? 'overview'
+    setTab(next)
+    if (advancedTabKeys.includes(next)) setAdvancedOpen(true)
+  }, [props.initialTab])
   useEffect(() => {
     const target = `${sessionId}:${props.focusCheckId ?? ''}`
     if (tab !== 'checks' || !props.focusCheckId || focusedCheck.current === target) return
@@ -263,28 +270,39 @@ export function Workbench(props: WorkbenchProps) {
             </button>}
           </header>
           <div className={css.workspace}>
-            <nav className={css.tabs}>
-              {tabKeys.map(item => (
-                <button
-                  key={item}
-                  aria-pressed={tab === item}
-                  onClick={() => {
-                    setTab(item)
-                    setDetail('')
-                  }}
-                >
-                  {t(item)}
-                </button>
-              ))}
-              <details className={css.advancedNavigation}>
-                <summary>{t('advancedDetails')}</summary>
-                {advancedTabKeys.map(item => (
-                  <button key={item} aria-pressed={tab === item} onClick={() => {
-                    setTab(item)
-                    setDetail('')
-                  }}>{t(item)}</button>
+            <nav className={css.tabs} aria-label={t('title')}>
+              <div className={css.primaryTabs}>
+                {tabKeys.map(item => (
+                  <button
+                    key={item}
+                    aria-pressed={tab === item}
+                    onClick={() => {
+                      setTab(item)
+                      setDetail('')
+                    }}
+                  >
+                    {t(item)}
+                  </button>
                 ))}
-              </details>
+              </div>
+              <div className={css.advancedNavigation} data-open={advancedOpen}>
+                <button className={css.advancedToggle} aria-expanded={advancedOpen} onClick={() => {
+                  setAdvancedOpen(value => !value)
+                }}>
+                  <span>{t('advancedDetails')}</span>
+                  {advancedTabKeys.includes(tab) && <small>{t(tab)}</small>}
+                </button>
+                <div className={css.advancedReveal} aria-hidden={!advancedOpen}>
+                  <div className={css.advancedTabs}>
+                    {advancedTabKeys.map(item => (
+                      <button key={item} tabIndex={advancedOpen ? 0 : -1} aria-pressed={tab === item} onClick={() => {
+                        setTab(item)
+                        setDetail('')
+                      }}>{t(item)}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </nav>
             <div className={css.main}>
               {error && (
@@ -450,6 +468,25 @@ export function Workbench(props: WorkbenchProps) {
                       {field('pathPrefix')}
                       <button disabled={busy > 0 || !project} onClick={() => void perform(() => command({ kind: 'web-target', environmentId: draft.environment ?? '', label: draft.webLabel ?? '', pathPrefix: draft.pathPrefix || '/' }))}>{t('registerWeb')}</button>
                     </div>
+                    <details className={css.secondaryDetails}>
+                      <summary>{t('httpTargets')}</summary>
+                      <div className={css.form}>
+                        {select('environment', configuration.environments.filter(item => item.kind === 'local' || item.kind === 'docker')
+                          .map(item => ({ id: item.id, label: item.label })))}
+                        <p>{t('httpEnvironmentHint')}</p>
+                        {field('webLabel')}
+                        {field('httpOrigin')}
+                        {field('httpPrefix')}
+                        {field('httpAddresses', true)}
+                        <button disabled={busy > 0 || !project || !draft.environment || !draft.webLabel?.trim()
+                          || !draft.httpOrigin?.trim() || !draft.httpAddresses?.trim()}
+                        onClick={() => void perform(() => command({ kind: 'external-web-target',
+                          environmentId: draft.environment ?? '', label: draft.webLabel ?? '',
+                          origin: draft.httpOrigin ?? '', pathPrefix: draft.httpPrefix || '/',
+                          allowedAddresses: (draft.httpAddresses ?? '').split(/\s+/u).filter(Boolean),
+                        }))}>{t('httpRegister')}</button>
+                      </div>
+                    </details>
                     {assets.map(item => (
                       <article key={item.value.id} className={css.card}>
                         <strong>{item.value.label}</strong>
@@ -516,6 +553,7 @@ export function Workbench(props: WorkbenchProps) {
                     <strong>{t('revision')} {item.value.revision}</strong>
                     <button onClick={() => void perform(() => preview(props.report(item.value.engagementId, item.value.id, 'markdown'), 'markdown'))}>{t('markdownReport')}</button>
                     {item.value.findingsMarkdown && <button onClick={() => void perform(() => preview(props.report(item.value.engagementId, item.value.id, 'findingsMarkdown'), 'markdown'))}>{t('findingsReport')}</button>}
+                    {item.value.recommendationsMarkdown && <button onClick={() => void perform(() => preview(props.report(item.value.engagementId, item.value.id, 'recommendationsMarkdown'), 'markdown'))}>{t('recommendationsReport')}</button>}
                     <button onClick={() => void perform(() => preview(props.report(item.value.engagementId, item.value.id, 'json')))}>{t('jsonReport')}</button>
                   </article>)}
                 </>}

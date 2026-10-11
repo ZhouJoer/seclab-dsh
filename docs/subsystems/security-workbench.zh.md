@@ -38,7 +38,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.securityExternalWeb` — `SecurityExternalWeb`
 
-Optional Host owner for external HTTP execution and target credentials.
+Optional Host and Docker owner for external HTTP execution and target credentials.
 
 Source: [`packages/experimental/security-analysis/src/external-web-provider.ts`](../../packages/experimental/security-analysis/src/external-web-provider.ts)
 
@@ -237,7 +237,7 @@ Optional security profile service; default application compositions remain indep
  * @param reportId - saved report.
  * @param format - Markdown or JSON.
  * @returns complete immutable report text. */
-@Remote('report') async report(projectId: string, reportId: string, format: 'markdown' | 'json' | 'findingsMarkdown'): Promise<string>
+@Remote('report') async report(projectId: string, reportId: string, format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown'): Promise<string>
 
 /** Read selected project state for an authenticated Web session.
  * @param agent - carrier-resolved agent.

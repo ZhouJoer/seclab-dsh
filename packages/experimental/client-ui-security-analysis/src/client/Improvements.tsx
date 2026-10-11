@@ -92,7 +92,7 @@ export function Improvements(props: ImprovementActions & PropsLocale<typeof NS> 
   const fields = [['summary', 'evoSummary'], ['reference', 'evoReference'], ['command', 'evoTestCommand'],
     ['result', 'evoTestResult'], ['remaining', 'evoRemaining']] as const
   return <section className={css.root} aria-label={t('evoTitle')}>
-    <header className={css.header}><div><h2>{t('evoTitle')}</h2><p>{t('evoHint')}</p></div>
+    <header className={css.header}><h2>{t('evoTitle')}</h2>
       {projectId && <Button disabled={busy || props.disabled || !view || run?.status === 'queued' || run?.status === 'running'} onClick={() => void perform(async () => {
         if (view) setView(await props.analyzeImprovements(JSON.stringify({
           projectId, operationId: randomUUID(), expectedRevision: view.revision,

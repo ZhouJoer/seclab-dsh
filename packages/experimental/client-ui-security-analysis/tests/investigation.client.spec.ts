@@ -3,14 +3,14 @@ import { expect, it } from 'vitest'
 import { investigation, visibleInvestigation } from '../src/client/investigation.ts'
 import { investigationFixture } from './investigation-fixture.client.ts'
 
-it('uses recorded dependencies, support and opposition without deriving links from time or shared assets', () => {
+it('uses recorded dependencies, direction succession, support and opposition without deriving links from time or shared assets', () => {
   const graph = investigation(investigationFixture())
   expect(graph.edges).toEqual(expect.arrayContaining([
     expect.objectContaining({ source: 'check:read', target: 'check:verify', relation: 'graphDepends' }),
     expect.objectContaining({ source: 'evidence:partial', target: 'review:review', relation: 'graphOpposes' }),
     expect.objectContaining({ source: 'asset:input', target: 'evidence:partial', relation: 'graphSubject' }),
+    expect.objectContaining({ source: 'checkpoint:first', target: 'checkpoint:second', relation: 'graphFollowup' }),
   ]))
-  expect(graph.edges.some(edge => edge.source === 'checkpoint:first' && edge.target === 'checkpoint:second')).toBe(false)
   expect(graph.edges.some(edge => edge.source === 'check:verify' && edge.target === 'evidence:partial')).toBe(false)
   expect(graph.nodes.find(node => node.id === 'finding:finding')).toMatchObject({ title: 'Missing ownership check', state: 'suspected' })
   expect(graph.nodes.find(node => node.id === 'review:review')?.state).toBeUndefined()

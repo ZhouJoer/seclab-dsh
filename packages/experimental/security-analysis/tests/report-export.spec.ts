@@ -25,6 +25,7 @@ async function fixture() {
   ]
   const report = reportSchema.parse({ id: 'report', engagementId: 'project', revision: 4, createdAt: 1,
     markdown: await store.put(Buffer.from('# Report'), 'text/markdown'),
+    recommendationsMarkdown: await store.put(Buffer.from('# Recommendations'), 'text/markdown'),
     json: await store.put(Buffer.from(JSON.stringify({ revision: 4, records })), 'application/json') })
   return { root, store, report, observation, source, binary, records }
 }
@@ -51,6 +52,7 @@ it('exports long binary observations once and verifies every payload with an ind
   const files = await unzip(Buffer.from(await response.arrayBuffer()))
   expect(released).toHaveBeenCalledOnce()
   expect(files.get(`artifacts/${observation.sha256}`)).toEqual(binary)
+  expect(files.get('recommendations.md')?.toString()).toBe('# Recommendations')
   expect(files.has(`artifacts/${source.sha256}`)).toBe(false)
   const manifest = JSON.parse(files.get('manifest.json')!.toString()) as { revision: number; excluded: { id: string }[]; references: { path: string }[] }
   expect(manifest.revision).toBe(4)

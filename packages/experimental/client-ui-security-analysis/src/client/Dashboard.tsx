@@ -100,6 +100,7 @@ export function Dashboard(props: Props) {
   const [reportId, setReportId] = useState('')
   const [format, setFormat] = useState<'markdown' | 'json' | 'findingsMarkdown'>('markdown')
   const [report, setReport] = useState('')
+  const [recommendations, setRecommendations] = useState('')
   const [readEpoch, setReadEpoch] = useState(0)
   const [reading, setReading] = useState(false)
   const [deleting, setDeleting] = useState('')
@@ -124,6 +125,7 @@ export function Dashboard(props: Props) {
   const pendingPlans = view.records.filter(item => item.kind === 'plan' && item.value.status === 'draft')
   const chosenEvidence = evidence.find(item => item.value.id === evidenceId)?.value
   const selectedReport = reportId || reports.at(-1)?.value.id || ''
+  const recommendationsAvailable = Boolean(reports.find(item => item.value.id === selectedReport)?.value.recommendationsMarkdown)
   const perform = async (action: () => Promise<void>) => {
     const current = generation.current
     setBusy(true); setError('')
@@ -175,18 +177,24 @@ export function Dashboard(props: Props) {
   }, [sessionId])
   useEffect(() => {
     const current = ++readGeneration.current
-    setArtifact(undefined); setReport(''); setReading(false)
+    setArtifact(undefined); setReport(''); setRecommendations(''); setReading(false)
     if (!selected || !((tab === 'evidence' && chosenEvidence) || (tab === 'reports' && selectedReport))) return
     setReading(true)
     const pending = tab === 'evidence' && chosenEvidence
       ? (chosenEvidence.http ? Promise.resolve('{}') : props.projectArtifact(selected, chosenEvidence.artifact.sha256)).then((value) => {
         if (current === readGeneration.current) setArtifact(JSON.parse(value) as NonNullable<typeof artifact>)
       })
-      : props.report(selected, selectedReport, format).then((value) => { if (current === readGeneration.current) setReport(value) })
+      : Promise.all([
+        props.report(selected, selectedReport, format).then((value) => { if (current === readGeneration.current) setReport(value) }),
+        recommendationsAvailable
+          ? props.report(selected, selectedReport, 'recommendationsMarkdown')
+            .then((value) => { if (current === readGeneration.current) setRecommendations(value) })
+          : Promise.resolve(),
+      ])
     void pending.catch((error: unknown) => { if (current === readGeneration.current) setError(String(error)) })
       .finally(() => { if (current === readGeneration.current) setReading(false) })
     return () => { readGeneration.current++ }
-  }, [selected, tab, evidenceId, selectedReport, format, view.revision, readEpoch])
+  }, [selected, tab, evidenceId, selectedReport, format, recommendationsAvailable, view.revision, readEpoch])
   const navigate = (id = '') => {
     generation.current++; readGeneration.current++
     setSelected(id); setView({ revision: 0, records: [] }); setTab('graphTitle'); setCreating(false)
@@ -255,7 +263,7 @@ export function Dashboard(props: Props) {
   </div>
   return <section ref={root} className={css.root} aria-label={t('title')}>
     <div className={css.main}>
-      <header className={css.topbar}><div><span className={css.eyebrow}>{t('dashboardEyebrow')}</span><h1>{t('dashboardTitle')}</h1><p>{t('dashboardSubtitle')}</p></div>
+      <header className={css.topbar}><h1>{t('dashboardTitle')}</h1>
         <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { navigate(); setCreating(true); setSection('tasks') }}>{t('newAnalysis')}</button></div>
       </header>
       <nav className={css.navigation} aria-label={t('dashboardNavigation')}>{(['tasks', 'removed', 'toolbox', 'improvements'] as const).map(key => <button key={key} aria-current={section === key ? 'page' : undefined} onClick={() => { navigate(); setSection(key) }}>{t(key === 'tasks' ? 'dashboardTasks' : key === 'removed' ? 'removedProjects' : key === 'improvements' ? 'evoTitle' : 'toolbox')}</button>)}</nav>
@@ -363,7 +371,7 @@ export function Dashboard(props: Props) {
             {chosenEvidence.failure && <p className={css.error}>{t('failed')}: {chosenEvidence.failure}</p>}{chosenEvidence.cleanup && <p>{t('dashboardCleanup')}: {chosenEvidence.cleanup}</p>}{chosenEvidence.incomplete && <p className={css.notice}>{t('incomplete')}</p>}
             {chosenEvidence.http ? <HttpHistory {...props} project={selected} evidenceId={chosenEvidence.id} revision={view.revision} /> : artifact ? <>{artifact.truncated && <p role="status">{t('dashboardTruncated')}</p>}<>{artifact.binary ? <p>{t('graphBinary')}</p> : <EvidencePreview text={artifact.text} provider={chosenEvidence.provider} t={t} />}</></> : <p role="status">{t(reading ? 'dashboardLoading' : 'dashboardReadFailed')}</p>}
           </> : <><div className={css.listHeader}><h3>{t('evidence')}</h3><input aria-label={t('dashboardEvidenceSearch')} placeholder={t('dashboardEvidenceSearch')} value={evidenceQuery} onChange={(event) => { setEvidenceQuery(event.target.value) }} /></div>{evidence.filter(item => (item.value.title + item.value.summary).toLowerCase().includes(evidenceQuery.toLowerCase())).map(item => <button className={css.evidenceRow} key={item.value.id} onClick={() =>{  setEvidenceId(item.value.id) }}><strong>{item.value.title}</strong><span>{item.value.summary}</span><small>{item.value.provider} · {item.value.method ?? t('incomplete')}</small></button>)}{!evidence.length && <p className={css.empty}>{t('dashboardNoEvidence')}</p>}</>}</section>}
-          {tab === 'reports' && <section className={css.panel}>{reports.length ? <><div className={css.listHeader}><label>{t('revision')}<select value={selectedReport} onChange={(event) =>{  setReportId(event.target.value); setFormat('markdown') }}>{reports.map(item => <option value={item.value.id} key={item.value.id}>{t('revision')} {item.value.revision}</option>)}</select></label><select aria-label={t('dashboardReportFormat')} value={format} onChange={(event) =>{  setFormat(event.target.value as typeof format) }}><option value="markdown">{t('markdownReport')}</option><option value="json">{t('jsonReport')}</option>{reports.find(item => item.value.id === selectedReport)?.value.findingsMarkdown && <option value="findingsMarkdown">{t('findingsReport')}</option>}</select><ReportExportButton projectId={selected} reportId={selectedReport} t={t} notify={props.notifyImprovement} /></div><div className={css.report}>{reading ? <p role="status">{t('dashboardLoading')}</p> : format === 'json' ? <pre>{report}</pre> : <MarkdownText text={report} labels={{ code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }} />}</div></> : <p className={css.empty}>{t('dashboardNoReports')}</p>}</section>}
+          {tab === 'reports' && <section className={css.panel}>{reports.length ? <><div className={css.listHeader}><label>{t('revision')}<select value={selectedReport} onChange={(event) =>{  setReportId(event.target.value); setFormat('markdown') }}>{reports.map(item => <option value={item.value.id} key={item.value.id}>{t('revision')} {item.value.revision}</option>)}</select></label><select aria-label={t('dashboardReportFormat')} value={format} onChange={(event) =>{  setFormat(event.target.value as typeof format) }}><option value="markdown">{t('markdownReport')}</option><option value="json">{t('jsonReport')}</option>{reports.find(item => item.value.id === selectedReport)?.value.findingsMarkdown && <option value="findingsMarkdown">{t('findingsReport')}</option>}</select><ReportExportButton projectId={selected} reportId={selectedReport} t={t} notify={props.notifyImprovement} /></div><div className={css.report}>{reading ? <p role="status">{t('dashboardLoading')}</p> : format === 'json' ? <pre>{report}</pre> : <MarkdownText text={report} labels={{ code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }} />}</div>{!reading && recommendations && <article className={css.reportCard} aria-label={t('recommendationsReport')}><MarkdownText text={recommendations} labels={{ code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }} /></article>}</> : <p className={css.empty}>{t('dashboardNoReports')}</p>}</section>}
         </>}
       </>}
       {reference && reference.sessionId === sessionId && creating && <props.SessionProvider session={reference}>{props.renderSlot('security.workbench.session', { creating: true, assistantOpen: false, advancedOpen: false, changed: () => void perform(refresh), started: (id) => { setCreating(false); setSelected(id); setAssistant(true) } })}</props.SessionProvider>}

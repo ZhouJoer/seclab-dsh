@@ -36,16 +36,50 @@ function Card({ data }: NodeProps<CardNode>) {
   </button><Handle type="source" position={Position.Right} /></>
 }
 const nodeTypes = { investigation: Card }
-function positions(topology: string) {
+const nodeWidth = 240
+const nodeHeight = 150
+const nodeGap = 28
+const rankGap = 90
+const maxRankRows = 4
+
+/** Lay out dense graph ranks in bounded-height columns so fit-to-view keeps cards readable.
+ * @param topology - stable JSON containing visible node identities and directed edges.
+ * @returns top-left card positions for the visible graph.
+ */
+export function investigationPositions(topology: string) {
   const input = JSON.parse(topology) as { ids: string[]; edges: { source: string; target: string }[] }
-  const graph = new Graph().setGraph({ rankdir: 'LR', nodesep: 28, ranksep: 90 }).setDefaultEdgeLabel(() => ({}))
-  for (const id of input.ids) graph.setNode(id, { width: 240, height: 150 })
+  const graph = new Graph().setGraph({ rankdir: 'LR', nodesep: nodeGap, ranksep: rankGap }).setDefaultEdgeLabel(() => ({}))
+  for (const id of input.ids) graph.setNode(id, { width: nodeWidth, height: nodeHeight })
   for (const edge of input.edges) graph.setEdge(edge.source, edge.target)
   layout(graph)
-  return new Map(input.ids.map((id) => {
+  const ranks = new Map<number, { id: string; y: number }[]>()
+  for (const id of input.ids) {
     const node = graph.node(id) as { x: number; y: number }
-    return [id, { x: node.x - 120, y: node.y - 75 }]
-  }))
+    const rank = Math.round(node.x)
+    const members = ranks.get(rank) ?? []
+    members.push({ id, y: node.y })
+    ranks.set(rank, members)
+  }
+  const result = new Map<string, { x: number; y: number }>()
+  let left = 0
+  for (const [, members] of [...ranks].sort(([a], [b]) => a - b)) {
+    members.sort((a, b) => a.y - b.y || a.id.localeCompare(b.id))
+    const columns = Math.ceil(members.length / maxRankRows)
+    const rows = Math.min(members.length, maxRankRows)
+    const rankHeight = rows * nodeHeight + Math.max(0, rows - 1) * nodeGap
+    for (const [index, member] of members.entries()) {
+      const column = Math.floor(index / maxRankRows)
+      const row = index % maxRankRows
+      const columnRows = Math.min(maxRankRows, members.length - column * maxRankRows)
+      const columnHeight = columnRows * nodeHeight + Math.max(0, columnRows - 1) * nodeGap
+      result.set(member.id, {
+        x: left + column * (nodeWidth + nodeGap),
+        y: (rankHeight - columnHeight) / 2 + row * (nodeHeight + nodeGap),
+      })
+    }
+    left += columns * nodeWidth + Math.max(0, columns - 1) * nodeGap + rankGap
+  }
+  return result
 }
 type CanvasProps = PropsLocale<typeof NS> & {
   navigation: string
@@ -128,7 +162,7 @@ export function InvestigationGraph(props: Props) {
   const visibleIds = new Set(visible.map(node => node.id))
   const edges = shown.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   const topology = JSON.stringify({ ids: visible.map(node => node.id), edges: edges.map(({ source, target }) => ({ source, target })) })
-  const placed = useMemo(() => positions(topology), [topology])
+  const placed = useMemo(() => investigationPositions(topology), [topology])
   const title = (node: InvestigationNode) => node.title || t('unavailableReference')
   const nodes: CardNode[] = visible.map((node) => {
     const position = placed.get(node.id)

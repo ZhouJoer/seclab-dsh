@@ -19,7 +19,7 @@ export function investigationFixture(): WorkbenchView {
     { kind: 'review', value: { id: 'review', engagementId: 'project', assetId: 'input', findingId: 'finding', findingHash: 'b'.repeat(64), reviewerSessionId: 'reviewer',
       verdict: 'confirmed', supportingEvidenceIds: ['source'], opposingEvidenceIds: ['partial'], explanation: 'Inspect the caller', uncertainty: 'Historical review', createdAt: 2 } },
     { kind: 'checkpoint', value: { id: 'first', engagementId: 'project', phase: 'recon', title: 'Locate entry point', summary: 'One handler', reason: '', next: 'Read authorization', evidenceIds: [], findings: [], createdAt: 1, updatedAt: 1 } },
-    { kind: 'checkpoint', value: { id: 'second', engagementId: 'project', phase: 'assessment', title: 'Inspect authorization', summary: '', reason: '', next: '', evidenceIds: [], findings: [{ id: 'finding', title: 'Old title', status: 'confirmed' }], createdAt: 2, updatedAt: 2 } },
+    { kind: 'checkpoint', value: { id: 'second', engagementId: 'project', previousCheckpointId: 'first', phase: 'assessment', title: 'Inspect authorization', summary: '', reason: '', next: '', evidenceIds: [], findings: [{ id: 'finding', title: 'Old title', status: 'confirmed' }], createdAt: 2, updatedAt: 2 } },
   ]
   return { revision: 5, records: records.map(record => recordSchema.parse(record)) }
 }

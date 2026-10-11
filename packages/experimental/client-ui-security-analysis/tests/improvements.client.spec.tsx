@@ -62,6 +62,7 @@ it('requests idle-time analysis without creating a source Agent', async () => {
   const { api } = harness()
   render(<Improvements {...api} t={t} projectId="alpha" />)
   await screen.findByRole('button', { name: /Reusable parser/ })
+  expect(screen.queryByText('Improve capabilities, workflows, scripts and investigation methods through a coding AI')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Find improvements now' }))
   await waitFor(() => { expect(api.analyzeImprovements).toHaveBeenCalledOnce() })
   expect(api.notifyImprovement).toHaveBeenCalledWith('Analysis queued')

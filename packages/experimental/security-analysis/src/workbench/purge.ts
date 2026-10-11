@@ -11,7 +11,8 @@ export async function referencedArtifacts(store: ArtifactStore, records: Securit
   const artifacts = new Map<string, Artifact>()
   for (const item of records) {
     if ('artifact' in item.value) artifacts.set(item.value.artifact.sha256, item.value.artifact)
-    if (item.kind === 'report') for (const artifact of [item.value.markdown, item.value.json, item.value.findingsMarkdown])
+    if (item.kind === 'report') for (const artifact of [item.value.markdown, item.value.json,
+      item.value.findingsMarkdown, item.value.recommendationsMarkdown])
       if (artifact) artifacts.set(artifact.sha256, artifact)
     if (item.kind === 'plan' && item.value.operation.script) artifacts.set(item.value.operation.script.sha256, item.value.operation.script)
     if (item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'source') {

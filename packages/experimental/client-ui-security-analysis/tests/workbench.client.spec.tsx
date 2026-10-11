@@ -41,6 +41,22 @@ function props(api: WorkbenchActions, sessionId = 'parent', running = false): Wo
     useSession: (select: (snapshot: { running: boolean }) => unknown) => select({ running }),
   } as WorkbenchProps
 }
+it('reveals advanced pages on a separate navigation track', async () => {
+  render(<Workbench {...props(actions())} autoOpen />)
+  await screen.findByRole('heading', { name: 'Review the sample' })
+  const navigation = screen.getByRole('navigation', { name: '安全分析' })
+  const primary = within(navigation).getByRole('button', { name: '任务' })
+  const toggle = within(navigation).getByRole('button', { name: '高级详情' })
+  const advanced = within(navigation).getByText('资产').closest('button')!
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(advanced.tabIndex).toBe(-1)
+  expect(within(navigation).queryByRole('button', { name: '资产' })).toBeNull()
+  expect(primary.parentElement).not.toBe(advanced.parentElement)
+  fireEvent.click(toggle)
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  expect(within(navigation).getByRole('button', { name: '资产' })).toBe(advanced)
+  expect(advanced.tabIndex).toBe(0)
+})
 it('focuses a blocked check without submitting and reports a removed target', async () => {
   const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView')
   Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
@@ -97,7 +113,8 @@ it('clears checks and findings after leaving, then exposes project creation', as
 it('renders saved Markdown reports from the report read API', async () => {
   const artifact = { sha256: 'a'.repeat(64), size: 20, mediaType: 'text/markdown' }
   const saved = recordSchema.parse({ kind: 'report', value: { id: 'brief', engagementId: 'project', revision: 8,
-    markdown: artifact, json: { ...artifact, mediaType: 'application/json' }, createdAt: 1 } })
+    markdown: artifact, recommendationsMarkdown: { ...artifact, sha256: 'b'.repeat(64) },
+    json: { ...artifact, mediaType: 'application/json' }, createdAt: 1 } })
   const projectView = { ...view, records: [project, saved] }
   const report = vi.fn(async () => '# Target security\n\n## Key risk\n- Password exposure')
   const api = actions({ load: vi.fn(async () => projectView), report })
@@ -105,13 +122,40 @@ it('renders saved Markdown reports from the report read API', async () => {
   fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
   fireEvent.click(screen.getByRole('button', { name: '报告' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Markdown 报告' }))
+  fireEvent.click(screen.getByRole('button', { name: 'OSCP 风格报告' }))
   await screen.findByRole('heading', { name: 'Target security' })
   expect(report).toHaveBeenCalledWith('project', 'brief', 'markdown')
+  fireEvent.click(screen.getByRole('button', { name: '修复建议' }))
+  await waitFor(() => { expect(report).toHaveBeenCalledWith('project', 'brief', 'recommendationsMarkdown') })
   expect(api.artifact).not.toHaveBeenCalled()
   workbench.unmount()
 
 
+})
+
+it('registers an external HTTP target for an existing task', async () => {
+  const api = actions({ configuration: vi.fn(async () => workbenchConfiguration({
+    environments: [{ id: 'local', label: 'Lab', tools: [], kind: 'local' },
+      { id: 'kali', label: 'Kali Docker', tools: [], kind: 'docker' }],
+  })) })
+  render(<Workbench {...props(api)} />)
+  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
+  await screen.findByRole('heading', { name: 'Review the sample' })
+  fireEvent.click(screen.getByText('高级详情'))
+  fireEvent.click(screen.getByRole('button', { name: '资产' }))
+  fireEvent.click(screen.getByText('Web 目标'))
+  fireEvent.change(screen.getAllByLabelText('运行环境').at(-1)!, { target: { value: 'kali' } })
+  fireEvent.change(screen.getAllByLabelText('Web 目标名称').at(-1)!, { target: { value: 'Loopback target' } })
+  fireEvent.change(screen.getByLabelText('站点地址'), { target: { value: 'http://127.0.0.1:18081' } })
+  fireEvent.change(screen.getByLabelText('允许路径前缀'), { target: { value: '/' } })
+  fireEvent.change(screen.getByLabelText('允许的 IP 或 CIDR（每行一个）'), { target: { value: '127.0.0.1' } })
+  fireEvent.click(screen.getByRole('button', { name: '登记目标' }))
+  await waitFor(() => { expect(api.command).toHaveBeenCalled() })
+  expect((JSON.parse(vi.mocked(api.command).mock.calls[0]![1]) as SecurityCommand).action).toEqual({
+    kind: 'external-web-target', environmentId: 'kali', label: 'Loopback target',
+    origin: 'http://127.0.0.1:18081', pathPrefix: '/', allowedAddresses: ['127.0.0.1'],
+  })
+  expect(screen.getByText(zh.httpEnvironmentHint)).toBeDefined()
 })
 
 it('keeps authoritative project state when an evidence search returns no matches', async () => {
@@ -293,7 +337,7 @@ it('starts from conversation guidance and keeps manual project setup available o
   expect(screen.getByText(zh.simpleStartHint)).toBeDefined()
   const setup = screen.getByText('高级设置与历史任务').closest('details')!
   expect(setup.open).toBe(false)
-  expect(screen.getByText('高级详情').closest('details')?.open).toBe(false)
+  expect(screen.getByRole('button', { name: '高级详情' }).getAttribute('aria-expanded')).toBe('false')
   expect(screen.queryByText('生成四阶段检查计划')).toBeNull()
   fireEvent.click(screen.getByText('高级设置与历史任务'))
   expect(setup.open).toBe(true)
@@ -328,7 +372,7 @@ it('summarizes saved findings, evidence and blocked validation before advanced c
   expect(screen.getByText('待验证发现').closest('article')?.textContent).toContain('1')
   expect(screen.getByText('证据记录').closest('article')?.textContent).toContain('1')
   expect(screen.getByText('验证受阻').closest('article')?.textContent).toContain('1')
-  expect(screen.getByText('高级详情').closest('details')?.open).toBe(false)
+  expect(screen.getByRole('button', { name: '高级详情' }).getAttribute('aria-expanded')).toBe('false')
   expect(screen.queryByText('侦察')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '生成此修订的报告' }))
   await waitFor(() => { expect(api.command).toHaveBeenCalled() })

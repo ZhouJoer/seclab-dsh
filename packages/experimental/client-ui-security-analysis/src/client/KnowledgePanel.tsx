@@ -34,7 +34,7 @@ export function KnowledgePanel({ t, view, busy, intervalMs, command, refine }: K
   }
   return <div className={css.knowledge}>
     <div className={css.knowledgeHeader}>
-      <div><h2>{t('knowledge')}</h2><p>{t('knowledgeHint')}</p></div>
+      <h2>{t('knowledge')}</h2>
       <button disabled={busy} onClick={() =>{  setEditing(!editing) }}>{t(editing ? 'cancel' : 'addNote')}</button>
     </div>
     <div className={css.knowledgeToolbar}>

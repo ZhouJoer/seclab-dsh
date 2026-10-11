@@ -54,6 +54,8 @@ pnpm security:doctor python unicorn radare2 tshark jadx --save
 
 示例使用当前 Docker context。将 Docker 安装项的 `prefixArgs` 设为 `["--context", "YOUR_CONTEXT"]`，即可选择其他已配置的 context，包括通过 SSH 或 TLS 连接的远程 daemon。宿主需要该 context 的凭据和传输程序。`externalContainer` 接入已运行的容器，不创建挂载、不启动服务、不改变网络，也不管理其生命周期。工具参数使用容器内文件系统；宿主文件不会自动上传。网络可达性由所选容器和 daemon 决定。
 
+登记外部 Web 目标时，将运行环境选择为 `kali`。显式登记会把 Kali 加入已有任务范围，获批的 HTTP 序列通过该容器内的 Python 运行。目标 origin 与允许的 IP/CIDR 范围必须能从容器访问。凭据与响应脱敏仍由 Host 管理。Docker、容器或 Python 不可用时，计划准备会失败，不会回退到 Host 网络。
+
 在所选容器内通过 Kali 软件包管理器安装 Metasploit。现有 `metasploit` 定义通过容器的 PATH 发现 `msfconsole`，无需绝对安装路径或单独的 DSH 插件。在仓库根目录验证已配置的环境：
 
 ```sh

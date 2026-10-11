@@ -15,7 +15,7 @@ const config: TaskIntakeConfig = {
 function admission(overrides: Partial<WorkspaceTaskAdmission> = {}): WorkspaceTaskAdmission {
   return {
     message: createUserMessage({ content: [{ type: 'text', text: 'Analyze the management interface.\nUse the provided source.' }], source: { kind: 'user' } }),
-    cwd, child: false, hasBindingHistory: false, config, ...overrides,
+    cwd, child: false, hasBindingHistory: false, config, httpEnvironmentIds: ['workspace-lab'], ...overrides,
   }
 }
 
@@ -59,6 +59,42 @@ describe('workspace task admission', () => {
     expect(result).toEqual({ kind: 'create', title: 'Analyze the management interface.', objective,
       environmentIds: ['workspace-lab'], maxAttempts: 3 })
     expect(result?.environmentIds).not.toBe(config.workspaces[0]!.environmentIds)
+  })
+
+  it('registers one literal-IP HTTP target when one selected environment supports HTTP', () => {
+    const objective = 'Assess http://127.0.0.1:18081/app/ and retrieve the flags.'
+    expect(resolveWorkspaceTaskAdmission(admission({
+      message: createUserMessage({ content: [{ type: 'text', text: objective }], source: { kind: 'user' } }),
+    }))).toEqual({ kind: 'create', title: objective, objective, environmentIds: ['workspace-lab'], maxAttempts: 3,
+      target: { origin: 'http://127.0.0.1:18081', pathPrefix: '/app/', allowedAddresses: ['127.0.0.1'],
+        environmentId: 'workspace-lab', label: 'http://127.0.0.1:18081/app/' } })
+  })
+
+  it('registers a literal-IP HTTP target in a selected Kali environment', () => {
+    const objective = 'Assess http://172.18.0.2:8080/ from Kali.'
+    expect(resolveWorkspaceTaskAdmission(admission({
+      config: { ...config, workspaces: [{ cwd, environmentIds: ['kali'] }] },
+      httpEnvironmentIds: ['workspace-lab', 'kali'],
+      message: createUserMessage({ content: [{ type: 'text', text: objective }], source: { kind: 'user' } }),
+    }))).toMatchObject({ target: { environmentId: 'kali', origin: 'http://172.18.0.2:8080' } })
+  })
+
+  it.each([
+    ['a named host', 'Assess https://example.test/', ['workspace-lab']],
+    ['two targets', 'Compare http://127.0.0.1/ and http://127.0.0.2/', ['workspace-lab']],
+    ['an unsupported environment', 'Assess http://127.0.0.1/', []],
+  ])('does not infer an external target from %s', (_case, objective, httpEnvironmentIds) => {
+    expect(resolveWorkspaceTaskAdmission(admission({ httpEnvironmentIds,
+      message: createUserMessage({ content: [{ type: 'text', text: objective }], source: { kind: 'user' } }),
+    }))).not.toHaveProperty('target')
+  })
+
+  it('does not choose between multiple selected HTTP environments', () => {
+    expect(resolveWorkspaceTaskAdmission(admission({
+      config: { ...config, workspaces: [{ cwd, environmentIds: ['workspace-lab', 'kali'] }] },
+      httpEnvironmentIds: ['workspace-lab', 'kali'],
+      message: createUserMessage({ content: [{ type: 'text', text: 'Assess http://127.0.0.1/' }], source: { kind: 'user' } }),
+    }))).not.toHaveProperty('target')
   })
 
   it.each([

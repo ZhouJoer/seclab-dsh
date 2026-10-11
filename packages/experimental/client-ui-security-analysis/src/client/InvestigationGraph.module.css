@@ -7,7 +7,7 @@
 .root button[aria-pressed='true'] { border-color: var(--dsw-alias-link); color: var(--dsw-alias-link); }
 .workspace { display: flex; min-height: 560px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; overflow: hidden; background: var(--dsw-alias-bg-layer-1); }
 .visual { flex: 1; min-width: 0; }
-.canvas { height: 620px; position: relative; --xy-background-color-default: var(--dsw-alias-bg-module-platform); --xy-node-background-color-default: var(--dsw-alias-bg-layer-1); --xy-edge-stroke-default: var(--dsw-alias-label-secondary); --xy-edge-label-background-color-default: var(--dsw-alias-bg-layer-1); --xy-edge-label-color-default: var(--dsw-alias-label-primary); --xy-attribution-background-color-default: var(--dsw-alias-bg-layer-1); }
+.canvas { height: clamp(480px, 62vh, 680px); position: relative; --xy-background-color-default: var(--dsw-alias-bg-module-platform); --xy-node-background-color-default: var(--dsw-alias-bg-layer-1); --xy-edge-stroke-default: var(--dsw-alias-label-secondary); --xy-edge-label-background-color-default: var(--dsw-alias-bg-layer-1); --xy-edge-label-color-default: var(--dsw-alias-label-primary); --xy-attribution-background-color-default: var(--dsw-alias-bg-layer-1); }
 .canvas :global(.react-flow__node) { width: 240px; border-radius: 10px; }
 .canvas :global(.react-flow__node.selected) { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
 .root .card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 240px; height: 150px; padding: 16px; text-align: left; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-layer-1); }
@@ -18,10 +18,10 @@
 .state { color: var(--dsw-alias-link); font-size: 12px; }
 .zoom { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 4px; }
 .zoom button { background: var(--dsw-alias-bg-layer-1); }
-.list { display: grid; gap: 12px; padding: 16px; max-height: 620px; overflow: auto; }
+.list { display: grid; gap: 12px; padding: 16px; max-height: clamp(480px, 62vh, 680px); overflow: auto; }
 .root .list button { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left; padding: 16px; background: var(--dsw-alias-bg-layer-1); overflow-wrap: anywhere; }
 .list strong { font-weight: 500; }
-.inspector { width: 340px; flex-shrink: 0; box-sizing: border-box; padding: 20px; border-left: 1px solid var(--dsw-alias-border-l2); max-height: 620px; overflow: auto; outline: none; }
+.inspector { width: 340px; flex-shrink: 0; box-sizing: border-box; padding: 20px; border-left: 1px solid var(--dsw-alias-border-l2); max-height: clamp(480px, 62vh, 680px); overflow: auto; outline: none; }
 .inspector header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .inspector h3 { font-size: 16px; font-weight: 500; margin: 20px 0 12px; }
 .inspector h4 { font-size: 13px; font-weight: 500; margin: 20px 0 8px; }

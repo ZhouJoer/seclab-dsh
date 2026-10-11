@@ -4,11 +4,20 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as common } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
-import { InvestigationGraph } from '../src/client/InvestigationGraph.tsx'
+import { InvestigationGraph, investigationPositions } from '../src/client/InvestigationGraph.tsx'
 import { en } from '../src/client/locales.ts'
 import { investigationFixture } from './investigation-fixture.client.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+
+it('wraps a crowded graph rank into bounded-height columns', () => {
+  const evidence = Array.from({ length: 10 }, (_, index) => `evidence:${index}`)
+  const placed = investigationPositions(JSON.stringify({ ids: ['asset:root', ...evidence],
+    edges: evidence.map(target => ({ source: 'asset:root', target })) }))
+  const points = evidence.map(id => placed.get(id)!)
+  expect(new Set(points.map(point => point.x)).size).toBe(3)
+  expect(Math.max(...points.map(point => point.y)) - Math.min(...points.map(point => point.y))).toBeLessThan(600)
+})
 
 it('opens a finding and its original observation in two selections without changing the project', async () => {
   vi.stubGlobal('matchMedia', () => ({ matches: true }))

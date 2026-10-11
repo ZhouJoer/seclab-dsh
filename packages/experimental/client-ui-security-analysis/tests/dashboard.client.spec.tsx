@@ -183,14 +183,19 @@ it('opens the stopped assistant without implicitly resuming its task', async () 
 it('renders the latest saved Markdown report without opening a Session', async () => {
   const artifact = { sha256: 'b'.repeat(64), size: 4, mediaType: 'text/markdown' }
   const saved = recordSchema.parse({ kind: 'report', value: { id: 'r1', engagementId: 'Alpha', revision: 4,
-    markdown: artifact, json: { ...artifact, mediaType: 'application/json' }, createdAt: 1 } })
-  const { api, props } = harness({ project: vi.fn(async () => ({ revision: 4, records: [alpha, saved] })) })
+    markdown: artifact, recommendationsMarkdown: { ...artifact, sha256: 'c'.repeat(64) },
+    json: { ...artifact, mediaType: 'application/json' }, createdAt: 1 } })
+  const report = vi.fn(async (_projectId: string, _reportId: string, format: string) =>
+    format === 'recommendationsMarkdown' ? '# Remediation recommendations\n\n- Validate ownership.' : '# Report')
+  const { api, props } = harness({ project: vi.fn(async () => ({ revision: 4, records: [alpha, saved] })), report })
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
   await screen.findByRole('heading', { name: 'Alpha' })
   fireEvent.click(screen.getByRole('button', { name: 'Reports' }))
   await screen.findByRole('heading', { name: 'Report' })
   expect(api.report).toHaveBeenCalledWith('Alpha', 'r1', 'markdown')
+  expect(api.report).toHaveBeenCalledWith('Alpha', 'r1', 'recommendationsMarkdown')
+  expect(screen.getByRole('article', { name: 'Remediation recommendations' }).textContent).toContain('Validate ownership.')
   expect(api.createSession).not.toHaveBeenCalled()
 })
 it('ignores a delayed historical read after changing tasks', async () => {

@@ -39,6 +39,11 @@ export const httpSequenceSchema = z.object({
   steps: z.array(httpStepSchema).min(1),
   identities: z.array(z.object({ id: id.transform(brandString<HttpIdentityId>),
     revision: id.transform(brandString<HttpIdentityRevision>) }).strict()).default([]),
+  transport: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('host') }).strict(),
+    z.object({ kind: z.literal('python'), command: z.string().min(1), prefixArgs: z.array(z.string()),
+      version: z.string().min(1) }).strict(),
+  ]).optional(),
   replayOf: z.object({ evidenceId: id.transform(brandString<EvidenceId>),
     stepId: id.transform(brandString<HttpStepId>).optional() }).strict().optional(),
   prepared: z.literal(true).optional(),

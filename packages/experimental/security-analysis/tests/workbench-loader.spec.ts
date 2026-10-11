@@ -1023,6 +1023,7 @@ else if (args.includes('--output')) {
     if (review?.kind !== 'review') throw new Error('Missing independent HTTP review')
     await send({ kind: 'conclude', reviewId: review.value.id })
     reportModel.reportOutput = () => JSON.stringify({ assessment: 'The approved observation was independently reviewed.',
+      scope: ['Owned HTTP target'], attackPath: ['Read the authorized response'], objectives: ['Observed the expected response'],
       findings: [{ index: 0, mechanism: 'Authorized response', conditions: 'Owned test identity', impact: 'Observation only',
         location: '/', fix: 'No application change requested' }], excludedIndices: [], lessons: [], uncovered: ['Other application routes'] })
     await send({ kind: 'report' })
@@ -1567,10 +1568,11 @@ it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loa
     expect(material.findings).toMatchObject([{ status: 'confirmed', review: {
       accepted: true, verdict: 'confirmed', basis: 'static', uncertainty: 'Callers and runtime behavior remain unverified.',
     } }])
-    const output = JSON.stringify({ assessment: '目标已完成独立静态复核，运行行为仍未验证。', findings: [{ index: 0,
-      mechanism: '认证后直接返回记录', conditions: '调用方可提供其他用户的记录', impact: '对象级权限检查缺失',
-      location: 'report-source.js:1', fix: '读取前校验记录所有权' }], excludedIndices: [],
-    lessons: [], uncovered: ['调用方与运行行为未验证。'] })
+    const output = JSON.stringify({ assessment: '目标已完成独立静态复核，运行行为仍未验证。',
+      scope: ['已导入的 report-source.js。'], attackPath: ['从调用参数追踪到记录返回。'], objectives: ['已识别对象级授权缺失。'], findings: [{ index: 0,
+        mechanism: '认证后直接返回记录', conditions: '调用方可提供其他用户的记录', impact: '对象级权限检查缺失',
+        location: 'report-source.js:1', fix: '读取前校验记录所有权' }], excludedIndices: [],
+      lessons: [], uncovered: ['调用方与运行行为未验证。'] })
     return format === 'fenced' ? '```json\n' + output + '\n```' : output
   }
   const result = await send({ kind: 'report' })
@@ -1580,6 +1582,8 @@ it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loa
   const markdown = (await controller.artifacts.read(report.value.markdown)).toString()
   expect(markdown).toContain('已确认，静态分析')
   expect(markdown).toContain('调用方与运行行为未验证。')
+  expect(markdown).not.toContain('读取前校验记录所有权')
+  expect((await controller.artifacts.read(report.value.recommendationsMarkdown!)).toString()).toContain('读取前校验记录所有权')
   expect(loggedInputs).toEqual([submittedPrompt])
   if (format === 'plain') expect(loggedInputs[0]!.replaceAll(asset.value.id, '<asset-id>'))
     .toMatchSnapshot('logged report Session input with an accepted static review')
@@ -2325,7 +2329,7 @@ it.each([
   else {
     expect(requests).toHaveLength(1)
     expect(requests[0]?.reasoningEffort).toBe(expected)
-    expect(requests[0]?.maxTokens).toBe(24576)
+    expect(requests[0]?.maxTokens).toBe(65536)
     expect(loggedEfforts).toEqual([expected])
   }
 })

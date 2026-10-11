@@ -1,7 +1,7 @@
 /** Reader-facing report budgets and finding accounting. @module */
 import { expect, it } from 'vitest'
 import { reportPrompt, renderReport } from '../src/workbench/report.ts'
-import { engagementSchema, evidenceSchema, fileAssetSchema, findingSchema, reviewSchema, sourceAssetSchema, type SecurityRecord } from '../src/workbench/model.ts'
+import { checkpointSchema, engagementSchema, evidenceSchema, fileAssetSchema, findingSchema, reviewSchema, sourceAssetSchema, type SecurityRecord } from '../src/workbench/model.ts'
 import { findingHash } from '../src/workbench/assessment.ts'
 
 const limits = { inputBytes: 32768, maxChars: 1200, maxFindings: 1, maxLessons: 1, outputBytes: 16384 }
@@ -18,6 +18,8 @@ function fixture(): SecurityRecord[] {
 }
 function answer(findings = [0, 1], excludedIndices: number[] = []) {
   return JSON.stringify({ assessment: '二进制发现一处已确认风险；源码和 Web 未检查。',
+    scope: ['已导入的 webui_httpd ELF 样本。'], attackPath: ['从可控长度字段到未检查的复制操作。'],
+    objectives: ['已定位 parse_request 中的越界访问路径。'],
     findings: findings.map(index => ({ index, mechanism: '未校验长度', conditions: '可控输入', impact: '越界访问',
       location: 'parse_request', fix: '读取前校验实际剩余字节' })), excludedIndices,
     lessons: ['遇到可变长度字段，应沿输入到拷贝位置核对实际边界。'], uncovered: ['源码与 Web 未检查。'] })
@@ -25,7 +27,7 @@ function answer(findings = [0, 1], excludedIndices: number[] = []) {
 it('requests Chinese prose when recorded summaries use English', () => {
   const prompt = reportPrompt(fixture(), limits)
   expect(prompt).toContain('Write every prose field in Chinese, even when the input summaries are in English')
-  expect(prompt).toContain('Preserve code identifiers, filenames and quoted source text')
+  expect(prompt).toContain('Preserve code identifiers, filenames, flag values and quoted source text')
 })
 
 it.each(['json', ''])('accepts a single %s code fence around an otherwise valid report', (language) => {
@@ -51,7 +53,7 @@ it('retains schema, finding accounting and complete response byte limits for fen
   const response = '```json\n' + answer() + '\n```'
   expect(() => renderReport(records, response, { ...limits, outputBytes: Buffer.byteLength(answer()) })).toThrow(/byte budget/u)
 })
-it('produces a short brief and a complete appendix without audit identifiers', () => {
+it('produces an OSCP-style report, a remediation artifact and a complete appendix without audit identifiers', () => {
   const records = fixture()
   const prompt = reportPrompt(records, limits)
   expect(prompt).toContain('解析长度越界')
@@ -60,9 +62,14 @@ it('produces a short brief and a complete appendix without audit identifiers', (
   const result = renderReport(records, answer(), limits)
   expect(Array.from(result.markdown).length).toBeLessThanOrEqual(1200)
   expect(result.markdown).toContain('解析长度越界')
+  expect(result.markdown).toContain('## 攻击路径')
   expect(result.markdown).toContain('另有 1 条')
   expect(result.findingsMarkdown).toContain('输出超限导致资源耗尽')
-  expect(result.markdown + (result.findingsMarkdown ?? '')).not.toMatch(/evidence|aaaa[a-f0-9]{60}|Execution and cleanup/u)
+  expect(result.markdown).not.toContain('修复：')
+  expect(result.findingsMarkdown).not.toContain('修复：')
+  expect(result.recommendationsMarkdown).toContain('读取前校验实际剩余字节')
+  expect(result.markdown + (result.findingsMarkdown ?? '') + (result.recommendationsMarkdown ?? ''))
+    .not.toMatch(/evidence|aaaa[a-f0-9]{60}|Execution and cleanup/u)
 })
 
 it('reports imported source coverage without evidence identities or raw observations', () => {
@@ -82,6 +89,19 @@ it('reports imported source coverage without evidence identities or raw observat
   expect(prompt).toContain('never claim an imported asset was not provided')
   expect(prompt).not.toContain('private-observation')
   expect(prompt).not.toContain('raw observation must stay out')
+})
+
+it('includes research progress without treating checkpoint claims as accepted findings', () => {
+  const records = fixture().filter(item => item.kind !== 'finding')
+  records.push({ kind: 'checkpoint', value: checkpointSchema.parse({ id: 'direction', engagementId: 'project',
+    phase: 'validation', title: 'Validate exploit path', reason: 'Follow the runtime path',
+    summary: 'The progress note claims a flag was read.', next: 'Link durable observations', evidenceIds: [], findings: [],
+    createdAt: 1, updatedAt: 2 }) })
+  const prompt = reportPrompt(records, limits)
+  const data = JSON.parse(prompt.split('\nData: ')[1]!) as { directions: unknown[] }
+  expect(data.directions).toEqual([{ phase: 'validation', title: 'Validate exploit path',
+    summary: 'The progress note claims a flag was read.', next: 'Link durable observations', observations: 0, findings: 0 }])
+  expect(prompt).toContain('Research directions are progress notes, not accepted findings or evidence')
 })
 
 it('uses one separator when model fields already end with punctuation', () => {
@@ -150,10 +170,11 @@ it('rejects model-written finding status instead of replacing committed conclusi
 it('states missing coverage when there are no findings', () => {
   const records = fixture().filter(item => item.kind !== 'finding')
   expect(reportPrompt(records, limits)).toContain('lessons and uncovered are arrays of strings')
-  expect(() => renderReport(records, JSON.stringify({ assessment: '尚不能判断', findings: [],
+  expect(() => renderReport(records, JSON.stringify({ assessment: '尚不能判断', scope: [], attackPath: [], objectives: [], findings: [],
     excludedIndices: [], lessons: [], uncovered: '源码未检查' }), limits)).toThrow(/uncovered/u)
   const result = renderReport(records, JSON.stringify({ assessment: '仅识别了 ELF 文件，尚不能判断其安全性。',
-    findings: [], excludedIndices: [], lessons: [], uncovered: ['函数级分析和 Web 路径未检查。'] }), limits)
+    scope: ['webui_httpd ELF 样本。'], attackPath: [], objectives: [], findings: [], excludedIndices: [],
+    lessons: [], uncovered: ['函数级分析和 Web 路径未检查。'] }), limits)
   expect(result.markdown).toContain('尚不能判断')
   expect(result.markdown).toContain('这不表示目标安全')
 })

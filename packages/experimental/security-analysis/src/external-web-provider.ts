@@ -3,19 +3,28 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-credentials'
+import type {} from '@deepseek-ai/dsh-subprocess'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { z } from 'zod'
 import type {} from './index.ts'
 import { CookieJar } from 'tough-cookie'
 import { HttpIdentities, type HttpIdentitySnapshot } from './http-auth.ts'
 import { httpSequenceSchema, type HttpStep, type HttpStepId, type HttpIdentityId, type HttpExchange, type HttpSequence } from './http-model.ts'
 import { scopedWebPath } from './web-provider.ts'
-import { sendScopedHttp, validateExternalTarget } from './http-scope.ts'
+import { sendScopedHttp, validateExternalTarget, type HttpResponse } from './http-scope.ts'
 import { extractHttpValues, assertHttpResponse, resolveHttpValue, redactHttpHeaders, redactHttpText } from './http-values.ts'
+import { inspectToolbox } from './toolbox.ts'
+import { runProcess } from './workbench/process.ts'
 import type { AnalysisProvider, AnalysisContext, AnalysisResult } from './workbench/providers.ts'
 import type { AnalysisOperation, Asset } from './workbench/model.ts'
 
 /** Deployment bounds applied to the complete prepared sequence. */
-export interface Config { maxSteps: number; maxFieldBytes: number; maxRequestBytes: number }
+export interface Config { maxSteps: number; maxFieldBytes: number; maxRequestBytes: number; graceMs: number }
 type Target = Extract<Asset, { kind: 'external-web' }>
+type PythonTransport = Extract<NonNullable<HttpSequence['transport']>, { kind: 'python' }>
+const helperResponse = z.object({ status: z.number().int(), headers: z.array(z.tuple([z.string(), z.string()])),
+  body: z.string(), bytes: z.number().int().nonnegative(), incomplete: z.boolean() }).strict()
 const forbiddenHeader = /^(?:host|authorization|proxy-authorization|cookie|connection|content-length|transfer-encoding|upgrade|proxy-.*)$/iu
 function pendingExchange(step: HttpStep): HttpExchange {
   return { stepId: step.id, label: step.label, method: step.method, path: step.path, durationMs: 0,
@@ -23,8 +32,9 @@ function pendingExchange(step: HttpStep): HttpExchange {
     headers: [], body: '', bodyOmitted: !!step.login }
 }
 function target(context: AnalysisContext): Target {
-  if (!('kind' in context.asset) || context.asset.kind !== 'external-web' || context.environment.kind !== 'local' || context.asset.environmentId !== context.environment.id)
-    throw new Error('External HTTP requires a registered target in its local Host environment')
+  if (!('kind' in context.asset) || context.asset.kind !== 'external-web' ||
+    !['local', 'docker'].includes(context.environment.kind) || context.asset.environmentId !== context.environment.id)
+    throw new Error('External HTTP requires a registered target in its Host or Docker environment')
   return context.asset
 }
 /** Executes only the fixed sequence resolved into an approved plan. */
@@ -32,7 +42,7 @@ export class ExternalWebProvider implements AnalysisProvider {
   readonly id = 'external-web'
   readonly operations = ['sequence']
   readonly inputGuide = 'sequence accepts {steps:[{id,label,method,path,identityId?,query:[],headers:[],body?,extract:[],assertions:[]}],replayOf?}. Field values are strings, {secret:name} or {variable:name}. Bodies use {kind:text,value} or {kind:json|form,fields:[{name,value}]}. Login steps come from operator-configured identities. Requires one approved, single-use validation plan. Responses are redacted; redirects and retries are never automatic.'
-  constructor(private readonly identities: HttpIdentities, private readonly config: Config) {}
+  constructor(private readonly ctx: Context, private readonly identities: HttpIdentities, private readonly config: Config) {}
   /** Serialize plans sharing the same target.
    * @param request - prepared operation.
    * @param asset - registered target.
@@ -45,7 +55,7 @@ export class ExternalWebProvider implements AnalysisProvider {
   async prepare(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation> {
     const asset = target(context)
     const input = httpSequenceSchema.parse(request.parameters)
-    if (input.prepared || input.identities.length || input.steps.some(step => step.login)) throw new Error('Submit testing steps only; the Host prepares login steps and identity versions')
+    if (input.prepared || input.transport || input.identities.length || input.steps.some(step => step.login)) throw new Error('Submit testing steps only; the Host prepares login steps, identity versions and the execution transport')
     const steps: HttpStep[] = []; const identities: HttpSequence['identities'] = []
     const secrets: string[] = []
     const seen = new Set<HttpIdentityId>()
@@ -60,7 +70,10 @@ export class ExternalWebProvider implements AnalysisProvider {
       }
       steps.push(step)
     }
-    const sequence: HttpSequence = { steps, identities, prepared: true, ...(input.replayOf ? { replayOf: input.replayOf } : {}) }
+    const transport = context.environment.kind === 'local' ? { kind: 'host' as const }
+      : await this.preparePythonTransport(context)
+    const sequence: HttpSequence = { steps, identities, transport, prepared: true,
+      ...(input.replayOf ? { replayOf: input.replayOf } : {}) }
     const template = JSON.stringify(sequence)
     if (secrets.some(secret => template.includes(JSON.stringify(secret).slice(1, -1)))) throw new Error('HTTP templates must reference credential fields instead of embedding their values')
     return this.resolve({ ...request, parameters: JSON.parse(JSON.stringify(sequence)) as AnalysisOperation['parameters'] }, context)
@@ -78,7 +91,12 @@ export class ExternalWebProvider implements AnalysisProvider {
       status: 599, durationMs: Number.MAX_VALUE, bytes: Number.MAX_SAFE_INTEGER, detail: ' '.repeat(128) }))
     if (Buffer.byteLength(JSON.stringify({ version: 1, exchanges: minimumEvidence })) > context.maxOutputBytes)
       throw new Error('HTTP sequence metadata exceeds its evidence byte budget')
-    if (!sequence.prepared || sequence.steps.length > this.config.maxSteps) throw new Error('HTTP sequence is unprepared or exceeds the step limit')
+    if (!sequence.prepared || !sequence.transport || sequence.steps.length > this.config.maxSteps) throw new Error('HTTP sequence is unprepared or exceeds the step limit')
+    if ((context.environment.kind === 'local' && sequence.transport.kind !== 'host') ||
+      (context.environment.kind === 'docker' && sequence.transport.kind !== 'python'))
+      throw new Error('HTTP execution transport does not match the selected environment')
+    if (context.environment.kind === 'docker' && !context.environment.externalContainer && !context.environment.containerId)
+      throw new Error('Start the selected Kali/Docker environment before preparing an HTTP plan')
     if (Buffer.byteLength(JSON.stringify(sequence)) > Math.min(this.config.maxRequestBytes, Math.floor(context.maxOutputBytes / 2)))
       throw new Error('HTTP sequence exceeds its request or evidence byte budget')
     if (new Set(sequence.steps.map(step => step.id)).size !== sequence.steps.length) throw new Error('HTTP step IDs must be unique')
@@ -101,6 +119,9 @@ export class ExternalWebProvider implements AnalysisProvider {
     const asset = target(context)
     const sequence = httpSequenceSchema.parse(this.resolve(request, context).parameters)
     const signal = AbortSignal.any([context.signal, AbortSignal.timeout(context.durationMs)])
+    const python = sequence.transport?.kind === 'python' ? sequence.transport : undefined
+    const helper = python ? await readFile(fileURLToPath(new URL('../resources/external_web_runner.py', import.meta.url)), 'utf8') : undefined
+    if (python) await this.verifyPythonTransport(context, python, signal)
     const snapshots = new Map<HttpIdentityId, HttpIdentitySnapshot>()
     const jars = new Map<string, CookieJar>(); const variables = new Map<string, Map<string, string>>()
     const privateValues = new Set<string>(); const exchanges: HttpExchange[] = []
@@ -158,8 +179,11 @@ export class ExternalWebProvider implements AnalysisProvider {
           }
           if (Buffer.byteLength(JSON.stringify(headers)) + Buffer.byteLength(body ?? '') + Buffer.byteLength(url.href) > this.config.maxRequestBytes)
             throw new Error('Resolved HTTP request exceeds the byte limit')
-          const response = await sendScopedHttp(asset, url.pathname + url.search, step.method, headers, body, signal,
-            Math.floor(context.maxOutputBytes / (sequence.steps.length * 8)))
+          const maxBytes = Math.floor(context.maxOutputBytes / (sequence.steps.length * 8))
+          const response = python && helper
+            ? await this.sendDockerRequest(context, python, helper, asset, url.pathname + url.search,
+              step.method, headers, body, signal, maxBytes)
+            : await sendScopedHttp(asset, url.pathname + url.search, step.method, headers, body, signal, maxBytes)
           record.status = response.status; record.bytes = response.bytes; record.incomplete = response.incomplete
           for (const [name, content] of response.headers) if (name.toLowerCase() === 'set-cookie') {
             privateValues.add(content)
@@ -201,18 +225,64 @@ export class ExternalWebProvider implements AnalysisProvider {
     if (bytes.length > context.maxOutputBytes) throw new Error('HTTP evidence metadata exceeds the output budget')
     return { bytes, mediaType: 'application/json', summary: failure ?? 'HTTP sequence observed; compare responses before drawing a conclusion',
       incomplete: !!failure || exchanges.some(item => item.incomplete), ...(failure ? { failure } : {}),
-      cleanup: 'HTTP connections closed and temporary login state removed', toolVersion: 'DSH external HTTP v1',
+      cleanup: 'HTTP connections closed and temporary login state removed',
+      toolVersion: python ? `DSH external HTTP v1 · Python ${python.version}` : 'DSH external HTTP v1 · Host',
       http: { version: 1, exchanges: exchanges.map(({ request: _request,
         headers: _headers, body: _body, bodyOmitted: _omitted, ...summary }) =>
         summary) } }
   }
+
+  private async preparePythonTransport(context: AnalysisContext): Promise<PythonTransport> {
+    const inventory = await inspectToolbox(this.ctx, context.environment, {
+      durationMs: context.durationMs, maxOutputBytes: context.maxOutputBytes, graceMs: this.config.graceMs,
+    }, context.signal, ['python'])
+    const python = inventory.tools.find(tool => tool.id === 'python')
+    if (inventory.runtime !== 'ready' || python?.status !== 'available' || !python.installation)
+      throw new Error('The selected Kali/Docker environment must be running with Python available: ' +
+        (python?.detail || inventory.detail || inventory.runtime))
+    return { kind: 'python', command: python.installation.command,
+      prefixArgs: python.installation.prefixArgs, version: python.version }
+  }
+
+  private pythonEnvironment(context: AnalysisContext, transport: PythonTransport) {
+    return { ...context.environment, tools: [...context.environment.tools.filter(tool => tool.id !== 'python'), {
+      id: 'python', command: transport.command, prefixArgs: transport.prefixArgs,
+      versionArgs: [], source: 'approved external HTTP plan',
+    }] }
+  }
+
+  private async verifyPythonTransport(context: AnalysisContext, transport: PythonTransport, signal: AbortSignal): Promise<void> {
+    const result = await runProcess(this.ctx, this.pythonEnvironment(context, transport), 'python',
+      ['-I', '-c', 'import sys;print(sys.version.split()[0])'], {
+        signal, durationMs: context.durationMs, maxOutputBytes: 1024, graceMs: this.config.graceMs,
+        stopContainerOnAbort: false,
+      })
+    if (result.exitCode !== 0 || result.signal !== null || result.timedOut || result.cancelled || result.truncated ||
+      result.stdout.trim() !== transport.version)
+      throw new Error('Kali/Docker Python changed or became unavailable; prepare a new HTTP plan')
+  }
+
+  private async sendDockerRequest(context: AnalysisContext, transport: PythonTransport, helper: string,
+    asset: Target, path: string, method: HttpStep['method'], headers: Record<string, string>,
+    body: string | undefined, signal: AbortSignal, maxBytes: number): Promise<HttpResponse> {
+    const result = await runProcess(this.ctx, this.pythonEnvironment(context, transport), 'python',
+      ['-I', '-u', '-B', '-c', helper], {
+        signal, durationMs: context.durationMs, maxOutputBytes: context.maxOutputBytes,
+        graceMs: this.config.graceMs, stopContainerOnAbort: false,
+      }, JSON.stringify({ origin: asset.origin, path, method, headers, body,
+        allowedAddresses: asset.allowedAddresses, timeout: context.durationMs / 1000, maxBytes }))
+    if (result.exitCode !== 0 || result.signal !== null || result.timedOut || result.cancelled || result.truncated)
+      throw new Error('Kali/Docker HTTP helper did not complete')
+    return helperResponse.parse(JSON.parse(result.stdout))
+  }
 }
 declare module '@deepseek-ai/cordis' { interface Context { securityExternalWeb: SecurityExternalWeb } }
-/** Optional Host owner for external HTTP execution and target credentials. */
+/** Optional Host and Docker owner for external HTTP execution and target credentials. */
 export default class SecurityExternalWeb extends Service<Config> {
-  static inject = ['securityWorkbench', 'credentials']
+  static inject = ['securityWorkbench', 'credentials', 'subprocess']
   static Config: Schema<Config> = Schema.object({ maxSteps: Schema.number().step(1).min(1).default(32),
-    maxFieldBytes: Schema.number().step(1).min(1).default(16384), maxRequestBytes: Schema.number().step(1).min(1).default(1048576) })
+    maxFieldBytes: Schema.number().step(1).min(1).default(16384), maxRequestBytes: Schema.number().step(1).min(1).default(1048576),
+    graceMs: Schema.number().step(1).min(1).default(3000) })
   /** Host-owned authentication records; never expose private snapshots to clients. */
   readonly identities: HttpIdentities
   constructor(ctx: Context, config: Config) {
@@ -220,7 +290,7 @@ export default class SecurityExternalWeb extends Service<Config> {
     this.identities = new HttpIdentities(ctx.credentials)
     ctx.effect(async () => {
       const controller = await ctx.securityWorkbench.ready
-      return controller.providers.register(new ExternalWebProvider(this.identities, config))
+      return controller.providers.register(new ExternalWebProvider(ctx, this.identities, config))
     })
   }
 }

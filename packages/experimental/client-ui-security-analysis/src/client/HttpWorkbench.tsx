@@ -92,7 +92,7 @@ export function HttpWorkbench(props: PropsLocale<typeof NS> & HttpActions & {
     setExpected(plan.value.expectedObservation)
     setImpact(plan.value.impact); setCleanup(plan.value.cleanup); setDuration(plan.value.durationMs); check.current = undefined
   }
-  const local = configuration?.environments.filter(item => item.kind === 'local') ?? []
+  const httpEnvironments = configuration?.environments.filter(item => item.kind === 'local' || item.kind === 'docker') ?? []
   const disabled = busy || props.disabled || !props.session
   return <section className={css.planReview} aria-label={t('httpTitle')}><h2>{t('httpTitle')}</h2>
     {!props.session && <p>{t('httpNeedSession')} <button onClick={props.connect}>{t('httpConnect')}</button></p>}
@@ -102,8 +102,9 @@ export function HttpWorkbench(props: PropsLocale<typeof NS> & HttpActions & {
       <label className={css.field}>{t('httpOrigin')}<input value={origin} onChange={(event) =>{  setOrigin(event.target.value) }} /></label>
       <label className={css.field}>{t('httpPrefix')}<input value={prefix} onChange={(event) =>{  setPrefix(event.target.value) }} /></label>
       <label className={css.field}>{t('httpAddresses')}<textarea value={addresses} onChange={(event) =>{  setAddresses(event.target.value) }} /></label>
-      <label className={css.field}>{t('environment')}<select value={environment || local[0]?.id || ''} onChange={(event) =>{  setEnvironment(event.target.value) }}>{local.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-      <button disabled={!label || !origin || !addresses || !local.length} onClick={() => void run(async () => { await command({ kind: 'external-web-target', label, origin, pathPrefix: prefix, allowedAddresses: addresses.split(/\s+/u).filter(Boolean), environmentId: environment || local[0]?.id }); setNotice(t('httpSaved')) })}>{t('httpRegister')}</button>
+      <label className={css.field}>{t('environment')}<select value={environment || httpEnvironments[0]?.id || ''} onChange={(event) =>{  setEnvironment(event.target.value) }}>{httpEnvironments.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+      <p>{t('httpEnvironmentHint')}</p>
+      <button disabled={!label || !origin || !addresses || !httpEnvironments.length} onClick={() => void run(async () => { await command({ kind: 'external-web-target', label, origin, pathPrefix: prefix, allowedAddresses: addresses.split(/\s+/u).filter(Boolean), environmentId: environment || httpEnvironments[0]?.id }); setNotice(t('httpSaved')) })}>{t('httpRegister')}</button>
     </fieldset></details>
     <label className={css.field}>{t('httpTarget')}<select value={target?.id ?? ''} onChange={(event) => { setTargetId(event.target.value); setSteps([newHttpStep(t('httpValidationTitle'))]); setReplayOf(undefined); check.current = undefined }}>{targets.map(item => <option key={item.id} value={item.id}>{item.label} · {item.origin}</option>)}</select></label>
     {target && <><details><summary>{t('httpIdentities')}</summary><fieldset className={css.httpFields} disabled={disabled}><p>{t('httpIdentityHint')}</p>

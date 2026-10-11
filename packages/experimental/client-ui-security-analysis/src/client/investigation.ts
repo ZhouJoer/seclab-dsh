@@ -101,6 +101,7 @@ export function investigation(view: WorkbenchView): Investigation {
         for (const id of record.value.evidenceIds) to('evidence', id, 'graphObservation')
         break
       case 'checkpoint':
+        if (record.value.previousCheckpointId) from('checkpoint', record.value.previousCheckpointId, 'graphFollowup')
         for (const id of record.value.evidenceIds) to('evidence', id, 'graphReferences')
         for (const item of record.value.findings) to('finding', item.id, 'graphReferences')
         break

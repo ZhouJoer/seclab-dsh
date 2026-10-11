@@ -10,7 +10,8 @@ export interface ProjectActions extends ToolboxActions {
   projects(): Promise<string>
   project(id: string): Promise<WorkbenchView>
   laboratory(projectId: string, action: string, id: string): Promise<WorkbenchView>
-  report(this: void, projectId: string, reportId: string, format: 'markdown' | 'json' | 'findingsMarkdown'): Promise<string>
+  report(this: void, projectId: string, reportId: string,
+    format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown'): Promise<string>
   subscribeReset(this: void, listener: () => void): () => void
 }
 /** Sidebar glyph; the shell owns its accessible label.

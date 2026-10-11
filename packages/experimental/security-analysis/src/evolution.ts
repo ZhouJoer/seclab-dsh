@@ -45,7 +45,7 @@ export interface EvolutionConfig {
 export const evolutionConfig: Schema<EvolutionConfig> = Schema.object({
   auto: Schema.boolean().default(false), idleMs: Schema.number().step(1).min(1).max(2147483647).default(300000),
   concurrency: Schema.number().step(1).min(1).default(1), inputBytes: Schema.number().step(1).min(16384).default(131072),
-  outputTokens: Schema.number().step(1).min(1).default(24576),
+  outputTokens: Schema.number().step(1).min(1).default(65536),
   timeoutMs: Schema.number().step(1).min(1).max(2147483647).default(300000),
   excerptBytes: Schema.number().step(1).min(128).default(2048), maxCandidates: Schema.number().step(1).min(0).default(20),
   maxSuggestions: Schema.number().step(1).min(1).default(5),

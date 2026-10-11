@@ -785,6 +785,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
         child: agent.session.header.origin === 'subagent',
         hasBindingHistory: this.journal.view().records.some(item => item.kind === 'binding' && item.value.sessionId === agent.id),
         config: this.intakeConfig(agent.session.header.cwd),
+        httpEnvironmentIds: this.config.environments.filter(environment => environment.kind === 'local' || environment.kind === 'docker')
+          .map(environment => environment.id),
       })
       if (action) await controller.admitTask(exec.agent.id, `task-intake:${exec.agent.id}:${candidate.message.id}`, action, exec.signal)
       return next()
@@ -1588,12 +1590,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
    * @param format - Markdown or JSON.
    * @returns complete immutable report text. */
   @Remote('report')
-  async report(projectId: string, reportId: string, format: 'markdown' | 'json' | 'findingsMarkdown'): Promise<string> {
+  async report(projectId: string, reportId: string,
+    format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown'): Promise<string> {
     const controller = await this.ready
     const record = controller.projectView(projectId).records.find(item => item.kind === 'report' && item.value.id === reportId)
     if (record?.kind !== 'report') throw new Error('Report is outside the project scope')
     const artifact = record.value[format]
-    if (!artifact) throw new Error('This report has no findings appendix')
+    if (!artifact) throw new Error('This report does not contain the requested artifact')
     return (await controller.artifacts.read(artifact)).toString('utf8')
   }
   /** Read selected project state for an authenticated Web session.
@@ -1868,7 +1871,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
         ((item.kind === 'asset' || item.kind === 'evidence' || item.kind === 'legacy') && 'artifact' in item.value &&
           item.value.artifact.sha256 === sha256) ||
         (item.kind === 'plan' && item.value.operation.script?.sha256 === sha256) ||
-        (item.kind === 'report' && [item.value.markdown.sha256, item.value.json.sha256, item.value.findingsMarkdown?.sha256].includes(sha256)),
+        (item.kind === 'report' && [item.value.markdown.sha256, item.value.json.sha256,
+          item.value.findingsMarkdown?.sha256, item.value.recommendationsMarkdown?.sha256].includes(sha256)),
     )
     const reference =
       (entry?.kind === 'asset' || entry?.kind === 'evidence' || entry?.kind === 'legacy') && 'artifact' in entry.value
@@ -1876,7 +1880,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
         : entry?.kind === 'plan'
           ? entry.value.operation.script
           : entry?.kind === 'report' ? (entry.value.markdown.sha256 === sha256 ? entry.value.markdown :
-            entry.value.findingsMarkdown?.sha256 === sha256 ? entry.value.findingsMarkdown : entry.value.json) : undefined
+            entry.value.findingsMarkdown?.sha256 === sha256 ? entry.value.findingsMarkdown :
+              entry.value.recommendationsMarkdown?.sha256 === sha256 ? entry.value.recommendationsMarkdown : entry.value.json) : undefined
     if (!reference) throw new Error('Artifact is outside the session scope')
     const bytes = await controller.artifacts.read(reference)
     return JSON.stringify({
