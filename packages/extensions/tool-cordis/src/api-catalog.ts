@@ -2057,7 +2057,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'toolboxInventory\') async toolboxInventory(environmentId?: string, toolIds?: string[]): Promise<ToolboxDirectory>',
-        description: 'Inspect installed tools without selecting a project or starting an environment.',
+        description: 'Inspect installed tools, starting managed Docker from an existing image when necessary.',
         parameters: [{ name: 'environmentId', description: 'configured environment; omission selects the first local environment.' }, { name: 'toolIds', description: 'selected definitions and their dependencies; omitted checks all.' }],
         returns: 'environment choices and current optional-tool observations.',
       },
@@ -2070,7 +2070,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: '@Remote(\'deviceInventory\') async deviceInventory(environmentId?: string): Promise<DeviceDirectory>',
         description: 'Explicitly inspect Windows prerequisites; enumeration does not validate radio capture.',
-        parameters: [{ name: 'environmentId', description: 'configured local environment.' }],
+        parameters: [{ name: 'environmentId', description: 'configured local or managed Docker environment.' }],
         returns: 'settled observations; failed inspections leave the previous directory intact.',
       },
       {
@@ -4820,7 +4820,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisProvider',
-    declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
+    declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    activityTools?(request: AnalysisOperation): string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
   },
   {
     name: 'AnalysisResult',
@@ -6840,7 +6840,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityActivityStore',
-    declaration: 'export class SecurityActivityStore {\n    static async open(ctx: Context): Promise<SecurityActivityStore>;\n    updateBrief(input: SecurityActivityBrief): Promise<void>;\n    async flush(): Promise<void>;\n    subscribe(listener: (project: string) => void): () => void;\n    runningCounts(): Map<string, number>;\n    removeProject(projectId: string): Promise<void>;\n    has(sessionId: string, callId: string): boolean;\n    start(input: Pick<SecurityActivity, \'projectId\' | \'sessionId\' | \'callId\' | \'checkpointId\' | \'tools\' | \'verified\' | \'parameters\'>): Promise<SecurityActivity>;\n    finish(id: SecurityActivityId, result: Pick<SecurityActivity, \'status\' | \'incomplete\' | \'detail\'> & {\n        evidenceIds?: string[];\n    }): Promise<void>;\n    assignInitialDirection(projectId: string, sessionId: string, checkpointId: string): Promise<void>;\n    attachEvidence(projectId: string, sessionId: string, callIds: readonly string[], evidenceId: string): Promise<void>;\n    usage(project: string): SecurityToolUsage[];\n    page(project: string, checkpointId: string, offset: number, limit: number, through = this.cursor): SecurityActivityPage;\n    async *follow(project: string, view: () => WorkbenchView, subscribeProject: (listener: () => void) => () => void, signal: AbortSignal): AsyncGenerator<SecurityActivityFrame, void>;\n    async close(): Promise<void>;\n}',
+    declaration: 'export class SecurityActivityStore {\n    static async open(ctx: Context): Promise<SecurityActivityStore>;\n    updateBrief(input: SecurityActivityBrief): Promise<void>;\n    async flush(): Promise<void>;\n    subscribe(listener: (project: string) => void): () => void;\n    runningCounts(): Map<string, number>;\n    removeProject(projectId: string): Promise<void>;\n    has(sessionId: string, callId: string): boolean;\n    invocation(sessionId: string, callId: string): SecurityActivity | undefined;\n    start(input: Pick<SecurityActivity, \'projectId\' | \'sessionId\' | \'callId\' | \'checkpointId\' | \'tools\' | \'verified\' | \'parameters\'>): Promise<SecurityActivity>;\n    finish(id: SecurityActivityId, result: Pick<SecurityActivity, \'status\' | \'incomplete\' | \'detail\'> & {\n        evidenceIds?: string[];\n    }): Promise<void>;\n    assignInitialDirection(projectId: string, sessionId: string, checkpointId: string): Promise<void>;\n    attachEvidence(projectId: string, sessionId: string, callIds: readonly string[], evidenceId: string): Promise<void>;\n    usage(project: string): SecurityToolUsage[];\n    page(project: string, checkpointId: string, offset: number, limit: number, through = this.cursor): SecurityActivityPage;\n    async *follow(project: string, view: () => WorkbenchView, subscribeProject: (listener: () => void) => () => void, signal: AbortSignal): AsyncGenerator<SecurityActivityFrame, void>;\n    async close(): Promise<void>;\n}',
   },
   {
     name: 'SecurityController',
@@ -8036,7 +8036,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxConfiguration',
-    declaration: 'export interface ToolboxConfiguration {\n    editable: boolean;\n    revision: string;\n    tools: ToolboxInstallation[];\n}',
+    declaration: 'export interface ToolboxConfiguration {\n    editable: boolean;\n    revision: string;\n    tools: ToolboxInstallation[];\n    environmentKind?: ToolboxInventory[\'kind\'];\n    environments?: {\n        id: string;\n        label: string;\n        kind: ToolboxInventory[\'kind\'];\n    }[];\n    bindings?: Record<string, string>;\n}',
   },
   {
     name: 'ToolboxConfigurationResult',

@@ -45,6 +45,9 @@ import { TOOL_DISCOVERY_GUIDANCE } from './analysis-tools.ts'
 import { ToolCatalog, type ToolCatalogSnapshot, type ToolPackPreview } from './tool-catalog.ts'
 import { discoverTools, toolPreferencesSchema, type ToolPreferences } from './tool-definitions.ts'
 import { LocalToolConfiguration, browseToolFiles, toolConfigurationInput } from './tool-configuration.ts'
+import { ToolAdapterProvider, type ToolAdapterLimits } from './tool-adapter-provider.ts'
+import { registerToolAdapters } from './tool-adapter-tools.ts'
+import { adapterResultPage } from './tool-adapter-results.ts'
 import { standaloneTool } from './local-tools.ts'
 import { modelPage, recordDetail, commandReceipt, sourceEvidenceLines } from './workbench/model-view.ts'
 import { SourceProvider } from './workbench/source.ts'
@@ -75,6 +78,11 @@ declare module '@deepseek-ai/dsh-llm' {
 
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Operator-selected routes and bounded static external-tool queries. */
+  toolAdapters: ToolAdapterLimits & {
+    /** Fixed default environment IDs for standalone adapter tools. */
+    bindings: Record<string, string>
+  }
   /** Engineering improvement scheduling and model budgets. */
   evolution: EvolutionConfig
   /** Optional absolute file containing imported definition packs. */
@@ -158,7 +166,7 @@ Choose methods by the current materials and uncertainty; combine Web, firmware, 
 
 Record findings only about target security behavior, with conditions, impact and uncertainty. Save reusable experience with remember only when it improves future vulnerability identification, validation or prevention. Tool errors, formatting repairs and command retries belong in operational state, not findings or experience. Only an operator can approve execution or publish shared knowledge. After a scope or operator-only denial, report the blocker once and stop actions requiring that missing authority until the user changes the configuration; do not retry equivalent requests through other commands.
 
-Collecting roles may use native file and shell tools to write and run Python, Bash or PowerShell analysis scripts in the workspace under existing DSH permissions. Discover executable paths and execution locations with security_environment. Container commands run through the Host Docker CLI in the selected running container. Collect background work with job_output. First call security_capture_analysis with assetId and no callIds to list capturable committed calls; use jobId to find collected background output. Then pass the returned callIds to save auxiliary evidence. Background job IDs are not call IDs. Script logs alone do not establish complete implementation evidence or approved runtime validation. Research and reviewer roles cannot execute scripts. Missing capabilities do not authorize another target or environment. For external source code, find the actual file in the official repository before fetching its raw URL. An HTTP error page is a failed retrieval, not source evidence; inspect repository listings or saved search results instead of guessing nearby filenames.
+For supported external analysis, prefer security_radare2, security_r2ghidra, security_tshark, security_jadx, security_file, security_strings, security_readelf, security_objdump and security_nm. These tools use operator-selected environments and installations, preserve evidence, and report structured results. Collecting roles may use native file and shell tools to write and run Python, Bash or PowerShell analysis scripts in the workspace under existing DSH permissions. Discover executable paths and execution locations with security_environment. Container commands run through the Host Docker CLI in the selected running container. Collect background work with job_output. First call security_capture_analysis with assetId and no callIds to list capturable committed calls; use jobId to find collected background output. Then pass the returned callIds to save auxiliary evidence. Background job IDs are not call IDs. Script logs alone do not establish complete implementation evidence or approved runtime validation. Research and reviewer roles cannot execute scripts. Missing capabilities do not authorize another target or environment. For external source code, find the actual file in the official repository before fetching its raw URL. An HTTP error page is a failed retrieval, not source evidence; inspect repository listings or saved search results instead of guessing nearby filenames.
 
 ${TOOL_DISCOVERY_GUIDANCE}
 
@@ -203,6 +211,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
     root: Schema.string().required(),
     importRoots: Schema.array(Schema.string()).required(),
     environments: Schema.array(securityEnvironmentSchema).required(),
+    toolAdapters: Schema.object({
+      bindings: Schema.dict(Schema.string()).default({}),
+      maxItems: Schema.number().step(1).min(1).default(1000),
+      maxInstructions: Schema.number().step(1).min(1).default(200),
+      maxPackets: Schema.number().step(1).min(1).default(1000),
+      graceMs: Schema.number().step(1).min(1).default(3000),
+    }),
     toolConfiguration: Schema.union([Schema.const(undefined),
       Schema.object({ path: Schema.string().required(), environmentId: Schema.string().required() }).required()]),
     maxDerivedAssets: Schema.number().step(1).min(1).default(256),
@@ -257,11 +272,14 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const environment = config.environments.find(item => item.id === config.toolConfiguration?.environmentId)
       if (!environment) throw new Error('Tool configuration refers to an unknown environment')
       this.toolConfiguration = new LocalToolConfiguration(config.toolConfiguration.path, environment,
-        () => this.catalog.read(environment.tools).tools)
+        () => this.catalog.read(config.environments.flatMap(item => item.tools)).tools,
+        config.environments, config.toolAdapters.bindings)
     }
     validateTaskIntake(config.taskIntake, config.environments.map(environment => environment.id))
     ctx.inject(['skills'], (skillCtx) => { installSecurityMethods(skillCtx) })
     this.ready = this.initialize()
+    registerToolAdapters(ctx, { ready: this.ready, settings: this.toolConfiguration, signal: this.shutdown.signal,
+      maxItems: config.toolAdapters.maxItems, modelResultBytes: config.modelResultBytes, pending: this.pending })
     installReportExport(ctx, this.ready, config.exportMaxBytes)
     installNativeAnalysis(ctx, this.ready)
     installActivityObserver(ctx, this.ready, () => this.toolCatalog().tools)
@@ -576,6 +594,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
           length: { type: 'integer' },
           startLine: { type: 'integer' },
           lineCount: { type: 'integer' },
+          itemOffset: { type: 'integer', description: 'First retained adapter observation; does not rerun analysis.' },
+          itemLimit: { type: 'integer', description: 'Maximum retained adapter observations to read.' },
         },
         output,
         execute: async (args, exec) => {
@@ -585,6 +605,14 @@ export default class SecurityWorkbench extends TypertRemoteService {
             .view(exec.agent.id)
             .records.find(item => item.kind === 'evidence' && item.value.id === args.evidenceId)
           if (evidence?.kind !== 'evidence') throw new Error('Evidence is outside the session scope')
+          if (args.itemOffset !== undefined || args.itemLimit !== undefined) {
+            if (args.itemOffset === undefined || args.itemLimit === undefined || args.offset !== undefined || args.length !== undefined
+              || args.startLine !== undefined || args.lineCount !== undefined || args.stepId !== undefined || args.part !== undefined)
+              throw new Error('Select either adapter item pagination, source lines, HTTP fields or raw bytes')
+            if (evidence.value.provider !== 'tool-adapter') throw new Error('Item pagination requires adapter evidence')
+            return json(adapterResultPage(await controller.artifacts.read(evidence.value.artifact), args.evidenceId,
+              args.itemOffset, Math.min(args.itemLimit, config.toolAdapters.maxItems), config.modelResultBytes))
+          }
           if (args.stepId !== undefined) return json(await httpExchange(controller.view(exec.agent.id), controller.artifacts,
             args.evidenceId, args.stepId, z.enum(['request', 'headers', 'body']).parse(args.part ?? 'body'), args.offset ?? 0, config.modelResultBytes))
           const lineMode = args.startLine !== undefined || args.lineCount !== undefined
@@ -971,6 +999,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.evolution.start()
       this.ctx.effect(() => controller.providers.register(new BinaryProvider()))
       this.ctx.effect(() => controller.providers.register(new SourceProvider()))
+      this.ctx.inject(['subprocess'], (ctx) => {
+        ctx.effect(() => controller.providers.register(
+          new ToolAdapterProvider(ctx, this.config.toolAdapters, this.config.maxDerivedAssets)))
+      })
       this.index = new SecuritySearchIndex(join(this.config.root, 'search.sqlite'))
       if (this.config.knowledgeIntervalMs > 0 && this.config.knowledgeProvider) this.ctx.effect(() => {
         let sweep: Promise<void> | undefined
@@ -1345,7 +1377,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       }),
     } }
   }
-  /** Inspect installed tools without selecting a project or starting an environment.
+  /** Inspect installed tools, starting managed Docker from an existing image when necessary.
    * @param environmentId - configured environment; omission selects the first local environment.
    * @param toolIds - selected definitions and their dependencies; omitted checks all.
    * @returns environment choices and current optional-tool observations.
@@ -1358,8 +1390,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const environment = environmentId === undefined ? environments.find(item => item.kind === 'local') ?? environments[0]
       : environments.find(item => item.id === environmentId)
     if (!environment) throw new Error('Configure an analysis environment before inspecting tools')
-    const pending = controller.manageEnvironment(environment.id, signal => controller.environments.get('local').manager.inventory(environment,
-      AbortSignal.any([signal, this.shutdown.signal]), toolIds))
+    const pending = controller.manageEnvironment(environment.id, async (signal) => {
+      const manager = controller.environments.get('local').manager
+      const combined = AbortSignal.any([signal, this.shutdown.signal])
+      if (environment.kind === 'docker' && !environment.externalContainer && !environment.containerId)
+        await manager.start(environment, combined)
+      return manager.inventory(environment, combined, toolIds)
+    })
     this.pending.add(pending)
     try {
       const inventory = await pending
@@ -1380,7 +1417,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       inventory: this.deviceObservations.get(environment.id) ?? uncheckedDevices(environment) }
   }
   /** Explicitly inspect Windows prerequisites; enumeration does not validate radio capture.
-   * @param environmentId - configured local environment.
+   * @param environmentId - configured local or managed Docker environment.
    * @returns settled observations; failed inspections leave the previous directory intact.
    */
   @Remote('deviceInventory')
@@ -1409,8 +1446,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('toolboxConfiguration')
   toolboxConfiguration(environmentId: string): ToolboxConfiguration {
-    return this.toolConfiguration?.environment.id === environmentId
-      ? this.toolConfiguration.read() : { editable: false, revision: '', tools: [] }
+    const environment = this.config.environments.find(item => item.id === environmentId)
+    return this.toolConfiguration && environment && environment.kind !== 'android' && !environment.externalContainer
+      ? this.toolConfiguration.read(environmentId) : { editable: false, revision: '', tools: [] }
   }
   /** Probe or save a tool selected by the authenticated operator.
    * @param environmentId - configured local environment.
@@ -1420,36 +1458,40 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('configureTool')
   async configureTool(environmentId: string, input: string): Promise<ToolboxConfigurationResult> {
     const settings = this.toolConfiguration
-    if (!settings || settings.environment.id !== environmentId) throw new Error('This environment has no editable tool configuration')
+    if (!settings) throw new Error('This environment has no editable tool configuration')
+    const selectedEnvironment = settings.editableEnvironment(environmentId)
     const update = toolConfigurationInput.parse(JSON.parse(input))
     const catalog = standaloneTool(update.id, this.toolCatalog().tools)
     const controller = await this.ready
     return controller.manageEnvironment(environmentId, async (signal) => {
-      const current = settings.read()
+      const current = settings.read(environmentId)
       if (current.revision !== update.revision) throw new Error('Tool configuration changed; reload before saving')
       if (update.action === 'remove')
-        return { saved: true, tool: null, configuration: settings.commit(update.id, undefined, update.revision) }
-      if (update.command && !isAbsolute(update.command)) throw new Error('Choose an absolute executable path or leave it empty to detect on PATH')
-      if (process.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(update.command))
+        return { saved: true, tool: null, configuration: settings.commit(update.id, undefined, update.revision, environmentId) }
+      if (update.command && selectedEnvironment.kind === 'local' && !isAbsolute(update.command)) throw new Error('Choose an absolute executable path or leave it empty to detect on PATH')
+      if (selectedEnvironment.kind === 'local' && process.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(update.command))
         throw new Error('Choose the interpreter executable and set its startup arguments under Advanced options')
       const pin = { command: update.command, prefixArgs: update.prefixArgs,
         versionArgs: update.versionArgs.length ? update.versionArgs : catalog.args }
-      const environment = { ...settings.environment,
-        tools: [...settings.environment.tools.filter(tool => tool.id !== update.id),
-          ...pin.command ? [{ id: update.id, ...pin, source: 'Local tool configuration' }] : []] }
       const manager = controller.environments.get('local').manager
+      if (selectedEnvironment.kind === 'docker' && !selectedEnvironment.containerId)
+        await manager.start(selectedEnvironment, AbortSignal.any([signal, this.shutdown.signal]))
+      const environment = { ...selectedEnvironment,
+        tools: [...selectedEnvironment.tools.filter(tool => tool.id !== update.id),
+          ...pin.command ? [{ id: update.id, ...pin, source: 'Local tool configuration' }] : []] }
       let inventory = await manager.inventory(environment,
         AbortSignal.any([signal, this.shutdown.signal]), [update.id])
       let tool = inventory.tools.find(tool => tool.id === update.id)
       if (!pin.command && tool?.status === 'available') {
         inventory = await manager.inventory({ ...environment, tools: [...environment.tools,
-          { id: update.id, ...pin, command: tool.command, source: 'Local tool configuration' }] },
+          { id: update.id, ...pin, ...(tool.installation ?? { command: tool.command }), source: 'Local tool configuration' }] },
         AbortSignal.any([signal, this.shutdown.signal]), [update.id])
         tool = inventory.tools.find(tool => tool.id === update.id)
       }
       if (!tool) throw new Error('Choose a file for the custom tool before checking it')
       const saved = update.action === 'save' && tool.status === 'available'
-      const configuration = saved ? settings.commit(update.id, { ...pin, command: tool.command }, update.revision) : settings.read()
+      const configuration = saved ? settings.commit(update.id, { ...pin, ...(tool.installation ?? { command: tool.command }) },
+        update.revision, environmentId, update.defaultEnvironmentId) : settings.read(environmentId)
       return { saved, tool, configuration }
     })
   }
@@ -1461,8 +1503,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('toolboxFiles')
   async toolboxFiles(environmentId: string, directory?: string): Promise<ToolboxFiles> {
     const settings = this.toolConfiguration
-    if (!settings || settings.environment.id !== environmentId) throw new Error('This environment has no editable tool configuration')
-    return browseToolFiles(directory ?? settings.environment.cwd, this.config.maxDerivedAssets)
+    if (!settings) throw new Error('This environment has no editable tool configuration')
+    const environment = settings.editableEnvironment(environmentId)
+    if (environment.kind !== 'local') throw new Error('File selection requires a local environment')
+    return browseToolFiles(directory ?? environment.cwd, this.config.maxDerivedAssets)
   }
   /** Read a project from the authenticated operator panel.
    * @param projectId - selected project.

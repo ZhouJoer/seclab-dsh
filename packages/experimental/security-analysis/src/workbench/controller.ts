@@ -235,13 +235,15 @@ export class SecurityController {
   }
 
   private async runObserved(sessionId: string, callId: string, provider: AnalysisProvider,
-    operation: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult> {
+    operation: AnalysisOperation, context: AnalysisContext, prepare?: () => Promise<void>): Promise<AnalysisResult> {
     const binding = this.binding(sessionId)
     if (!binding) throw new Error('Select a security project first')
     const tool = operation.provider === 'android' ? (operation.operation.includes('decompile') ? 'jadx' : 'adb') : operation.provider
     const activity = await this.activity?.start({ projectId: binding.engagementId, sessionId, callId,
-      checkpointId: this.checkpointId(sessionId), tools: [tool], verified: true, parameters: JSON.stringify(operation) })
+      checkpointId: this.checkpointId(sessionId), tools: provider.activityTools?.(operation) ?? [tool],
+      verified: true, parameters: JSON.stringify(operation) })
     try {
+      await prepare?.()
       const result = await provider.run(operation, context)
       if (activity) await this.activity?.finish(activity.id, {
         status: context.signal.aborted ? 'cancelled' : result.failure !== undefined ? 'failed' : 'completed',
@@ -1342,6 +1344,10 @@ export class SecurityController {
     if (prior?.kind === 'execution') {
       if (prior.value.planId !== planId || prior.value.engagementId !== binding.engagementId)
         throw new Error('Execution identity was reused')
+      for (const record of initial.records) if (record.kind === 'evidence' && record.value.planId === planId
+        && record.value.engagementId === binding.engagementId)
+        await this.activity?.attachEvidence(binding.engagementId, record.value.source.sessionId,
+          [record.value.source.callId], record.value.id)
       if (prior.value.status === 'failed' || prior.value.status === 'interrupted') throw new Error(prior.value.detail)
       return this.view(sessionId)
     }
@@ -1464,13 +1470,14 @@ export class SecurityController {
         ]
       })
       state = 'settled'
+      await this.activity?.attachEvidence(binding.engagementId, sessionId, [callId], evidenceId)
       if (failure !== undefined) throw new Error(failure)
       return this.view(sessionId)
     } catch (error) {
       if (state === 'running') {
         const detail = error instanceof Error ? error.message : String(error)
         const failure = await this.artifacts.put(Buffer.from(detail), 'text/plain')
-        await this.journal.commit(operationId + ':failed', undefined, { operationId, detail }, (view) => {
+        const committed = await this.journal.commit(operationId + ':failed', undefined, { operationId, detail }, (view) => {
           const item = view.records.find(item => item.kind === 'check' && item.value.id === plan.checkId)
           if (item?.kind !== 'check') throw new Error('Executing check disappeared')
           return [
@@ -1512,6 +1519,9 @@ export class SecurityController {
             },
           ]
         })
+        for (const record of committed.records) if (record.kind === 'evidence' && record.value.source.sessionId === sessionId
+          && record.value.source.callId === callId)
+          await this.activity?.attachEvidence(binding.engagementId, sessionId, [callId], record.value.id)
       }
       throw error
     } finally {
@@ -1572,12 +1582,13 @@ export class SecurityController {
     if (sample?.kind !== 'asset') throw new Error('Asset is outside the session scope')
     if (!canObserve(binding.role, operation.provider, operation.operation))
       throw new Error('This role cannot collect the requested observation')
-    if (operation.script || !['binary', 'ghidra', 'android', 'source', 'packet-capture'].includes(operation.provider))
+    if (operation.script || !['binary', 'ghidra', 'android', 'source', 'packet-capture', 'tool-adapter'].includes(operation.provider))
       throw new Error('Use an approved plan for dynamic or programmable operations')
     const previous = view.records.find(item => item.kind === 'evidence' &&
       item.value.source.sessionId === sessionId && item.value.source.callId === callId && !item.value.planId)
     if (previous?.kind === 'evidence') {
       if (previous.value.requestHash !== fingerprint) throw new Error('Observation callId was already used for different input')
+      await this.activity?.attachEvidence(binding.engagementId, sessionId, [callId], previous.value.id)
       if (previous.value.failure !== undefined) throw new Error(previous.value.failure)
       return previous
     }
@@ -1589,17 +1600,28 @@ export class SecurityController {
     const combined = AbortSignal.any([signal, lease.signal, AbortSignal.timeout(this.options.maxDurationMs)])
     try {
       combined.throwIfAborted()
-      const context = { environment, asset: sample.value, artifacts: this.artifacts, signal: combined,
+      const snapshot = { ...environment, tools: structuredClone(environment.tools) }
+      const context = { environment: snapshot, asset: sample.value, artifacts: this.artifacts, signal: combined,
         durationMs: this.options.maxDurationMs, maxOutputBytes: this.options.maxOutputBytes }
       const resolved = provider.resolve(operation, context)
       if (resolved.impact !== 'observe') throw new Error('Static observations cannot modify analysis state or targets')
       let result: AnalysisResult
-      try { result = await this.runObserved(sessionId, callId, provider, resolved, context) }
+      try { result = await this.runObserved(sessionId, callId, provider, resolved, context, async () => {
+        if (operation.provider === 'tool-adapter' && environment.kind === 'docker' && !environment.containerId) {
+          await this.environments.get('local').manager.start(environment, combined)
+          if (environment.containerId) snapshot.containerId = environment.containerId
+          if (environment.resolvedImageId) snapshot.resolvedImageId = environment.resolvedImageId
+        }
+      }) }
       catch (error) {
         const bytes = Buffer.from(error instanceof Error ? error.message : String(error))
           .subarray(0, Math.min(this.options.maxOutputBytes, this.options.maxArtifactBytes))
         result = { bytes, mediaType: 'text/plain', summary: bytes.toString('utf8'), incomplete: true,
           failure: bytes.toString('utf8'), toolVersion: 'unavailable after failure' }
+      }
+      if (combined.aborted && operation.provider === 'tool-adapter' && environment.kind === 'docker' && environment.containerId) {
+        try { await this.environments.get('local').manager.stop(environment, new AbortController().signal) }
+        catch (error) { result = { ...result, incomplete: true, failure: result.failure ?? 'Container cleanup failed', cleanup: String(error) } }
       }
       const artifact = await this.artifacts.put(result.bytes, result.mediaType)
       const committed = await this.journal.commit(sessionId + ':' + callId, undefined, { operation }, () => {
@@ -1617,6 +1639,7 @@ export class SecurityController {
       const saved = committed.records.find(item => item.kind === 'evidence' &&
         item.value.source.sessionId === sessionId && item.value.source.callId === callId && !item.value.planId)
       if (saved?.kind !== 'evidence') throw new Error('Observation commit did not publish its evidence')
+      await this.activity?.attachEvidence(binding.engagementId, sessionId, [callId], saved.value.id)
       if (saved.value.failure !== undefined) throw new Error(saved.value.failure)
       return saved
     } finally {

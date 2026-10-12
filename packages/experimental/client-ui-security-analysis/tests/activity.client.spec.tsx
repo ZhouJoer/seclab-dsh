@@ -60,7 +60,7 @@ it('updates counts during a turn without adding a stage and preserves a return t
   expect(changed).toHaveBeenCalledTimes(1)
 })
 
-it('combines reference counts without verification badges and explains unsaved evidence', async () => {
+it('combines totals while retaining confirmed and unverified identities', async () => {
   const view: WorkbenchView = { revision: 1, records: [checkpoint('first', 'recon', 'Entry inventory')] }
   const usage = { checkpointId: 'first', tool: 'radare2', verified: true, total: 1, running: 0,
     completed: 1, failed: 0, cancelled: 0, unknown: 0, incomplete: 0 }
@@ -75,11 +75,9 @@ it('combines reference counts without verification badges and explains unsaved e
   const card = await screen.findByRole('group', { name: 'radare2 ×3' })
   expect(card.textContent).toContain('Completed 2')
   expect(card.textContent).toContain('Failed 1')
-  expect(screen.queryByText('Unverified')).toBeNull()
+  expect(card.textContent).toContain('Confirmed 1')
+  expect(card.textContent).toContain('Unverified 2')
   expect(screen.queryByText('Observed call')).toBeNull()
-  expect(screen.getByText(/Tool names and counts are for reference/)).toBeTruthy()
-  fireEvent.click(screen.getByText('Inspect calls and evidence'))
-  expect(screen.getByText(/No saved evidence linked to this stage/)).toBeTruthy()
 })
 
 it('aborts an old project stream and ignores its late frames', async () => {

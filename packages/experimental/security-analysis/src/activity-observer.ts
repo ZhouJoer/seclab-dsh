@@ -6,6 +6,7 @@ import { toolboxCatalog } from './toolbox.ts'
 import type { ToolDefinition } from './tool-definitions.ts'
 import type { SecurityController } from './workbench/controller.ts'
 import type { SecurityActivity, SecurityActivityStore } from './workbench/activity.ts'
+import { adapterToolId } from './tool-adapter-catalog.ts'
 
 const foreground = z.object({ kind: z.literal('foreground'), exitCode: z.number().nullable(),
   signal: z.string().nullable(), timedOut: z.boolean(), aborted: z.boolean(),
@@ -62,7 +63,7 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
   })
   ctx.effect(() => async () => { await Promise.all(pending) })
   ctx.on('tools/post-execute', async (exec, result, next) => {
-    if (exec.agent && result.isError && ['security_static', 'security_execute'].includes(exec.name)) {
+    if (exec.agent && result.isError && (['security_static', 'security_execute'].includes(exec.name) || adapterToolId(exec.name))) {
       const controller = await ready
       const binding = controller.binding(exec.agent.id)
       const store = controller.activity
@@ -70,7 +71,8 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
         const provider = z.object({ provider: z.string() }).safeParse(exec.arguments)
         const record = await store.start({ projectId: binding.engagementId, sessionId: exec.agent.id,
           callId: exec.callId, checkpointId: controller.checkpointId(exec.agent.id),
-          tools: [provider.success ? provider.data.provider : exec.name], verified: false,
+          tools: [adapterToolId(exec.name) ?? (provider.success ? provider.data.provider : exec.name)],
+          verified: adapterToolId(exec.name) !== undefined,
           parameters: JSON.stringify(exec.arguments).slice(0, controller.options.maxOutputBytes) })
         await store.finish(record.id, { status: exec.signal.aborted ? 'cancelled' : 'failed', incomplete: true,
           detail: JSON.stringify(result).slice(0, controller.options.maxOutputBytes) })

@@ -148,6 +148,16 @@ export class SecurityActivityStore {
    */
   has(sessionId: string, callId: string): boolean { return this.records.has(JSON.stringify([sessionId, callId])) }
 
+  /** Read the original invocation for idempotent result recovery.
+   * @param sessionId - originating Session identity.
+   * @param callId - stable tool call identity.
+   * @returns a detached record, or undefined before the invocation starts.
+   */
+  invocation(sessionId: string, callId: string): SecurityActivity | undefined {
+    const record = this.records.get(JSON.stringify([sessionId, callId]))
+    return record && structuredClone(record)
+  }
+
   private enqueue<T>(run: () => Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new Error('Security activity is closing'))
     const pending = this.chain.then(run)

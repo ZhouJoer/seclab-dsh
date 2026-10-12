@@ -47,6 +47,18 @@ export function apply(ctx) {
         const controller = await service.ready
         assert.equal((await controller.artifacts.read(evidence.value.artifact)).toString(), 'Offset exceeds sample size')
       }
+      if (exec.callId === 'adapter-functions') {
+        assert.notEqual(result.isError, true)
+        assert.equal(result.value.tool, 'radare2')
+        assert.deepEqual(result.value.items, [{ offset: 4096, name: 'main' }])
+        const controller = await service.ready
+        const projectId = controller.binding(exec.agent.id).engagementId
+        const activity = controller.activity.invocation(exec.agent.id, exec.callId)
+        assert.equal(activity.verified, true)
+        assert.deepEqual(activity.tools, ['radare2'])
+        assert.deepEqual(activity.evidenceIds, [result.value.evidenceId])
+        assert.equal(controller.activity.usage(projectId).find(row => row.tool === 'radare2').total, 1)
+      }
       if (exec.name === 'security_evidence') {
         assert.notEqual(result.isError, true)
         assert.equal(result.value.incomplete, true)

@@ -2,6 +2,7 @@
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
 import { builtinToolPack } from './builtin-tools.ts'
 import { parseToolDefinition, type ToolDefinition } from './tool-definitions.ts'
 const toolboxCatalog = builtinToolPack.tools
@@ -11,6 +12,36 @@ export interface SecurityToolPin {
   command: string
   prefixArgs: string[]
   versionArgs: string[]
+}
+
+const settingsSchema = z.object({ version: z.literal(1),
+  installations: z.record(z.string().min(1), z.record(z.string(), z.object({
+    command: z.string().min(1), prefixArgs: z.array(z.string()), versionArgs: z.array(z.string()).min(1),
+  }).strict())), bindings: z.record(z.string(), z.string().min(1)),
+}).strict()
+/** Environment-specific installations and operator-selected adapter routes. */
+export type SecurityToolSettings = z.infer<typeof settingsSchema>
+
+/** Read a versioned settings document or the legacy local installation map.
+ * @param path - operator-owned JSON file.
+ * @param legacyEnvironment - environment owning legacy local pins.
+ * @param catalog - current tool definitions.
+ * @returns normalized settings; missing files contribute no overrides.
+ */
+export function readToolSettings(path: string, legacyEnvironment = 'local',
+  catalog: readonly ToolDefinition[] = toolboxCatalog): SecurityToolSettings {
+  let text: string
+  try { text = readFileSync(path, 'utf8') } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, installations: {}, bindings: {} }
+    throw error
+  }
+  const data: unknown = JSON.parse(text)
+  if (data && typeof data === 'object' && 'version' in data) {
+    const settings = settingsSchema.parse(data)
+    for (const pins of Object.values(settings.installations)) for (const id of Object.keys(pins)) standaloneTool(id, catalog)
+    return settings
+  }
+  return { version: 1, installations: { [legacyEnvironment]: parseLocalPins(data, path, catalog) }, bindings: {} }
 }
 
 /** Resolve built-in metadata or conventional defaults for a custom executable.
@@ -31,12 +62,9 @@ export function standaloneTool(id: string, catalog: readonly ToolDefinition[] = 
  * @returns saved installations, or an empty map when the file does not exist.
  */
 export function readSecurityTools(path: string, catalog: readonly ToolDefinition[] = toolboxCatalog): Record<string, SecurityToolPin> {
-  let text: string
-  try { text = readFileSync(path, 'utf8') } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    throw error
-  }
-  const data: unknown = JSON.parse(text)
+  return parseLocalPins(readToolSettings(path, 'local', catalog).installations.local ?? {}, path, catalog)
+}
+function parseLocalPins(data: unknown, path: string, catalog: readonly ToolDefinition[]): Record<string, SecurityToolPin> {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${path}: expected a tool-to-installation JSON object`)
   const pins: Record<string, SecurityToolPin> = {}
   for (const [id, value] of Object.entries(data as Record<string, unknown>)) {

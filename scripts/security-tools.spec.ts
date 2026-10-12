@@ -40,7 +40,7 @@ it('set registers a previously unknown executable without requiring a definition
   try {
     const result = await executeTools(directory, ['set', 'new-command', process.execPath, '--config', file], signal)
     expect(result.exitCode, result.stderr).toBe(0)
-    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ 'new-command': { command: process.execPath, versionArgs: ['--version'] } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ version: 1, installations: { local: { 'new-command': { command: process.execPath, versionArgs: ['--version'] } } } })
   } finally {
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   }
@@ -55,9 +55,9 @@ it('discovers a portable executable through an explicit search directory and sav
     const result = await executeTools(directory, ['scan', 'portable-fixture-node', '--dir', directory, '--config', file, '--save'], signal)
     expect(result.exitCode, result.stderr).toBe(0)
     expect(result.stdout).toContain('portable-fixture-node: available')
-    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ 'portable-fixture-node': {
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ version: 1, installations: { local: { 'portable-fixture-node': {
       command, prefixArgs: [], versionArgs: ['--version'],
-    } })
+    } } } })
   } finally {
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   }
@@ -75,7 +75,8 @@ it('prints the complete Python environment from a launcher and preserves configu
     expect(result.stdout).toContain('environment: virtualenv | ' + directory)
     expect(result.stdout).toContain('base: /python-base | pip: available')
     const saved = await readFile(file, 'utf8')
-    expect(JSON.parse(saved)).toMatchObject({ python: { command: process.execPath, prefixArgs: [launcher] } })
+    expect(JSON.parse(saved)).toMatchObject({ version: 1,
+      installations: { local: { python: { command: process.execPath, prefixArgs: [launcher] } } } })
     await writeFile(launcher, 'console.log("malformed identity")\n')
     const failed = await executeTools(directory, ['scan', 'python', '--save', ...selected], signal)
     expect(failed.exitCode).toBe(1)

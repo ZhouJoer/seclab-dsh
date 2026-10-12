@@ -3,6 +3,7 @@ import type { SessionBinding } from './model.ts'
 import { ANALYSIS_FILES_GUIDANCE } from '../analysis-workspace.ts'
 import { TOOL_DISCOVERY_GUIDANCE } from '../analysis-tools.ts'
 import { PUBLIC_RESEARCH_GUIDANCE } from '../methods.ts'
+import { canUseAdapter, toolAdapters } from '../tool-adapter-catalog.ts'
 
 /** Durable role names shared by tool admission and domain execution. */
 export type SecurityRole = SessionBinding['role']
@@ -13,6 +14,7 @@ const evidenceTools = ['skill', 'security_scope', 'security_capabilities', 'secu
 const researchTools = [...evidenceTools, 'web_search', 'web_fetch']
 /** Native workspace tools available to collecting roles. */
 export const analysisTools = ['bash', 'pwsh', 'read', 'read_image', 'write', 'edit', 'glob', 'grep',
+  ...toolAdapters.map(tool => 'security_' + tool.id),
   'job_list', 'job_output', 'job_kill', 'security_capture_analysis'] as const
 const roleTools: Record<SecurityRole, readonly string[]> = {
   coordinator: [...researchTools, ...analysisTools, 'security_environment', 'security_static', 'security_command', 'security_execute', 'security_delegate',
@@ -39,6 +41,7 @@ export function toolsForRole(role: SecurityRole | undefined): readonly string[] 
  * @returns whether the role can collect this observation.
  */
 export function canObserve(role: SecurityRole, provider: string, operation: string): boolean {
+  if (provider === 'tool-adapter') return canUseAdapter(role, operation)
   if (role === 'researcher' || role === 'reviewer') return false
   if (provider === 'packet-capture') return ['summary', 'packets'].includes(operation)
   if (provider === 'source') return ['list', 'read', 'search'].includes(operation) &&

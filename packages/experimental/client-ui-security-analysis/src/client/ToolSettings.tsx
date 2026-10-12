@@ -16,8 +16,9 @@ export interface ToolConfigurationActions {
  * @param props - selected environment, known settings, Host actions and localized labels.
  * @returns executable picker, optional argument fields and probe feedback.
  */
-export function ToolSettings({ environmentId, configuration, selectedId, configureTool, toolboxFiles, onResult, onClose, t }:
+export function ToolSettings({ environmentId, configuration, selectedId, configureTool, toolboxFiles, onResult, onClose, notify, t }:
   Pick<ToolConfigurationActions, 'configureTool' | 'toolboxFiles'> & PropsLocale<typeof NS> & {
+    notify?: ((text: string) => void) | undefined
     environmentId: string
     configuration: ToolboxConfiguration
     selectedId: string
@@ -31,6 +32,7 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
   const [command, setCommand] = useState(initial?.command ?? '')
   const [prefix, setPrefix] = useState(initial?.prefixArgs.join('\n') ?? '')
   const [version, setVersion] = useState(initial?.versionArgs.join('\n') ?? '--version')
+  const [defaultEnvironment, setDefaultEnvironment] = useState(configuration.bindings?.[selectedId] ?? environmentId)
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<ToolboxFiles>()
   const [feedback, setFeedback] = useState('')
@@ -41,6 +43,7 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
   function select(tool: ToolboxInstallation | undefined) {
     setId(tool?.id ?? ''); setCustom(!tool); setCommand(tool?.command ?? '')
     setPrefix(tool?.prefixArgs.join('\n') ?? ''); setVersion(tool?.versionArgs.join('\n') ?? '--version')
+    setDefaultEnvironment(settings.bindings?.[tool?.id ?? ''] ?? environmentId)
     setResult(undefined); setFeedback(''); setError(''); setFiles(undefined)
   }
   async function browse(directory?: string) {
@@ -49,23 +52,24 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
       const next = await toolboxFiles(environmentId, directory)
       if (mounted.current) setFiles(next)
     }
-    catch (error) { setError(error instanceof Error ? error.message : String(error)) }
-    finally { setBusy(false) }
+    catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : String(error)) }
+    finally { if (mounted.current) setBusy(false) }
   }
   async function run(action: 'probe' | 'save' | 'remove') {
     setBusy(true); setError(''); setFeedback(t(action === 'remove' ? 'toolRemoving' : 'toolCheckingSelection'))
     setResult(undefined)
     try {
       const next = await configureTool(environmentId, JSON.stringify({ action, id, command,
-        prefixArgs: prefix.split('\n').filter(Boolean), versionArgs: version.split('\n').filter(Boolean), revision: settings.revision }))
+        prefixArgs: prefix.split('\n').filter(Boolean), versionArgs: version.split('\n').filter(Boolean), revision: settings.revision,
+        ...(settings.environments ? { defaultEnvironmentId: defaultEnvironment } : {}) }))
       if (!mounted.current) return
       setResult(next); setSettings(next.configuration)
-      setFeedback(next.saved ? t(action === 'remove' ? 'toolRemoved' : 'toolApplied')
-        : t(next.tool?.status === 'available' ? 'toolCheckPassed' : 'toolCheckFailed'))
-      if (next.tool?.status === 'available') setCommand(next.tool.command)
+      setFeedback(next.saved ? '' : t(next.tool?.status === 'available' ? 'toolCheckPassed' : 'toolCheckFailed'))
+      if (next.saved) notify?.(t(action === 'remove' ? 'toolRemoved' : 'toolApplied'))
+      if (next.tool?.status === 'available') setCommand(next.tool.installation?.command ?? next.tool.command)
       if (next.saved) onResult(next)
-    } catch (error) { setError(error instanceof Error ? error.message : String(error)); setFeedback('') }
-    finally { setBusy(false) }
+    } catch (error) { if (mounted.current) { setError(error instanceof Error ? error.message : String(error)); setFeedback('') } }
+    finally { if (mounted.current) setBusy(false) }
   }
   return <section className={css.form} aria-label={t('toolConfigure')}>
     <header className={css.header}><strong>{t('toolConfigure')}</strong>
@@ -78,9 +82,15 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
         </select>
       </label>
       {custom && <label className={css.field}>{t('toolIdentifier')}<input value={id} onChange={(event) => { setId(event.target.value); setFeedback(''); setResult(undefined) }} /></label>}
+      {settings.environments && <label className={css.field}>{t('toolDefaultEnvironment')}
+        <select value={defaultEnvironment} onChange={(event) => { setDefaultEnvironment(event.target.value); setResult(undefined); setFeedback('') }}>
+          {settings.environments.map(environment =>
+            <option key={environment.id} value={environment.id}>{environment.label} · {environment.kind}</option>)}
+        </select>
+      </label>}
       <label className={css.field}>{t('toolExecutable')}<input value={command} onChange={(event) => { setCommand(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
-      <p>{t('toolExecutableHint')}</p>
-      <button onClick={() => void browse()}>{t('toolBrowseExecutable')}</button>
+      <p>{t(settings.environmentKind === 'docker' ? 'toolContainerExecutableHint' : 'toolExecutableHint')}</p>
+      {settings.environmentKind !== 'docker' && <button onClick={() => void browse()}>{t('toolBrowseExecutable')}</button>}
       {files && <section className={css.toolFilePicker} aria-label={t('toolBrowseExecutable')}>
         <p><code>{files.directory}</code></p>
         <div className={css.tabs}>

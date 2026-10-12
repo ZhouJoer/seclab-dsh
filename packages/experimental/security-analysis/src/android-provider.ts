@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { fileAsset } from './workbench/assessment.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import { readdir, open } from 'node:fs/promises'
+import { readdir, open, mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import type {} from './workbench/index.ts'
-import type { AnalysisContext, AnalysisProvider } from './workbench/providers.ts'
+import type { AnalysisContext, AnalysisProvider, AnalysisResult } from './workbench/providers.ts'
 import { operationSchema, type AnalysisOperation } from './workbench/model.ts'
 import { runProcess, requireProcessSuccess, installation } from './workbench/process.ts'
 
@@ -57,7 +57,7 @@ export class AndroidProvider implements AnalysisProvider {
     if (request.operation === 'package-info' && !args.packageName) throw new Error('Select the package name')
     return { ...request, parameters: operationSchema.shape.parameters.parse(args), impact: 'observe' }
   }
-  async run(request: AnalysisOperation, context: AnalysisContext) {
+  async run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult> {
     const args = argsSchema.parse(request.parameters)
     const limits = {
       signal: context.signal,
@@ -102,15 +102,16 @@ export class AndroidProvider implements AnalysisProvider {
     const root = dirname(path)
     const output = join(root, 'jadx')
     try {
+      await mkdir(output)
       const command = ['--output-dir', output, ...(args.className ? ['--single-class', args.className] : []), path]
       const result = await runProcess(this.ctx, context.environment, 'jadx', command, limits)
-      if (result.timedOut || result.cancelled) requireProcessSuccess(result)
+      const failed = result.exitCode !== 0 || result.signal !== null || result.timedOut || result.cancelled
       const files: { path: string; text: string }[] = []
       let total = 0
-      let incomplete = result.exitCode !== 0 || result.truncated
+      let incomplete = failed || result.truncated
       const visit = async (directory: string, prefix: string): Promise<void> => {
         for (const entry of await readdir(directory, { withFileTypes: true })) {
-          context.signal.throwIfAborted()
+          if (context.signal.aborted) { incomplete = true; return }
           if (files.length >= this.config.maxFiles || total >= context.maxOutputBytes) {
             incomplete = true
             return
@@ -140,13 +141,15 @@ export class AndroidProvider implements AnalysisProvider {
       }
       await visit(output, '')
       return {
-        bytes: Buffer.from(JSON.stringify({ files, diagnostics: result.stderr, incomplete })),
+        bytes: Buffer.from(JSON.stringify({ files, diagnostics: result.stderr, process: result, incomplete })),
         mediaType: 'application/json',
         summary: 'JADX produced ' + String(files.length) + ' source/resource files',
         incomplete,
         toolVersion,
         method: 'static' as const,
         observationKind: 'implementation' as const,
+        ...(failed ? { failure: JSON.stringify({
+          exitCode: result.exitCode, signal: result.signal, timedOut: result.timedOut, cancelled: result.cancelled }) } : {}),
       }
     } finally {
       await context.artifacts.release(path)

@@ -77,15 +77,17 @@ export function ActivityTimeline(props: Props & { activity: ProjectActivity }) {
     <div className={css.timelineHeader}><h3>{t('activityTitle')}</h3><span className={css.connection} data-live={connected} role="status">{t(connected ? 'activityLive' : 'activityDisconnected')}</span>
       {!connected && <button onClick={() => { props.activity.retry() }}>{t('dashboardRetry')}</button>}</div>
     {(error || props.activity.error) && <p role="alert" className={css.error}>{error || props.activity.error}</p>}
-    <p className={css.emptyActivity}>{t('activityReferenceHint')}</p>
     {directions.map((direction, index) => {
-      const tools = new Map<string, SecurityToolUsage>()
+      const tools = new Map<string, SecurityToolUsage & { confirmed: number; unverified: number }>()
       for (const item of usage.filter(item => item.checkpointId === direction.id)) {
         const previous = tools.get(item.tool)
         tools.set(item.tool, previous ? { ...previous, total: previous.total + item.total,
+          confirmed: previous.confirmed + (item.verified ? item.total : 0),
+          unverified: previous.unverified + (item.verified ? 0 : item.total),
           running: previous.running + item.running, completed: previous.completed + item.completed,
           failed: previous.failed + item.failed, cancelled: previous.cancelled + item.cancelled,
-          unknown: previous.unknown + item.unknown, incomplete: previous.incomplete + item.incomplete } : item)
+          unknown: previous.unknown + item.unknown, incomplete: previous.incomplete + item.incomplete }
+          : { ...item, confirmed: item.verified ? item.total : 0, unverified: item.verified ? 0 : item.total })
       }
       const page = pages[direction.id]
       const brief = briefs.find(item => item.checkpointId === direction.id)
@@ -100,6 +102,7 @@ export function ActivityTimeline(props: Props & { activity: ProjectActivity }) {
           {tools.size ? [...tools.values()].map(item => <div className={css.toolCard} key={item.tool} role="group"
             aria-label={`${item.tool === 'script' ? t('activityScriptShort') : item.tool} ×${item.total}`}>
             <div className={css.toolName}><strong>{item.tool === 'script' ? t('activityScriptShort') : item.tool}</strong><span className={css.toolCount}>×{item.total}</span></div>
+            <p>{t('activityConfirmedTool')} {item.confirmed} · {t('activityUnverifiedTool')} {item.unverified}</p>
             <div className={css.toolStates}>
               {item.running > 0 && <span data-state="running">{t('running')} <b>{item.running}</b></span>}
               {item.completed > 0 && <span data-state="completed">{t('completed')} <b>{item.completed}</b></span>}
@@ -125,7 +128,6 @@ export function ActivityTimeline(props: Props & { activity: ProjectActivity }) {
           openChild={props.openChild} t={t} />
         <details onToggle={(event) => { if (event.currentTarget.open) void read(direction.id) }}>
           <summary>{t('activityDetails')}</summary>
-          {!direction.evidenceIds.length && <p>{t('activityNoEvidence')}</p>}
           {direction.evidenceIds.map((id) => {
             const evidence = props.view.records.find(item => item.kind === 'evidence' && item.value.id === id)
             return <p key={id}>{evidence?.kind === 'evidence' ? props.openEvidence ? <button onClick={() =>{  props.openEvidence?.(id) }}>{evidence.value.title}</button> : evidence.value.title : t('unavailableReference')}</p>

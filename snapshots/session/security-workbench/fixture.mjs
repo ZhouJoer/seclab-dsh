@@ -21,12 +21,20 @@ export async function apply(ctx) {
   const subprocess = ctx.subprocess
   const originalResolve = subprocess.resolveExecutable
   const originalSpawn = subprocess.spawn
+  const radareCommand = join(process.cwd(), 'fixture-radare2')
   const dockerCommand = 'fixture-docker'
   const dockerPrefix = ['--context', 'fixture-remote']
   subprocess.resolveExecutable = async function(command, ...args) {
-    return command === dockerCommand ? command : originalResolve.call(this, command, ...args)
+    return command === dockerCommand || command === radareCommand ? command : originalResolve.call(this, command, ...args)
   }
   subprocess.spawn = function(spec) {
+    if (spec.argv[0] === radareCommand) {
+      const output = spec.argv.includes('-v') ? 'radare2 fixture 1\n' : '[{"offset":4096,"name":"main"}]'
+      return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: {
+        stdout: { readFrom: () => ({ text: output, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', lossy: false }) },
+      }, terminate() {}, waitForExit: async () => true }
+    }
     if (spec.argv[0] !== dockerCommand) return originalSpawn.call(this, spec)
     spec.signal.throwIfAborted()
     assert.deepEqual(spec.argv.slice(1, 3), dockerPrefix)
@@ -67,10 +75,12 @@ export async function apply(ctx) {
     root: join(process.env.DSH_HOME, 'security'),
     importRoots: [process.cwd()],
     toolCatalogPath: join(process.env.DSH_HOME, 'security-tool-catalog.json'),
+    ...observationFailure ? { toolConfiguration: { path: join(process.env.DSH_HOME, 'tools.json'), environmentId: 'fixture-local' },
+      toolAdapters: { bindings: { radare2: 'fixture-local' } } } : {},
     environments: [{ id: 'fixture-remote', label: 'Remote toolbox', kind: 'docker', cwd: process.cwd(),
       externalContainer: { name: 'fixture-container', workdir: '/analysis' },
       tools: [{ id: 'docker', command: dockerCommand, prefixArgs: dockerPrefix, versionArgs: ['--version'], source: 'Fixture endpoint' }] },
-      ...observationFailure ? [{ id: 'fixture-local', label: 'Local binary observations', kind: 'local', cwd: process.cwd(), tools: [] }] : []],
+      ...observationFailure ? [{ id: 'fixture-local', label: 'Local binary observations', kind: 'local', cwd: process.cwd(), tools: [{ id: 'radare2', command: radareCommand, prefixArgs: [], versionArgs: ['-v'], source: 'Fixture tool' }] }] : []],
     knowledgeIntervalMs: 0,
     analysisTurnTokens: 1000,
     evolution: { provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' },

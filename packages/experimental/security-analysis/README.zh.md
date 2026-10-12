@@ -44,6 +44,16 @@ kind: "package-reference"
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
+专用静态工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义各工具操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色检查、项目环境授权、执行租约和不可变证据。模型无需填写可执行文件路径、环境 ID 或命令程序。security_r2ghidra 跟随 radare2 的安装和环境绑定。Shell 和 security_static 继续支持既有流程。
+
+在工具箱配置安装和固定的默认执行环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将独立工具 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属的本机环境；读取兼容旧文件，首次保存写入带版本的格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。保存比较整个文档的修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。工具缺失、环境未授权或绑定无效时明确失败，不切换环境。
+
+托管 Docker 的检测和适配调用在环境租约内启动已配置的本地镜像，不拉取镜像。Docker 安装项填写容器内可执行文件，docker 安装项填写 Host 启动程序。输入和生成文件使用挂载到 /dsh-inputs 的私有运行目录，执行后清理。该适配层不支持外部容器、Android 设备或 SSH。配置和检测不安装或更新软件。
+
+toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分别为 1000、200、1000 和 3000。采集还受 maxDurationMs 和 maxOutputBytes 限制，modelResultBytes 限制每次完整响应。输出保留语义条目、地址或源码位置、有界原始输出、诊断和完整性。security_evidence(evidenceId, itemOffset, itemLimit) 读取已保存条目，不重新执行工具；字节分页可读取保留的原始诊断。达到数据包上限或使用显示过滤器时保守标记不完整。成功的空结果、解析失败、部分反编译、截断、超时和取消分别保留。
+
+适配调用由 provider 定义工具身份，以 sessionId 和 callId 去重。版本检测、启动程序、证据读取及结果恢复不增加分析执行次数。证据提交后幂等关联活动记录。已确认表示工具身份确定，与执行是否成功无关；旧 Shell 推测仍标记为未验证，历史记录保留原值。统计按研究方向和 Session 归属，与普通聊天工具次数分别计算。
+
 <a id="configure-analysis-providers"></a>
 ### 配置分析 provider
 
@@ -66,15 +76,16 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 | 内置二进制检查 | 实测身份、有界十六进制和 ASCII/UTF-16LE 字符串 | 读取不可变制品；限制输出，不执行目标 | PE/ELF 头与字节分页 fixture |
 | GhidraMCP 1.4 | 绑定程序查询；数据库写操作需要计划 | 认证回环 HTTP、有界响应；不重放数据库修改 | 已针对 Ghidra 11.3.2 构建扩展并完成独立 ARM ELF 导入；GUI 关闭后的 DSH 查询被阻塞 |
 | Frida 17.18.0 | 进程、模块、导出枚举，trace，经批准的自定义脚本及 spawn | Python helper；配置时限及输出限额；卸载、detach、停止本任务创建的进程 | Windows 本机自有 Python 可执行文件：正常完成与取消 |
-| JADX | APK/DEX 反编译、源码及资源提取 | 受管理子进程；限制输出并清理临时目录 | 集成未验证；部分反编译结果标记为不完整 |
-| Docker 29.7.2 | 启动、检查、停止本任务拥有的环境 | 固定镜像摘要、资源限制、无网络、移除自有容器 | 本机 Docker Desktop 与已有 Kali ARM64 镜像：生命周期及 Python 命令 |
+| radare2 / r2ghidra / TShark | 固定静态查询与离线抓包 | 有界子进程输出及已保存的语义证据 | Windows 本机微型 ELF 的身份/反汇编/反编译及空 PCAP；容器组合未验证 |
+| JADX | APK/DEX 反编译、源码及资源提取 | 受管理子进程；限制输出并清理临时目录 | Windows 本机 CLI 读取有效空 DEX/APK；部分源码失败由 fixture 覆盖 |
+| Docker 29.7.2 | 启动、检查、停止本任务拥有的环境 | 固定镜像摘要、资源限制、无网络、移除自有容器 | 本机 Docker Desktop 与已有离线镜像：并发启动互斥、ELF 的 strings/readelf/objdump/nm 查询、暂存文件清理和容器移除 |
 | adb | 所选设备状态、包列表/详情、base APK 身份读取 | 固定 argv 子进程调用；不接受任意 shell 命令 | 没有连接的 Android 设备；未验证 |
 | fastboot / john | 版本登记；受管工具箱内进行固定 John yescrypt 验收 | 操作者查询与隔离测试向量检测 | 设备写入与密码审计 provider 尚不可用 |
 
 <a id="roles-tasks-and-tool-management"></a>
 ### 角色、任务和工具管理
 
-工具箱将可共享定义、环境安装配置和实测结果分开管理。`toolCatalogPath` 指定保存 version-1 工具包数组的绝对 JSON 路径；源码启动器使用 `.dsh/security-tool-packs.json`。工具包支持 CLI 命令、导入名与发行包名分开的 Python 模块、JSON 插件查询、既有 provider 引用、自由标签、工具集合、依赖、用法说明与技能引用。导入预览校验引用、循环依赖和名称冲突，不执行命令；显式确认覆盖并检查修订版本后才原子写入。后续查询重新读取定义，进行中的检测保留已捕获的定义。`toolConfiguration` 仍指定本机 `environmentId` 和安装 JSON `path`；现有 `.dsh/security-tools.json` 与 `environments[].tools`（包括自定义 ID）继续有效。页面保存安装配置要求有界检测成功，显式配置失败不会静默回退 PATH。其它环境使用部署配置，软件仍由用户安装。
+工具箱将可共享定义、环境安装配置和实测结果分开管理。`toolCatalogPath` 指定保存 version-1 工具包数组的绝对 JSON 路径；源码启动器使用 `.dsh/security-tool-packs.json`。工具包支持 CLI 命令、导入名与发行包名分开的 Python 模块、JSON 插件查询、既有 provider 引用、自由标签、工具集合、依赖、用法说明与技能引用。导入预览校验引用、循环依赖和名称冲突，不执行命令；显式确认覆盖并检查修订版本后才原子写入。后续查询重新读取定义，进行中的检测保留已捕获的定义。`toolConfiguration` 指定旧本机配置所属的 `environmentId` 和带版本安装 JSON 的 `path`；现有 `.dsh/security-tools.json` 与 `environments[].tools`（包括自定义 ID）继续有效。页面保存安装配置要求有界检测成功，显式配置失败不会静默回退 PATH。软件仍由用户安装。
 
 | 角色 | 任务 | 可用分析能力 |
 |---|---|---|

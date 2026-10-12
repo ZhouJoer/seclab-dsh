@@ -113,6 +113,11 @@ export interface AnalysisContext {
 export interface AnalysisProvider {
   id: string
   operations: readonly string[]
+  /** Identify the analysis tools, excluding launchers and health probes.
+   * @param request - resolved operation.
+   * @returns catalog tool identities attributed to this request.
+   */
+  activityTools?(request: AnalysisOperation): string[]
   /** Model-visible parameter and prerequisite guidance; omitted providers require separate documentation. */
   inputGuide?: string
   /**

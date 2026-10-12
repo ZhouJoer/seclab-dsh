@@ -6,7 +6,7 @@ import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import { parseSecurityEnvironments } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
 import type { SecurityEnvironment } from '../packages/experimental/security-analysis/src/workbench/providers.ts'
 import { writeSecurityToolsFile } from '../packages/experimental/security-analysis/src/local-tools.ts'
-export { readSecurityTools, standaloneTool, writeSecurityToolsFile } from '../packages/experimental/security-analysis/src/local-tools.ts'
+export { readSecurityTools, readToolSettings, standaloneTool, writeSecurityToolsFile } from '../packages/experimental/security-analysis/src/local-tools.ts'
 
 /** Checkout-local installations; .dsh is excluded from version control. */
 export const securityToolsFile = resolve('.dsh/security-tools.json')

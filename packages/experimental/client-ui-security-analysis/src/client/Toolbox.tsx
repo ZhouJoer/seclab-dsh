@@ -22,7 +22,7 @@ export interface ToolboxActions extends ToolConfigurationActions, ToolPackAction
  * @param props - inventory reader and localized labels.
  * @returns environment selector and categorized installations.
  */
-export function Toolbox(props: ToolboxActions & PropsLocale<typeof NS>) {
+export function Toolbox(props: ToolboxActions & { notifyImprovement?: (text: string) => void } & PropsLocale<typeof NS>) {
   const [tab, setTab] = useState<'tools' | 'scripts' | 'devices'>('tools')
   const id = useId()
   return <section aria-label={props.t('toolbox')}>
@@ -37,7 +37,7 @@ export function Toolbox(props: ToolboxActions & PropsLocale<typeof NS>) {
   </section>
 }
 
-function ToolInstallations(props: ToolboxActions & PropsLocale<typeof NS>) {
+function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: string) => void } & PropsLocale<typeof NS>) {
   const { toolboxDirectory, toolboxInventory, toolboxConfiguration, configureTool, toolboxFiles, t } = props
   const [environment, setEnvironment] = useState<string>()
   const [revision, setRevision] = useState(0)
@@ -119,7 +119,8 @@ function ToolInstallations(props: ToolboxActions & PropsLocale<typeof NS>) {
     {configuration?.editable && <button disabled={busy || editing !== undefined} onClick={() => { setEditing('') }}>{t('toolAddInstallation')}</button>}
     {editing !== undefined && configuration && inventory && <ToolSettings key={inventory.environmentId + ':' + editing}
       environmentId={inventory.environmentId} configuration={configuration} selectedId={editing}
-      configureTool={configureTool} toolboxFiles={toolboxFiles} t={t} onClose={() => { setEditing(undefined) }}
+      configureTool={configureTool} toolboxFiles={toolboxFiles} notify={props.notifyImprovement} t={t}
+      onClose={() => { setEditing(undefined) }}
       onResult={(result) => {
         setConfiguration(result.configuration)
         if (result.tool) {
@@ -142,6 +143,8 @@ function ToolInstallations(props: ToolboxActions & PropsLocale<typeof NS>) {
           <h3>{t(label)}</h3>
           {visible.filter(tool => tool.category === category).map(tool => <article key={tool.id} className={css.card}>
             <strong>{tool.id} · {t(states[tool.status])}</strong>
+            {configuration?.bindings?.[tool.id === 'r2ghidra' ? 'radare2' : tool.id] &&
+              <p>{t('toolDefaultEnvironment')}: {configuration.bindings[tool.id === 'r2ghidra' ? 'radare2' : tool.id]}</p>}
             <p>{catalog?.tools.find(item => item.id === tool.id)?.description}</p>
             <p>{t(invocations[tool.invocation])}</p>
             <button disabled={busy} onClick={() => void check([tool.id])}>{t('toolCheckSelection')}</button>

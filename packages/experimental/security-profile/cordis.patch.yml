@@ -39,6 +39,19 @@
           auto: true
         analysisTurnTokens: 360000
         root: !!js dshHomePath('security')
+        toolConfiguration:
+          path: !!js dshHomePath('security/tools.json')
+          environmentId: local
+        toolAdapters:
+          bindings:
+            radare2: local
+            tshark: local
+            jadx: local
+            file: local
+            strings: local
+            readelf: local
+            objdump: local
+            nm: local
         importRoots: !!js '[process.cwd()]'
         taskIntake:
           workspaces: []

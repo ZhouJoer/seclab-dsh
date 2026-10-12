@@ -21,6 +21,8 @@ Choose material, describe an objective and start an analysis with the local envi
 
 Choose **Add materials** in the task overview to upload files or a folder, paste text, or import a Host path. Types are detected automatically. New analysis stages the selection until Start analysis creates the task and saves its materials; imported names appear in the overview. **Manage task** renames or removes a project. Removal stops work and hides the project while retaining evidence and reports; the sidebar’s **Removed tasks** list offers restoration. Restored projects remain paused until explicitly resumed. Long selection labels are shortened, with full names retained in tooltips.
 
+The Toolbox selects installations per configured local or managed Docker environment and a fixed default execution environment per tool. Local installations offer a Host file picker; Docker installations accept container paths. Save checks the installation before applying it and reports completion through the shared notification surface. Inspection may start a configured managed container without installing software or pulling an image. Research-direction cards show total counts, confirmed and unverified tool identities, and execution status; expand the calls to read linked evidence.
+
 -----
 
 <a id="use-this-package"></a>

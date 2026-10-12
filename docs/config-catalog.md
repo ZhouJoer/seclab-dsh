@@ -1106,11 +1106,16 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:77`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:80`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Operator-selected routes and bounded static external-tool queries. */
+  toolAdapters: ToolAdapterLimits & {
+    /** Fixed default environment IDs for standalone adapter tools. */
+    bindings: Record<string, string>
+  }
   /** Engineering improvement scheduling and model budgets. */
   evolution: EvolutionConfig
   /** Optional absolute file containing imported definition packs. */
@@ -1176,6 +1181,18 @@ export interface WorkbenchConfig {
   knowledgeProvider?: string
   /** Optional dedicated refinement model; on-demand calls inherit the initiating Agent model when omitted. */
   knowledgeModel?: string
+}
+
+/** Deployment-owned collection and teardown bounds. */
+export interface ToolAdapterLimits {
+  /** Maximum semantic observations retained per analysis. */
+  maxItems: number
+  /** Maximum instructions requested in one radare2 disassembly. */
+  maxInstructions: number
+  /** Maximum input frames examined by one offline TShark query. */
+  maxPackets: number
+  /** Time in milliseconds allowed for process cleanup. */
+  graceMs: number
 }
 
 /** Deployment-owned analysis scheduling and model budgets. */

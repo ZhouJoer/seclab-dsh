@@ -2,64 +2,263 @@
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "tool-call" },
-      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "prepare-observation", "name": "security_scope", "arguments": "{}" } },
-      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "prepare-observation",
+          "name": "security_scope",
+          "arguments": "{}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "tool-call" },
-      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "observe-outside-sample", "name": "security_static", "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":1000000,\\\"length\\\":1}\"}" } },
-      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "observe-outside-sample",
+          "name": "security_static",
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":1000000,\\\"length\\\":1}\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "tool-call" },
-      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "find-failure-evidence", "name": "security_scope", "arguments": "{\"kind\":\"evidence\"}" } },
-      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "find-failure-evidence",
+          "name": "security_scope",
+          "arguments": "{\"kind\":\"evidence\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "tool-call" },
-      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "read-failure-evidence", "name": "security_evidence", "arguments": "{\"evidenceId\":\"00000000-0000-4000-8000-000000000015\",\"offset\":0,\"length\":4096}" } },
-      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "read-failure-evidence",
+          "name": "security_evidence",
+          "arguments": "{\"evidenceId\":\"00000000-0000-4000-8000-000000000015\",\"offset\":0,\"length\":4096}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      {"type":"block-start","index":0,"blockType":"tool-call"},
-      {"type":"block-end","index":0,"block":{"type":"tool-call","id":"identity-invalid-path","name":"security_static","arguments":"{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"path\\\":\\\"sample.bin\\\"}\"}"}},
-      {"type":"usage","usage":{"inputTokens":3,"outputTokens":3}},
-      {"type":"finish","reason":{"kind":"tool-calls"}}
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "identity-invalid-path",
+          "name": "security_static",
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"path\\\":\\\"sample.bin\\\"}\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      {"type":"block-start","index":0,"blockType":"tool-call"},
-      {"type":"block-end","index":0,"block":{"type":"tool-call","id":"identity-corrected","name":"security_static","arguments":"{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{}\"}"}},
-      {"type":"usage","usage":{"inputTokens":3,"outputTokens":3}},
-      {"type":"finish","reason":{"kind":"tool-calls"}}
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "identity-corrected",
+          "name": "security_static",
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{}\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "text" },
-      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "DONE" } },
-      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "stop" } }
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "adapter-functions",
+          "name": "security_radare2",
+          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"operation\":\"functions\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "DONE"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
     ]
   }
 ]

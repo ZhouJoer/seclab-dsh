@@ -179,7 +179,7 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('toolboxDirectory') toolboxDirectory(environmentId?: string): ToolboxDirectory
 
-/** Inspect installed tools without selecting a project or starting an environment.
+/** Inspect installed tools, starting managed Docker from an existing image when necessary.
  * @param environmentId - configured environment; omission selects the first local environment.
  * @param toolIds - selected definitions and their dependencies; omitted checks all.
  * @returns environment choices and current optional-tool observations.
@@ -193,7 +193,7 @@ Optional security profile service; default application compositions remain indep
 @Remote('deviceDirectory') deviceDirectory(environmentId?: string): DeviceDirectory
 
 /** Explicitly inspect Windows prerequisites; enumeration does not validate radio capture.
- * @param environmentId - configured local environment.
+ * @param environmentId - configured local or managed Docker environment.
  * @returns settled observations; failed inspections leave the previous directory intact.
  */
 @Remote('deviceInventory') async deviceInventory(environmentId?: string): Promise<DeviceDirectory>

@@ -193,7 +193,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { adapters?: boolean; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -248,6 +248,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     modules.set('skills', Skills)
     modules.set('tool-skill', ToolSkill)
   }
+  if (options.adapters) modules.set('subprocess', LocalSubprocess)
   if (options.native) {
     modules.set('subprocess', LocalSubprocess)
     modules.set('native-shell', process.platform === 'win32' ? LocalPwsh : LocalBash)
@@ -286,6 +287,8 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                           { cwd: options.taskIntake === 'current' ? root : join(root, 'other'), environmentIds: ['local'] },
                         ] } } : {}),
                       root: join(root, 'workbench'), importRoots: [root],
+                      ...(options.adapters ? { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' },
+                        toolAdapters: { bindings: { radare2: 'local' } } } : {}),
                       environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root, tools: options.installations ?? [] }] }
                     : {},
       })),
@@ -347,6 +350,48 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('dispatches a dedicated adapter through the model and reuses saved evidence without extra activity', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { adapters: true })
+    const root = roots[roots.length - 1]!
+    const launcher = join(root, 'radare fixture.mjs'), calls = join(root, 'calls.txt')
+    await writeFile(launcher, 'import fs from "node:fs"; const args=process.argv.slice(2); if(args.includes("-v")) console.log("radare2 fixture 1"); else { fs.appendFileSync(' + JSON.stringify(calls) + ', "run\\n"); console.log(JSON.stringify([{offset:4096,name:"main"},{offset:8192,name:"entry"}])) }')
+    await writeFile(join(root, 'tools.json'), JSON.stringify({ radare2: { command: process.execPath, prefixArgs: [launcher], versionArgs: ['-v'] } }))
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Tool adapters', objective: 'Inspect an owned file', environmentIds: ['local'], maxAttempts: 3 })
+    const input = join(root, 'owned sample.bin')
+    await writeFile(input, 'owned input')
+    await send({ kind: 'import', path: input, label: 'Input' })
+    const asset = controller.view(agent.id).records.find(item => item.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Missing asset')
+    const args = { assetId: asset.value.id, operation: 'functions' }
+    let evidenceId = ''
+    model.nativeCalls = [{ name: 'security_radare2', args }, { name: 'security_evidence', args: (request) => {
+      const message = request.messages.at(-1)
+      if (message?.role !== 'tool' || message.content[0]?.type !== 'text') throw new Error('Missing adapter output')
+      const result = JSON.parse(message.content[0].text) as { evidenceId: string; total: number }
+      expect(result.total).toBe(2)
+      evidenceId = result.evidenceId
+      return { evidenceId, itemOffset: 1, itemLimit: 1 }
+    } }]
+    agent.followup(webPrompt('Inspect functions, then read the second saved observation.'))
+    await agent.whenIdle()
+    expect(evidenceId, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).not.toBe('')
+    const projectId = controller.binding(agent.id)!.engagementId
+    expect(controller.activity!.usage(projectId)).toEqual([expect.objectContaining({ tool: 'radare2', verified: true, total: 1, completed: 1 })])
+    expect(controller.activity!.page(projectId, '', 0, 10).items[0]?.evidenceIds).toEqual([evidenceId])
+    await writeFile(join(root, 'tools.json'), JSON.stringify({ version: 1, installations: {}, bindings: {} }))
+    expect((await execute(ctx, agent, 'security_radare2', args, 'native-1')).isError).toBe(false)
+    expect(await readFile(calls, 'utf8')).toBe('run\n')
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'tool/call').map(event => event.data.name)).toEqual(['security_radare2', 'security_evidence'])
+    expect(await readdir(join(root, 'workbench', 'runs'))).toEqual([])
+    const denied = await execute(ctx, agent, 'security_radare2', { ...args, assetId: 'foreign' }, 'foreign-asset')
+    expect(denied.isError).toBe(true)
+    expect(controller.activity!.usage(projectId)).toEqual([expect.objectContaining({ tool: 'radare2', verified: true, total: 2, failed: 1 })])
+    await send({ kind: 'stop' })
+    expect((await execute(ctx, agent, 'security_radare2', args, 'after-stop')).isError).toBe(true)
+    expect(await readFile(calls, 'utf8')).toBe('run\n')
+  })
+
   it('requires approval for native Python, saves its output and stops a running local process', async () => {
     const { agent, controller } = await load(false, 0, { native: true, installations: [{ id: 'python',
       command: process.env.DSH_SECURITY_SCRIPT_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3'),

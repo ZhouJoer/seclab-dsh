@@ -6,6 +6,8 @@
       auto: true
     root: !!js dshHomePath('security')
     importRoots: !!js '[process.cwd()]'
+    toolAdapters:
+      bindings: { radare2: local, tshark: local, jadx: local, file: local, strings: local, readelf: local, objdump: local, nm: local }
     taskIntake:
       workspaces: []
       defaultEnvironmentIds: [local]

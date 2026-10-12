@@ -54,6 +54,12 @@ export interface ToolboxConfiguration {
   editable: boolean
   revision: string
   tools: ToolboxInstallation[]
+  /** Installation paths are interpreted in this execution world. */
+  environmentKind?: ToolboxInventory['kind']
+  /** Environments available for operator-selected adapter routes. */
+  environments?: { id: string; label: string; kind: ToolboxInventory['kind'] }[]
+  /** Tool identities mapped to their selected execution environment. */
+  bindings?: Record<string, string>
 }
 /** One bounded version query and its optional configuration commit. */
 export interface ToolboxConfigurationResult {

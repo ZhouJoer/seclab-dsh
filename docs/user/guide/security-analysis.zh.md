@@ -14,7 +14,7 @@ description: "启动支持逆向、Web 与 IoT 分析的安全工作台。"
 
 需要复用分析方法时，打开**工具箱 → 分析脚本**。流量分析包括抓包概览和报文筛选，MQTT 包括连接时间线和主题，动态观察包括原生模块和导出函数。展开条目查看依赖、必填参数和示例。让分析助手对你的材料使用对应内置脚本，它会加载关联技能、填写参数，并将结果保存到当前任务的分析目录。动态模板仍使用现有验证计划审批流程。浏览脚本库无需选择环境，也不会安装工具。
 
-在仓库根目录执行 `pnpm run build` 构建。源码启动器仍加载已构建的工作区插件；修改 Host 或 Client 插件后，需要先重新构建再重启，刷新页面不能替代构建。打开**安全分析 → 分析工具箱**，在工具卡片点击**配置工具**，或用**添加工具**登记自定义安装。**选择工具文件**浏览运行 DSH 的电脑上的文件，不会上传可执行文件。点击**检测**查看版本和诊断，或点击**检测并保存**在检测成功后立即应用。检测失败不会改变已保存配置。高级参数每行填写一个参数，用于解释器和自定义版本查询。**恢复默认配置**移除本机覆盖项。模型通过下一次所选环境检测发现新路径，无需重启服务。源码安全 profile 为本机环境启用编辑。也可使用下面的命令行入口。使用 Frida 时，`python` 必须安装官方 Frida bindings。工具安装情况和目标是否就绪分开检查。
+在仓库根目录执行 `pnpm run build` 构建。源码启动器仍加载已构建的工作区插件；修改 Host 或 Client 插件后，需要先重新构建再重启，刷新页面不能替代构建。打开**安全分析 → 分析工具箱**，在工具卡片点击**配置工具**，或用**添加工具**登记自定义安装。**选择工具文件**浏览运行 DSH 的电脑上的文件，不会上传可执行文件。点击**检测**查看版本和诊断，或点击**检测并保存**在检测成功后立即应用。检测失败不会改变已保存配置。高级参数每行填写一个参数，用于解释器和自定义版本查询。**恢复默认配置**移除所选环境的覆盖项。可选择已配置的本机或托管 Docker 环境管理安装，并为各适配工具设置**默认执行环境**。容器路径直接填写；文件选择器仅用于本机。模型通过下一次所选环境检测发现新路径，无需重启服务。适配调用固定使用所选绑定，不会回退到其它环境。也可使用下面的命令行入口。使用 Frida 时，`python` 必须安装官方 Frida bindings。工具安装情况和目标是否就绪分开检查。
 
 ```sh
 pnpm security:doctor
@@ -29,9 +29,21 @@ pnpm security:doctor python unicorn radare2 tshark jadx --save
 
 会话的高级工作台提供 **本次会话工具偏好**。默认由模型按任务发现工具，所选工具或集合只是优先建议，模型仍可查询其它工具。偏好只影响本次活跃会话，下次请求生效；关闭会话或重启后恢复自动发现。安全委派复制创建时的偏好，此后父子独立。项目、角色和执行授权保持原有约束。
 
-自定义工具默认用 `--version` 查询版本；在 `set` 时重复传入 `--version-arg=参数` 可覆盖。解释器可通过重复的 `--arg=参数` 为每次调用添加固定启动参数；`set` 不带 `--arg` 时清除原有启动参数。例如，将 JADX 配置为 Java 可执行文件，并传入 `--arg=-jar --arg="路径/jadx.jar"`。Windows 的 `.cmd`、`.bat` 和 `.ps1` 启动脚本需要改为配置解释器可执行文件。这些选项用于已有安装；登记名称不会安装软件或创建专用 provider。
+自定义工具默认用 `--version` 查询版本；在 `set` 时重复传入 `--version-arg=参数` 可覆盖。解释器可通过重复的 `--arg=参数` 为每次调用添加固定启动参数；`set` 不带 `--arg` 时清除原有启动参数。例如，将 JADX 配置为 Java 可执行文件，并传入 `--arg=-cp --arg="路径/jadx.jar" --arg=jadx.cli.JadxCLI`。Windows 的 `.cmd`、`.bat` 和 `.ps1` 启动脚本需要改为配置解释器可执行文件。这些选项用于已有安装；登记名称不会安装软件或创建专用 provider。
 
-可执行文件路径和参数保存在当前目录下被 Git 忽略的 `.dsh/security-tools.json`。请在仓库根目录运行这些命令。`pnpm security` 与页面共用该文件，工具检查和后续模型请求会重新读取它。已保存路径失效会报错，不会回退到其他安装。脚本配置已安装软件，不修改系统 PATH。TShark 通过原生分析脚本调用；JADX 还提供专用 Android provider。设备、容器及其他环境仍在[示例 overlay](../../../apps/cli/config/examples/security-analysis/cordis.yml) 中配置。`--config FILE` 用于管理其他 JSON 文件；启动器只读取默认文件。
+可执行文件路径和参数保存在当前目录下被 Git 忽略的 `.dsh/security-tools.json`。请在仓库根目录运行这些命令。`pnpm security` 与页面共用该文件，工具检查和后续模型请求会重新读取它。已保存路径失效会报错，不会回退到其他安装。脚本配置已安装软件，不修改系统 PATH。专用的 `security_radare2`、`security_r2ghidra`、`security_tshark`、`security_jadx`、`security_file`、`security_strings`、`security_readelf`、`security_objdump` 和 `security_nm` 接受已导入资产 ID 和语义参数。保存的证据支持条目分页，无需重新执行工具。已确认计数直接确定工具身份，与执行是否成功无关；从 Shell 推测的计数仍标为未验证。设备、容器及其他环境仍在[示例 overlay](../../../apps/cli/config/examples/security-analysis/cordis.yml) 中配置。`--config FILE` 用于管理其他 JSON 文件；启动器只读取默认文件。
+
+安装设置使用以下带版本的结构；旧本机映射仍可读取，并在保存时转换。`bindings` 选择已配置的环境，`r2ghidra` 跟随 `radare2`。保存拒绝过期 revision。托管 Docker 按需启动已有镜像，不拉取镜像。
+
+```json
+{
+  "version": 1,
+  "installations": {
+    "local": { "radare2": { "command": "/opt/radare2/bin/r2", "prefixArgs": [], "versionArgs": ["-v"] } }
+  },
+  "bindings": { "radare2": "local" }
+}
+```
 
 <a id="external-docker-containers"></a>
 ### 接入已有本机或远程 Docker 容器
