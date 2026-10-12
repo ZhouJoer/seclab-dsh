@@ -5,11 +5,37 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import type { ToolboxDirectory } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { ToolboxDirectory, ToolboxAdapter } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { Toolbox } from '../src/client/Toolbox.tsx'
 import { zh } from '../src/client/locales.ts'
 import { builtinToolPack } from '../../security-analysis/src/builtin-tools.ts'
 afterEach(cleanup)
+it.each([
+  ['unconfigured', zh.toolAdapterUnconfigured], ['unchecked', zh.toolAdapterUnchecked],
+  ['unavailable', zh.toolAdapterUnavailable], ['ready', zh.toolAdapterReady],
+] as const)('separates installed status from the adapter state %s in read-only settings', async (status, label) => {
+  const adapter: ToolboxAdapter = { id: 'r2ghidra', toolName: 'security_r2ghidra', operations: ['decompile'],
+    installationId: 'radare2', dependencies: ['radare2'], bindingSource: 'deployment', status,
+    ...(status === 'unconfigured' ? {} : { environmentId: 'box' }) }
+  const data: ToolboxDirectory = { environments: [{ id: 'local', label: 'Local', kind: 'local' }], inventory: {
+    environmentId: 'local', kind: 'local', runtime: 'ready', detail: '', checkedAt: 1, workdir: '/workspace', tools: [
+      { id: 'r2ghidra', category: 'reverse', invocation: 'plugin', status: 'available', command: '/opt/r2',
+        version: '1', location: '', source: 'Host', detail: '', installUrl: '' },
+    ],
+  } }
+  render(<Toolbox {...deviceActions} toolboxDirectory={async () => data} toolboxInventory={async () => data}
+    scriptCatalog={async () => []} t={makeTranslate(zh, commonZh)}
+    toolCatalog={async () => ({ editable: false, revision: '', tools: [], packs: [], collections: [] })}
+    previewToolPack={vi.fn()} importToolPack={vi.fn()} exportToolPack={vi.fn()}
+    toolboxConfiguration={async () => ({ editable: false, revision: '', tools: [], adapters: [adapter] })}
+    configureTool={vi.fn()} toolboxFiles={vi.fn()} />)
+  expect(await screen.findByText('r2ghidra · 可用')).toBeDefined()
+  expect(screen.getByText('security_r2ghidra').parentElement?.textContent).toContain(label)
+  expect(screen.getByText(/支持操作/).textContent).toContain('decompile')
+  expect(screen.getByText(/共用安装与默认环境/).textContent).toContain('radare2')
+  expect(screen.queryByText(zh.toolViaShell)).toBeNull()
+  expect(screen.queryByRole('button', { name: zh.toolConfigure })).toBeNull()
+})
 it('browses overlapping domains without probing or changing session preferences', async () => {
   const data: ToolboxDirectory = { environments: [{ id: 'local', label: 'Local', kind: 'local' }], inventory: {
     environmentId: 'local', kind: 'local', runtime: 'unchecked', detail: '', checkedAt: 0, workdir: '/workspace',

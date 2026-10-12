@@ -10,6 +10,8 @@ The experimental [security domain](../../packages/experimental/security-analysis
 
 `ToolboxDirectory` contains configured environment choices and one measured or explicitly unchecked `ToolboxInventory`. Its `ToolboxTool` entries separate availability, invocation method and optional provider integration. Available Docker tools expose the Host `command` and `prefixArgs`, with the original container executable and arguments in `installation` for configuration persistence. These read-only observations are not project evidence or execution authority; fields are defined in [toolbox types](../../packages/experimental/security-analysis/src/toolbox-types.ts).
 
+`ToolboxConfiguration.adapters` contains Host-derived `ToolboxAdapter` entries with model tool names, operations, installation dependencies, binding sources and health in the bound environment. Health is unconfigured, unchecked, unavailable or ready; it is not persisted or an execution authorization. `configureTool` accepts independent bind/reset-binding actions alongside installation probe/save/remove. Model discovery projects semantic interfaces and omits adapted tools’ launch configuration.
+
 `DeviceDirectory` contains configured environment choices and a cached or unchecked `DeviceInventory`. Independent prerequisite checks and branded `RadioDeviceId` values describe software, drivers and visible interfaces; observation timestamps distinguish retained data from failed refreshes. These values are transient and do not establish capture permission or radio readiness. See [device types](../../packages/experimental/security-analysis/src/device-types.ts).
 
 [Record schemas](../../packages/experimental/security-analysis/src/workbench/model.ts) define project, asset, check, evidence, finding, plan, execution, delegation and reviewed knowledge values. Each command appends one revision to the storage-domain journal. Artifact bytes are published before references. Session logs retain model-visible tool results; the domain journal owns check and delegation recovery. `SecurityDelegation` records an assigned question, immutable project and asset scope, execution outcome, child report and coordinator disposition. Jobs own live execution; a report's acceptance does not confirm a finding.
@@ -173,9 +175,9 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('toolPreferences') toolPreferences(agent: Agent, input?: string): ToolPreferences
 
-/** Read unmeasured inventory rows for immediate operator display.
+/** Read cached or unchecked inventory rows for immediate operator display.
  * @param environmentId - selected environment, defaulting to the first local environment.
- * @returns declared installations, with every observation marked not checked.
+ * @returns declared installations and observations matching the current configuration.
  */
 @Remote('toolboxDirectory') toolboxDirectory(environmentId?: string): ToolboxDirectory
 

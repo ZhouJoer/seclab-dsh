@@ -41,7 +41,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > file 1`] = `
 [
   {
-    "guide": "Keep the input path and original identification text. Treat format and architecture labels as tool observations to verify when needed; do not build a generic parser for descriptive output.",
+    "guide": "Identify an imported file using its contents. Call security_file with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "file",
   },
 ]
@@ -59,7 +59,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > jadx 1`] = `
 [
   {
-    "guide": "Decompile Android DEX/APK bytecode. Reuse the android provider files, diagnostics and incomplete fields. Keep source paths and line locations when selecting code; preserve decompiler diagnostics and distinguish generated source from verified behavior. JADX does not disassemble native .so instructions; discover native binary tools for that task.",
+    "guide": "Decompile an imported APK or DEX, optionally selecting one class. Call security_jadx with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "jadx",
   },
 ]
@@ -122,7 +122,7 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > nm 1`] = `
 [
   {
-    "guide": "Invoke the measured native command and prefixArgs for bounded output relevant to the current question. Keep symbol names, types and addresses with their input file and original text. Missing or stripped symbols are an analysis limitation, not proof that behavior is absent. Extract task-specific fields only when needed.",
+    "guide": "List object symbols and their addresses. Call security_nm with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "nm",
   },
 ]
@@ -149,7 +149,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > objdump 1`] = `
 [
   {
-    "guide": "Invoke the measured native command and prefixArgs for bounded output relevant to the current question. Select relevant sections, functions or address ranges. Preserve original disassembly text with input path, architecture, section and instruction addresses; retain source lines when available. Use a small extraction script only for fields the current question needs.",
+    "guide": "Inspect object headers or disassemble a bounded address range. Call security_objdump with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "objdump",
   },
 ]
@@ -167,7 +167,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > r2ghidra 1`] = `
 [
   {
-    "guide": "Decompiler plugin in the selected radare2 process. Use security_environment to check the plugin through the selected radare2 installation. A target-free probe uses arguments -q -c Lcj --; retain the final --, otherwise radare2 may report a missing input file. Do not use -NN to decide whether the plugin is installed: it disables plugin loading. If unavailable, continue supported metadata or disassembly queries without assuming decompilation works; recheck after the installation changes. Use bounded decompilation of selected functions. Prefer pdgj when supported by the installed plugin. Keep decompiled code as text with the function address and relevant references from radare2; do not parse pseudocode into asserted semantics. Preserve diagnostics and unsupported-command failures instead of treating them as empty functions.",
+    "guide": "Decompile one function at a hexadecimal virtual address. Call security_r2ghidra with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "r2ghidra",
   },
 ]
@@ -185,7 +185,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > radare2 1`] = `
 [
   {
-    "guide": "For native ELF/.so, PE/.dll/.exe and Mach-O, prefer available radare2/r2 for metadata, functions, cross-references and disassembly. Invoke the measured command and prefixArgs through the native shell, not as a security_static provider. Start with bounded metadata or a relevant function. Group related queries in one process and run only the required analysis level once; do not prepend aa/aaa to every query. Prefer native JSON commands supported by the installed version; keep sample hash, tool version, parameters, architecture, function addresses and cross-reference addresses. Preserve raw output and diagnostics separately; invalid JSON is a failed parse, not an empty result. Reuse saved observations only when input identity, parameters and coverage match. Distinguish file offsets from virtual addresses and preserve the queried range. Use scripts for orchestration or a demonstrated tool gap.",
+    "guide": "Inspect binary metadata, functions, references and bounded disassembly. Call security_radare2 with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "radare2",
   },
 ]
@@ -194,7 +194,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > readelf 1`] = `
 [
   {
-    "guide": "Invoke the measured native command and prefixArgs for bounded output relevant to the current question. Select relevant ELF headers, sections, symbols or relocations. Preserve original text with input path, section/symbol names, offsets and addresses; distinguish file offsets from virtual addresses. Extract only fields needed for the question rather than implementing a general text parser.",
+    "guide": "Inspect ELF headers and named tables. Call security_readelf with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "readelf",
   },
 ]
@@ -203,7 +203,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > strings 1`] = `
 [
   {
-    "guide": "Invoke the measured native command and prefixArgs for bounded output relevant to the current question. Preserve strings as text with input path, byte offsets and encoding assumptions; use the installed offset option. A string alone does not establish reachability or a vulnerability. Extract task-specific fields only when needed and retain the original text.",
+    "guide": "Read printable strings with byte offsets. Call security_strings with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "strings",
   },
 ]
@@ -212,11 +212,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > tshark 1`] = `
 [
   {
-    "guide": "For offline packet, MQTT and wireless analysis, load the existing analysis skills and reuse their scripts before writing a parser. Read records together with warnings, incomplete, parameters and input identity. Keep frame numbers, timestamps, stream identifiers and MQTT pduIndex when filtering or correlating results. Select fields and capture ranges for the question; missing, encrypted or undecoded traffic remains unknown.
-
-Tool inventory availability confirms only the reported probe. Diagnose installed executable, backend/driver, interface visibility and resource-open permission separately. Report the exact failing command, exit status and OS error. An empty interface list or a non-administrator identity alone does not prove a missing driver or denied device access. Keep unmeasured stages unknown; recheck when the execution context changes.
-
-For Windows USB capture, run tshark -D and tshark -G folders in the same execution context as the capture. Look for USBPcapCMD.exe in the reported extcap directories, including the Wireshark installation, and query it with --extcap-interfaces. Check the USBPcap driver with Get-Service USBPcap or Win32_SystemDriver; Win32_Service and PnP listings are not conclusive driver checks. Use the exact enumerated interface. Windows error 123 indicates an invalid name; check the invocation and capture backend. Error 5 indicates access denied for that operation. Interface discovery does not establish capture permission. Only an authorized, bounded device-open or capture attempt establishes access. On permission denial, request operator assistance for the capture process; do not recommend reinstalling an existing driver or bypass permissions.",
+    "guide": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Call security_tshark with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.",
     "id": "tshark",
   },
 ]

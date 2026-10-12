@@ -32,7 +32,7 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
   const [command, setCommand] = useState(initial?.command ?? '')
   const [prefix, setPrefix] = useState(initial?.prefixArgs.join('\n') ?? '')
   const [version, setVersion] = useState(initial?.versionArgs.join('\n') ?? '--version')
-  const [defaultEnvironment, setDefaultEnvironment] = useState(configuration.bindings?.[selectedId] ?? environmentId)
+  const [defaultEnvironment, setDefaultEnvironment] = useState(configuration.bindings?.[selectedId] ?? '')
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<ToolboxFiles>()
   const [feedback, setFeedback] = useState('')
@@ -43,7 +43,7 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
   function select(tool: ToolboxInstallation | undefined) {
     setId(tool?.id ?? ''); setCustom(!tool); setCommand(tool?.command ?? '')
     setPrefix(tool?.prefixArgs.join('\n') ?? ''); setVersion(tool?.versionArgs.join('\n') ?? '--version')
-    setDefaultEnvironment(settings.bindings?.[tool?.id ?? ''] ?? environmentId)
+    setDefaultEnvironment(settings.bindings?.[tool?.id ?? ''] ?? '')
     setResult(undefined); setFeedback(''); setError(''); setFiles(undefined)
   }
   async function browse(directory?: string) {
@@ -55,15 +55,18 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
     catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : String(error)) }
     finally { if (mounted.current) setBusy(false) }
   }
-  async function run(action: 'probe' | 'save' | 'remove') {
+  async function run(action: 'probe' | 'save' | 'remove' | 'bind' | 'reset-binding') {
     setBusy(true); setError(''); setFeedback(t(action === 'remove' ? 'toolRemoving' : 'toolCheckingSelection'))
     setResult(undefined)
     try {
-      const next = await configureTool(environmentId, JSON.stringify({ action, id, command,
-        prefixArgs: prefix.split('\n').filter(Boolean), versionArgs: version.split('\n').filter(Boolean), revision: settings.revision,
-        ...(settings.environments ? { defaultEnvironmentId: defaultEnvironment } : {}) }))
+      const binding = action === 'bind' || action === 'reset-binding'
+      const next = await configureTool(environmentId, JSON.stringify(binding
+        ? { action, id, revision: settings.revision, ...(action === 'bind' ? { defaultEnvironmentId: defaultEnvironment } : {}) }
+        : { action, id, command, prefixArgs: prefix.split('\n').filter(Boolean),
+          versionArgs: version.split('\n').filter(Boolean), revision: settings.revision }))
       if (!mounted.current) return
       setResult(next); setSettings(next.configuration)
+      if (binding) setDefaultEnvironment(next.configuration.bindings?.[id] ?? '')
       setFeedback(next.saved ? '' : t(next.tool?.status === 'available' ? 'toolCheckPassed' : 'toolCheckFailed'))
       if (next.saved) notify?.(t(action === 'remove' ? 'toolRemoved' : 'toolApplied'))
       if (next.tool?.status === 'available') setCommand(next.tool.installation?.command ?? next.tool.command)
@@ -82,12 +85,6 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
         </select>
       </label>
       {custom && <label className={css.field}>{t('toolIdentifier')}<input value={id} onChange={(event) => { setId(event.target.value); setFeedback(''); setResult(undefined) }} /></label>}
-      {settings.environments && <label className={css.field}>{t('toolDefaultEnvironment')}
-        <select value={defaultEnvironment} onChange={(event) => { setDefaultEnvironment(event.target.value); setResult(undefined); setFeedback('') }}>
-          {settings.environments.map(environment =>
-            <option key={environment.id} value={environment.id}>{environment.label} · {environment.kind}</option>)}
-        </select>
-      </label>}
       <label className={css.field}>{t('toolExecutable')}<input value={command} onChange={(event) => { setCommand(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
       <p>{t(settings.environmentKind === 'docker' ? 'toolContainerExecutableHint' : 'toolExecutableHint')}</p>
       {settings.environmentKind !== 'docker' && <button onClick={() => void browse()}>{t('toolBrowseExecutable')}</button>}
@@ -118,6 +115,23 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
           <button onClick={() => void run('remove')}>{t('toolRemoveOverride')}</button>}
       </div>
     </fieldset>
+    {settings.adapters?.some(adapter => adapter.id === id && adapter.installationId === id) &&
+    <fieldset disabled={busy} className={css.toolFields}>
+      <legend>{t('toolAdapterConfiguration')}</legend>
+      <label className={css.field}>{t('toolDefaultEnvironment')}
+        <select value={defaultEnvironment} onChange={(event) => { setDefaultEnvironment(event.target.value); setResult(undefined); setFeedback('') }}>
+          <option value="">{t('toolAdapterUnconfigured')}</option>
+          {settings.environments?.map(environment =>
+            <option key={environment.id} value={environment.id}>{environment.label} · {environment.kind}</option>)}
+        </select>
+      </label>
+      <p>{t('toolBindingHint')}</p>
+      <div className={css.tabs}>
+        <button disabled={!defaultEnvironment} onClick={() => void run('bind')}>{t('toolSaveBinding')}</button>
+        <button disabled={settings.adapters.find(adapter => adapter.id === id)?.bindingSource !== 'operator'}
+          onClick={() => void run('reset-binding')}>{t('toolResetBinding')}</button>
+      </div>
+    </fieldset>}
     {busy && <p role="status">{t('toolOperationPending')}</p>}
     {feedback && <p role="status">{feedback}</p>}
     {error && <p role="alert">{error}</p>}

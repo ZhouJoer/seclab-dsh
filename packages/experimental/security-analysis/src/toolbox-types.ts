@@ -49,6 +49,17 @@ export interface ToolboxInstallation {
   versionArgs: string[]
   saved: boolean
 }
+/** Dedicated model interface and installation health in its selected environment. */
+export interface ToolboxAdapter {
+  id: string
+  toolName: string
+  operations: string[]
+  installationId: string
+  dependencies: string[]
+  environmentId?: string
+  bindingSource: 'operator' | 'deployment' | 'none'
+  status: 'unconfigured' | 'unchecked' | 'unavailable' | 'ready'
+}
 /** Operator configuration and revision used to reject stale saves. */
 export interface ToolboxConfiguration {
   editable: boolean
@@ -60,6 +71,8 @@ export interface ToolboxConfiguration {
   environments?: { id: string; label: string; kind: ToolboxInventory['kind'] }[]
   /** Tool identities mapped to their selected execution environment. */
   bindings?: Record<string, string>
+  /** Dedicated interfaces and health in their configured execution environments. */
+  adapters?: ToolboxAdapter[]
 }
 /** One bounded version query and its optional configuration commit. */
 export interface ToolboxConfigurationResult {

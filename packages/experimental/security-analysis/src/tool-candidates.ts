@@ -1,18 +1,14 @@
 /** Candidate paths declared by tool packs, shared by CLI and Host probes. @module */
 import { accessSync, constants, globSync, statSync } from 'node:fs'
-import { delimiter, join, resolve } from 'node:path'
+import { delimiter, resolve } from 'node:path'
 import type { ToolDefinition } from './tool-definitions.ts'
 /** Find existing executables without executing them.
- * @param tool - captured definition with optional environment-relative search directories.
+ * @param tool - Captured executable discovery names.
  * @param directories - explicit recursive search roots selected by the operator.
  * @returns distinct executable file candidates; configured pins are handled by the caller.
  */
 export function toolCandidates(tool: ToolDefinition, directories: readonly string[] = []): string[] {
   const roots = (process.env.PATH ?? '').split(delimiter).filter(Boolean)
-  for (const location of tool.searchPaths) {
-    const root = process.env[location.environment]
-    if (root) roots.push(join(root, ...location.path))
-  }
   const suffixes = process.platform === 'win32' ? ['', ...(process.env.PATHEXT ?? '.EXE;.COM').toLowerCase().split(';')] : ['']
   const names = tool.commands.flatMap(command => suffixes.map(suffix => command + suffix))
   const paths = roots.flatMap(root => names.map(name => resolve(root.replace(/^"|"$/g, ''), name)))

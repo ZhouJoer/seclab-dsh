@@ -25,7 +25,9 @@ async function fixture(tool = 'radare2', action = 'functions') {
   const artifact = await artifacts.put(Buffer.from('d4c3b2a1020004000000000000000000ffff000069000000', 'hex'), 'application/octet-stream')
   const context: AnalysisContext = { artifacts, signal: new AbortController().signal, durationMs: 10000, maxOutputBytes: 16000,
     asset: fileAssetSchema.parse({ id: 'file', engagementId: 'project', label: 'Input', artifact, format: 'other', identity: 'measured' }),
-    environment: { id: 'host', kind: 'local', cwd: root, label: 'Host', tools: [] } }
+    environment: { id: 'host', kind: 'local', cwd: root, label: 'Host', tools: [
+      { id: tool === 'r2ghidra' ? 'radare2' : tool, command: join(root, tool), prefixArgs: [], versionArgs: ['--version'], source: 'Fixture' },
+    ] } }
   const request = operationSchema.parse({ provider: 'tool-adapter', operation: tool + '.' + action,
     assetId: 'file', environmentId: 'host', impact: 'observe', parameters: {} })
   const provider = new ToolAdapterProvider(new Context(), { maxPackets: 10, maxItems: 5, maxInstructions: 10, graceMs: 100 }, 20)
@@ -46,11 +48,19 @@ it('keeps values out of Shell and radare2 command syntax and retains exact input
 it('enforces role and fixed-operation admission, including calls bypassing discovery', async () => {
   const { provider, request, context } = await fixture()
   expect(() => provider.resolve({ ...request, parameters: { command: '!whoami' } }, context)).toThrow()
+  expect(() => provider.resolve({ ...request, parameters: { count: 5 } }, context)).toThrow('Unsupported parameter')
   expect(() => provider.resolve({ ...request, operation: 'radare2.run' }, context)).toThrow('Unknown')
   expect(() => provider.resolve(request, { ...context, environment: { ...context.environment, externalContainer: { name: 'other', workdir: '/tmp' } } })).toThrow('managed Docker')
   expect(canObserve('reviewer', 'tool-adapter', 'radare2.functions')).toBe(false)
   expect(canObserve('reconnaissance', 'tool-adapter', 'r2ghidra.decompile')).toBe(false)
   expect(canObserve('web-analyst', 'tool-adapter', 'tshark.packets')).toBe(true)
+})
+it('requires an explicit installation without discovering another executable on PATH', async () => {
+  const { provider, request, context } = await fixture()
+  context.environment.tools = []
+  await expect(provider.run(provider.resolve(request, context), context)).rejects.toThrow('Configure an installation')
+  expect(inspectToolbox).not.toHaveBeenCalled()
+  expect(runProcess).not.toHaveBeenCalled()
 })
 it('saves semantic records, input identity and raw output then reads pages without rerunning', async () => {
   const { provider, request, context, root, artifact } = await fixture()

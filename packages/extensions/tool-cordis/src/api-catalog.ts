@@ -2051,9 +2051,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'toolboxDirectory\') toolboxDirectory(environmentId?: string): ToolboxDirectory',
-        description: 'Read unmeasured inventory rows for immediate operator display.',
+        description: 'Read cached or unchecked inventory rows for immediate operator display.',
         parameters: [{ name: 'environmentId', description: 'selected environment, defaulting to the first local environment.' }],
-        returns: 'declared installations, with every observation marked not checked.',
+        returns: 'declared installations and observations matching the current configuration.',
       },
       {
         signature: '@Remote(\'toolboxInventory\') async toolboxInventory(environmentId?: string, toolIds?: string[]): Promise<ToolboxDirectory>',
@@ -8035,8 +8035,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolAdditionBlock {\n    type: \'tool-addition\';\n    toolName: string;\n    tool?: never;\n}',
   },
   {
+    name: 'ToolboxAdapter',
+    declaration: 'export interface ToolboxAdapter {\n    id: string;\n    toolName: string;\n    operations: string[];\n    installationId: string;\n    dependencies: string[];\n    environmentId?: string;\n    bindingSource: \'operator\' | \'deployment\' | \'none\';\n    status: \'unconfigured\' | \'unchecked\' | \'unavailable\' | \'ready\';\n}',
+  },
+  {
     name: 'ToolboxConfiguration',
-    declaration: 'export interface ToolboxConfiguration {\n    editable: boolean;\n    revision: string;\n    tools: ToolboxInstallation[];\n    environmentKind?: ToolboxInventory[\'kind\'];\n    environments?: {\n        id: string;\n        label: string;\n        kind: ToolboxInventory[\'kind\'];\n    }[];\n    bindings?: Record<string, string>;\n}',
+    declaration: 'export interface ToolboxConfiguration {\n    editable: boolean;\n    revision: string;\n    tools: ToolboxInstallation[];\n    environmentKind?: ToolboxInventory[\'kind\'];\n    environments?: {\n        id: string;\n        label: string;\n        kind: ToolboxInventory[\'kind\'];\n    }[];\n    bindings?: Record<string, string>;\n    adapters?: ToolboxAdapter[];\n}',
   },
   {
     name: 'ToolboxConfigurationResult',

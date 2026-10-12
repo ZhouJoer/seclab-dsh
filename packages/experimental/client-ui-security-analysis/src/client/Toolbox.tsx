@@ -83,6 +83,8 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
         if (generation.current !== current) return
         setChecking(id)
         const result = await toolboxInventory(inventory?.environmentId, [id])
+        const settings = await toolboxConfiguration(result.inventory.environmentId)
+        if (generation.current === current) setConfiguration(settings)
         if (generation.current === current) setDirectory(value => value && ({ ...result, inventory: { ...result.inventory,
           tools: value.inventory.tools.map(tool => result.inventory.tools.find(item => item.id === tool.id) ?? tool) } }))
       }
@@ -92,6 +94,8 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
   const states = { available: 'toolAvailable', missing: 'toolMissing', error: 'toolProbeError', 'not-checked': 'toolUnchecked' } as const
   const categories = { runtime: 'toolRuntime', reverse: 'toolReverse', device: 'toolDevice', web: 'toolWeb', utility: 'toolUtility', custom: 'toolCustom' } as const
   const invocations = { shell: 'toolViaShell', plugin: 'toolViaPlugin', python: 'toolViaPython', provider: 'toolViaProvider' } as const
+  const adapterStates = { unconfigured: 'toolAdapterUnconfigured', unchecked: 'toolAdapterUnchecked',
+    unavailable: 'toolAdapterUnavailable', ready: 'toolAdapterReady' } as const
   return <section aria-label={t('toolbox')}>
     <p>{t('toolboxHelp')}</p>
     <div className={css.segments} role="group" aria-label={t('toolDomain')}>
@@ -123,6 +127,7 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
       onClose={() => { setEditing(undefined) }}
       onResult={(result) => {
         setConfiguration(result.configuration)
+        setRevision(value => value + 1)
         if (result.tool) {
           const tool = result.tool
           setDirectory(value => value && ({ ...value, inventory: { ...value.inventory, checkedAt: Date.now(),
@@ -141,26 +146,33 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
       {Object.entries(categories).filter(([category]) => visible.some(tool => tool.category === category))
         .map(([category, label]) => <section key={category} aria-label={t(label)}>
           <h3>{t(label)}</h3>
-          {visible.filter(tool => tool.category === category).map(tool => <article key={tool.id} className={css.card}>
-            <strong>{tool.id} · {t(states[tool.status])}</strong>
-            {configuration?.bindings?.[tool.id === 'r2ghidra' ? 'radare2' : tool.id] &&
-              <p>{t('toolDefaultEnvironment')}: {configuration.bindings[tool.id === 'r2ghidra' ? 'radare2' : tool.id]}</p>}
-            <p>{catalog?.tools.find(item => item.id === tool.id)?.description}</p>
-            <p>{t(invocations[tool.invocation])}</p>
-            <button disabled={busy} onClick={() => void check([tool.id])}>{t('toolCheckSelection')}</button>
-            {tool.provider && <p>{t('toolDedicatedInterface')} {tool.provider}</p>}
-            {tool.command && <p><code>{tool.command}</code></p>}
-            {tool.location && tool.location !== tool.command && <p><code>{tool.location}</code></p>}
-            {tool.version && <pre>{tool.version.split(/\r?\n/u)[0]}</pre>}
-            {tool.dependency && <p>{t('toolDependency')} {tool.dependency}</p>}
-            {tool.detail === 'dependency-unavailable' && <p>{t('toolDependencyMissing')}</p>}
-            {tool.detail === 'configuration-required' && <p>{t('toolConfigurationRequired')}</p>}
-            {(tool.version.includes('\n') || (tool.detail && !['dependency-unavailable', 'configuration-required'].includes(tool.detail))) &&
+          {visible.filter(tool => tool.category === category).map((tool) => {
+            const adapter = configuration?.adapters?.find(item => item.id === tool.id)
+            return <article key={tool.id} className={css.card}>
+              <strong>{tool.id} · {t(states[tool.status])}</strong>
+              {adapter && <section aria-label={t('toolAdapterConfiguration')}>
+                <p>{t('toolViaAdapter')}: <code>{adapter.toolName}</code> · {t(adapterStates[adapter.status])}</p>
+                <p>{t('toolAdapterOperations')}: {adapter.operations.join(', ')}</p>
+                <p>{t('toolDefaultEnvironment')}: {adapter.environmentId ?? t('toolAdapterUnconfigured')}</p>
+                {adapter.installationId !== adapter.id && <p>{t('toolAdapterSharedInstallation')} {adapter.installationId}</p>}
+                {adapter.status === 'ready' && <p>{t('toolAdapterReadinessHint')}</p>}
+              </section>}
+              <p>{catalog?.tools.find(item => item.id === tool.id)?.description}</p>
+              {!adapter && <p>{tool.provider ? t(invocations.provider) : t('toolNotAdapted')}</p>}
+              <button disabled={busy} onClick={() => void check([tool.id])}>{t('toolCheckSelection')}</button>
+              {tool.provider && <p>{t('toolDedicatedInterface')} {tool.provider}</p>}
+              {tool.command && <p><code>{tool.command}</code></p>}
+              {tool.location && tool.location !== tool.command && <p><code>{tool.location}</code></p>}
+              {tool.version && <pre>{tool.version.split(/\r?\n/u)[0]}</pre>}
+              {tool.dependency && <p>{t('toolDependency')} {tool.dependency}</p>}
+              {tool.detail === 'dependency-unavailable' && <p>{t('toolDependencyMissing')}</p>}
+              {tool.detail === 'configuration-required' && <p>{t('toolConfigurationRequired')}</p>}
+              {(tool.version.includes('\n') || (tool.detail && !['dependency-unavailable', 'configuration-required'].includes(tool.detail))) &&
             <details><summary>{t('toolDiagnostics')}</summary><pre>{tool.version}{'\n'}{tool.detail}</pre></details>}
-            {configuration?.editable && tool.invocation !== 'provider' &&
+              {configuration?.editable && tool.invocation !== 'provider' &&
             <button disabled={busy || editing !== undefined} onClick={() => { setEditing(tool.dependency ?? tool.id) }}>{t('toolConfigure')}{tool.dependency ? ' · ' + tool.dependency : ''}</button>}
-            {tool.installUrl && <a href={tool.installUrl} target="_blank" rel="noreferrer">{t('toolInstallGuide')}</a>}
-          </article>)}
+              {tool.installUrl && <a href={tool.installUrl} target="_blank" rel="noreferrer">{t('toolInstallGuide')}</a>}
+            </article>})}
         </section>)}
     </>}
   </section>

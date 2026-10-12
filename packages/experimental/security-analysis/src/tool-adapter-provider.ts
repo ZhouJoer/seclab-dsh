@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { AndroidProvider } from './android-provider.ts'
 import { inspectToolbox } from './toolbox.ts'
 import { toolboxCatalog } from './toolbox.ts'
-import { toolAdapters } from './tool-adapter-catalog.ts'
+import { adapterInstallation, toolAdapters } from './tool-adapter-catalog.ts'
 import { adapterProcessFailure, retainAdapterResult } from './tool-adapter-results.ts'
 import { fileAsset } from './workbench/assessment.ts'
 import { isPacketCapture } from './workbench/artifacts.ts'
@@ -38,6 +38,26 @@ const operationParts = (operation: string) => {
   return { adapter, action: operation.slice(adapter.id.length + 1) }
 }
 
+/** Validate the parameters belonging to one fixed operation before selecting an installation.
+ * @param operation - Adapter and operation identity.
+ * @param parameters - Untrusted model or wire parameters.
+ * @returns validated semantic inputs without deployment overrides.
+ */
+export function parseAdapterParameters(operation: string, parameters: unknown): z.infer<typeof argsSchema> {
+  operationParts(operation)
+  const fields: Record<string, readonly string[]> = {
+    'radare2.xrefs-to': ['address'], 'radare2.xrefs-from': ['address'],
+    'radare2.disassemble': ['address', 'count'], 'r2ghidra.decompile': ['address'],
+    'tshark.summary': ['filter', 'fields', 'count'], 'tshark.packets': ['filter', 'fields', 'count'],
+    'jadx.decompile': ['className'], 'strings.strings': ['minLength', 'encoding'],
+    'objdump.disassemble': ['startAddress', 'endAddress'],
+  }
+  const args = argsSchema.parse(parameters)
+  for (const key of Object.keys(args)) if (!fields[operation]?.includes(key))
+    throw new Error('Unsupported parameter for ' + operation + ': ' + key)
+  return args
+}
+
 /** Build provider-owned argv after validating all command-language values.
  * @param operation - declared tool and operation.
  * @param parameters - resolved semantic arguments.
@@ -46,7 +66,7 @@ const operationParts = (operation: string) => {
  */
 export function adapterArguments(operation: string, parameters: unknown, path: string): string[] {
   const { adapter, action } = operationParts(operation)
-  const args = argsSchema.parse(parameters)
+  const args = parseAdapterParameters(operation, parameters)
   switch (adapter.id) {
     case 'radare2':
     case 'r2ghidra': {
@@ -156,9 +176,7 @@ export class ToolAdapterProvider implements AnalysisProvider {
       throw new Error('Static tool adapters require local or managed Docker execution without a script')
     const asset = fileAsset(context.asset)
     if (adapter.id === 'jadx' && !['apk', 'dex'].includes(asset.format)) throw new Error('JADX requires APK or DEX input')
-    const parameters = argsSchema.parse(request.parameters)
-    const allowed = new Set(Object.keys(adapter.parameters))
-    for (const key of Object.keys(parameters)) if (!allowed.has(key)) throw new Error('Unsupported parameter for ' + adapter.id + ': ' + key)
+    const parameters = parseAdapterParameters(request.operation, request.parameters)
     if (adapter.id === 'radare2' && action === 'disassemble') parameters.count = Math.min(parameters.count ?? this.limits.maxInstructions, this.limits.maxInstructions)
     if (adapter.id === 'tshark') {
       parameters.count = Math.min(parameters.count ?? this.limits.maxPackets, this.limits.maxPackets)
@@ -173,6 +191,8 @@ export class ToolAdapterProvider implements AnalysisProvider {
   }
   async run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult> {
     const { adapter } = operationParts(request.operation)
+    if (!context.environment.tools.some(tool => tool.id === adapterInstallation(adapter.id)))
+      throw new Error('Configure an installation for ' + adapterInstallation(adapter.id) + ' in tool settings')
     const asset = fileAsset(context.asset)
     const limits = { signal: context.signal, durationMs: context.durationMs,
       maxOutputBytes: Math.floor(context.maxOutputBytes / 8), graceMs: this.limits.graceMs }

@@ -246,24 +246,6 @@ export const builtinToolPack = parseToolPack({
         '--version',
       ],
       'url': 'https://github.com/skylot/jadx',
-      'searchPaths': [
-        {
-          'environment': 'JADX_HOME',
-          'path': [
-            'bin',
-          ],
-        },
-        {
-          'environment': 'USERPROFILE',
-          'path': [
-            'scoop',
-            'apps',
-            'jadx',
-            'current',
-            'bin',
-          ],
-        },
-      ],
       'provider': 'android',
       'guide': 'Decompile Android DEX/APK bytecode. Reuse the android provider files, diagnostics and incomplete fields. Keep source paths and line locations when selecting code; preserve decompiler diagnostics and distinguish generated source from verified behavior. JADX does not disassemble native .so instructions; discover native binary tools for that task.',
       'skills': [
@@ -357,20 +339,6 @@ export const builtinToolPack = parseToolPack({
       ],
       'url': 'https://nmap.org/download.html',
       'guide': 'Prefer native XML output with -oX, as recommended by Nmap, over human-readable or deprecated grepable output. Read only relevant hosts, ports, services and script results, retaining their target and port/protocol locations. Save the original XML with execution status and diagnostics; inspect run completion and scan coverage before interpreting records. Script output may remain text. Empty, filtered, partial or failed scans do not establish absence of risk. Select targets and probes within existing task authority.',
-      'searchPaths': [
-        {
-          'environment': 'ProgramFiles',
-          'path': [
-            'Nmap',
-          ],
-        },
-        {
-          'environment': 'ProgramFiles(x86)',
-          'path': [
-            'Nmap',
-          ],
-        },
-      ],
       'skills': [
         'security-web',
       ],
@@ -402,20 +370,6 @@ export const builtinToolPack = parseToolPack({
         '--version',
       ],
       'url': 'https://www.wireshark.org/download.html',
-      'searchPaths': [
-        {
-          'environment': 'ProgramFiles',
-          'path': [
-            'Wireshark',
-          ],
-        },
-        {
-          'environment': 'ProgramFiles(x86)',
-          'path': [
-            'Wireshark',
-          ],
-        },
-      ],
       'guide': 'For offline packet, MQTT and wireless analysis, load the existing analysis skills and reuse their scripts before writing a parser. Read records together with warnings, incomplete, parameters and input identity. Keep frame numbers, timestamps, stream identifiers and MQTT pduIndex when filtering or correlating results. Select fields and capture ranges for the question; missing, encrypted or undecoded traffic remains unknown.\n\nTool inventory availability confirms only the reported probe. Diagnose installed executable, backend/driver, interface visibility and resource-open permission separately. Report the exact failing command, exit status and OS error. An empty interface list or a non-administrator identity alone does not prove a missing driver or denied device access. Keep unmeasured stages unknown; recheck when the execution context changes.\n\nFor Windows USB capture, run tshark -D and tshark -G folders in the same execution context as the capture. Look for USBPcapCMD.exe in the reported extcap directories, including the Wireshark installation, and query it with --extcap-interfaces. Check the USBPcap driver with Get-Service USBPcap or Win32_SystemDriver; Win32_Service and PnP listings are not conclusive driver checks. Use the exact enumerated interface. Windows error 123 indicates an invalid name; check the invocation and capture backend. Error 5 indicates access denied for that operation. Interface discovery does not establish capture permission. Only an authorized, bounded device-open or capture attempt establishes access. On permission denial, request operator assistance for the capture process; do not recommend reinstalling an existing driver or bypass permissions.',
     },
     {

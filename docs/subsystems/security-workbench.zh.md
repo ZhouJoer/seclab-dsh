@@ -10,6 +10,8 @@
 
 `ToolboxDirectory` 包含已配置的环境选项和一份实测或显式未检测的 `ToolboxInventory`。其中的 `ToolboxTool` 条目分别描述可用性、调用方式和可选 provider 集成。可用 Docker 工具提供宿主 `command` 和 `prefixArgs`，并在 `installation` 中保留原始容器可执行文件与参数，供配置持久化使用。这些只读观察不属于项目证据或执行权限；字段定义见[工具箱类型](../../packages/experimental/security-analysis/src/toolbox-types.ts)。
 
+`ToolboxConfiguration.adapters` 包含 Host 计算的 `ToolboxAdapter` 条目，描述模型工具名、操作、安装依赖、绑定来源及绑定环境中的检测状态。状态为 unconfigured、unchecked、unavailable 或 ready，不持久化，也不授予执行权限。`configureTool` 除安装 probe/save/remove 外，还接受独立的 bind/reset-binding 动作。模型发现接口提供语义能力，省略已适配工具的启动配置。
+
 `DeviceDirectory` 包含已配置的环境选项和缓存或未检测的 `DeviceInventory`。独立前提检查与 branded `RadioDeviceId` 描述软件、驱动及可见接口；观测时间用于区分保留数据和失败的刷新。这些值仅保存在内存中，不代表抓包权限或无线采集就绪。参见[设备类型](../../packages/experimental/security-analysis/src/device-types.ts)。
 
 [记录 schema](../../packages/experimental/security-analysis/src/workbench/model.ts)定义项目、资产、检查、证据、发现、计划、执行、委派和已审核经验。每个命令向 storage-domain 日志追加一个修订，制品字节先于引用发布。Session 日志保留模型可见的工具结果；领域日志负责检查和委派恢复。`SecurityDelegation` 记录分配的问题、固定的项目和资产范围、执行结果、子报告及协调者处理意见。Jobs 管理运行中的执行；采纳报告不代表确认发现。
@@ -173,9 +175,9 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('toolPreferences') toolPreferences(agent: Agent, input?: string): ToolPreferences
 
-/** Read unmeasured inventory rows for immediate operator display.
+/** Read cached or unchecked inventory rows for immediate operator display.
  * @param environmentId - selected environment, defaulting to the first local environment.
- * @returns declared installations, with every observation marked not checked.
+ * @returns declared installations and observations matching the current configuration.
  */
 @Remote('toolboxDirectory') toolboxDirectory(environmentId?: string): ToolboxDirectory
 

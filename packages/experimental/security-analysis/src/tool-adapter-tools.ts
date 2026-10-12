@@ -8,6 +8,7 @@ import type { SecurityController } from './workbench/controller.ts'
 import { operationSchema } from './workbench/model.ts'
 import { toolAdapters } from './tool-adapter-catalog.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
+import { parseAdapterParameters } from './tool-adapter-provider.ts'
 
 /** Register dedicated tools while keeping execution inside the existing observation owner.
  * @param ctx - scoped registry owner.
@@ -15,7 +16,7 @@ import { adapterResultPage } from './tool-adapter-results.ts'
  */
 export function registerToolAdapters(ctx: Context, options: {
   ready: Promise<SecurityController>
-  settings: LocalToolConfiguration | undefined
+  settings: LocalToolConfiguration
   signal: AbortSignal
   maxItems: number
   modelResultBytes: number
@@ -34,11 +35,10 @@ export function registerToolAdapters(ctx: Context, options: {
         const run = async () => {
           const controller = await options.ready
           const { assetId, operation, ...parameters } = z.looseObject({ assetId: z.string().min(1), operation: z.string() }).parse(args)
+          parseAdapterParameters(adapter.id + '.' + operation, parameters)
           const settings = options.settings
-          if (!settings) throw new Error('Configure tool installations and default environments in tool settings')
           const previous = controller.activity?.invocation(sessionId, exec.callId)
           const admitted = previous?.verified ? operationSchema.safeParse(JSON.parse(previous.parameters)) : undefined
-          if (!admitted?.success) settings.refresh()
           const request = operationSchema.parse({ provider: 'tool-adapter', operation: adapter.id + '.' + operation,
             assetId, environmentId: admitted?.success ? admitted.data.environmentId : settings.route(adapter.id), parameters, impact: 'observe' })
           const evidence = await controller.observe(sessionId, request, exec.callId, AbortSignal.any([exec.signal, options.signal]))

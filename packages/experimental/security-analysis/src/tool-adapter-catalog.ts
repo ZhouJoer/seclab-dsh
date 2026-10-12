@@ -1,4 +1,6 @@
 /** Fixed model-facing operations and role admission for external analysis tools. @module */
+import type { ToolDefinition } from './tool-definitions.ts'
+import type { ToolboxInventory } from './toolbox-types.ts'
 
 /** Each adapter accepts task parameters, never an executable or command program. */
 export const toolAdapters = [
@@ -22,6 +24,41 @@ export const toolAdapters = [
     parameters: { startAddress: { type: 'string' }, endAddress: { type: 'string' } } },
   { id: 'nm', operations: ['symbols'], description: 'List object symbols and their addresses.', parameters: {} },
 ] as const
+
+/** Resolve the shared installation of a dedicated adapter.
+ * @param id - Adapter identity.
+ * @returns installation identity; unknown adapters are rejected.
+ */
+export function adapterInstallation(id: string): string {
+  if (!toolAdapters.some(tool => tool.id === id)) throw new Error('Unknown tool adapter: ' + id)
+  return id === 'r2ghidra' ? 'radare2' : id
+}
+
+/** Project task-facing capabilities without executable discovery or launcher configuration.
+ * @param tool - Operator catalog definition.
+ * @param details - Whether to include the invocation guide.
+ * @returns model-facing definition, retaining legacy workflows for tools without an adapter.
+ */
+export function modelToolDefinition(tool: ToolDefinition, details: boolean): object {
+  const adapter = toolAdapters.find(item => item.id === tool.id)
+  const brief = { id: tool.id, label: tool.label, description: adapter?.description ?? tool.description,
+    tags: tool.tags, dependency: tool.dependency, provider: tool.provider, skills: tool.skills }
+  if (!adapter) return details ? tool : { ...brief, invocation: tool.invocation }
+  return { ...brief, invocation: 'adapter', toolName: 'security_' + adapter.id, operations: [...adapter.operations],
+    ...(details ? { guide: adapter.description + ' Call security_' + adapter.id
+      + ' with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.' } : {}) }
+}
+
+/** Remove launch configuration from model inventory rows backed by dedicated adapters.
+ * @param inventory - Operator installation observations.
+ * @returns task-facing health without launch arguments for adapted tools.
+ */
+export function modelToolInventory(inventory: ToolboxInventory): object {
+  return { ...inventory, tools: inventory.tools.map(tool => toolAdapters.some(adapter => adapter.id === tool.id)
+    ? { id: tool.id, status: tool.status, version: tool.version, dependency: tool.dependency,
+      toolName: 'security_' + tool.id, detail: tool.status === 'available' ? '' : 'Check this tool and its dependencies in operator tool settings.' }
+    : tool) }
+}
 
 /** Match a registered adapter tool without interpreting model command text.
  * @param name - DSH tool name.

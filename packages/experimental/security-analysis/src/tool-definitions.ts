@@ -8,7 +8,6 @@ const definition = z.object({
   tags: z.array(z.string().min(1).max(100)).max(100).default([]),
   platforms: z.array(z.enum(['win32', 'linux', 'darwin'])).default([]),
   commands: strings.default([]), args: strings.default(['--version']), url: z.url().or(z.literal('')).default(''),
-  searchPaths: z.array(z.object({ environment: z.string().min(1), path: strings }).strict()).default([]),
   dependency: id.optional(), dependencies: z.array(id).default([]),
   invocation: z.enum(['shell', 'plugin', 'python', 'provider']).default('shell'), provider: id.optional(),
   probe: z.discriminatedUnion('kind', [
@@ -26,9 +25,17 @@ const definition = z.object({
   if (tool.invocation !== 'provider' && !tool.commands.length && !tool.dependency)
     ctx.addIssue({ code: 'custom', message: 'Executable tools require commands or a runtime dependency' })
 })
+const compatibleDefinition = z.preprocess((input) => {
+  if (input && typeof input === 'object' && !Array.isArray(input) && 'searchPaths' in input
+    && Array.isArray(input.searchPaths) && input.searchPaths.length === 0) {
+    const { searchPaths: _emptyLegacyPaths, ...fields } = input
+    return fields
+  }
+  return input
+}, definition)
 const collection = z.object({ id, label: z.string().min(1).max(200), toolIds: z.array(id).max(1000) }).strict()
 const pack = z.object({ version: z.literal(1), id, label: z.string().min(1).max(200),
-  tools: z.array(definition).max(1000), collections: z.array(collection).max(1000).default([]) }).strict()
+  tools: z.array(compatibleDefinition).max(1000), collections: z.array(collection).max(1000).default([]) }).strict()
 /** Shareable definition; it never records an installation or a measured status. */
 export type ToolDefinition = z.infer<typeof definition>
 /** Versioned import/export format. Dependencies may refer to other registered packs. */
@@ -98,4 +105,4 @@ export function discoverTools(tools: readonly ToolDefinition[], collections: Too
  * @param input - untrusted definition fields.
  * @returns normalized executable or provider definition.
  */
-export function parseToolDefinition(input: unknown): ToolDefinition { return definition.parse(input) }
+export function parseToolDefinition(input: unknown): ToolDefinition { return compatibleDefinition.parse(input) }

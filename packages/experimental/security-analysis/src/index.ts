@@ -45,6 +45,7 @@ import { TOOL_DISCOVERY_GUIDANCE } from './analysis-tools.ts'
 import { ToolCatalog, type ToolCatalogSnapshot, type ToolPackPreview } from './tool-catalog.ts'
 import { discoverTools, toolPreferencesSchema, type ToolPreferences } from './tool-definitions.ts'
 import { LocalToolConfiguration, browseToolFiles, toolConfigurationInput } from './tool-configuration.ts'
+import { modelToolDefinition, modelToolInventory } from './tool-adapter-catalog.ts'
 import { ToolAdapterProvider, type ToolAdapterLimits } from './tool-adapter-provider.ts'
 import { registerToolAdapters } from './tool-adapter-tools.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
@@ -59,7 +60,7 @@ import { SecurityController, commandSchema } from './workbench/controller.ts'
 import { SecuritySearchIndex } from './workbench/search.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
 import { securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
-import type { ToolboxDirectory, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from './toolbox-types.ts'
+import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from './toolbox-types.ts'
 import { operationSchema, childReportSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
 import { refineKnowledge, refinementPrompt } from './workbench/knowledge.ts'
 import { synthesize } from './synthesis.ts'
@@ -166,7 +167,7 @@ Choose methods by the current materials and uncertainty; combine Web, firmware, 
 
 Record findings only about target security behavior, with conditions, impact and uncertainty. Save reusable experience with remember only when it improves future vulnerability identification, validation or prevention. Tool errors, formatting repairs and command retries belong in operational state, not findings or experience. Only an operator can approve execution or publish shared knowledge. After a scope or operator-only denial, report the blocker once and stop actions requiring that missing authority until the user changes the configuration; do not retry equivalent requests through other commands.
 
-For supported external analysis, prefer security_radare2, security_r2ghidra, security_tshark, security_jadx, security_file, security_strings, security_readelf, security_objdump and security_nm. These tools use operator-selected environments and installations, preserve evidence, and report structured results. Collecting roles may use native file and shell tools to write and run Python, Bash or PowerShell analysis scripts in the workspace under existing DSH permissions. Discover executable paths and execution locations with security_environment. Container commands run through the Host Docker CLI in the selected running container. Collect background work with job_output. First call security_capture_analysis with assetId and no callIds to list capturable committed calls; use jobId to find collected background output. Then pass the returned callIds to save auxiliary evidence. Background job IDs are not call IDs. Script logs alone do not establish complete implementation evidence or approved runtime validation. Research and reviewer roles cannot execute scripts. Missing capabilities do not authorize another target or environment. For external source code, find the actual file in the official repository before fetching its raw URL. An HTTP error page is a failed retrieval, not source evidence; inspect repository listings or saved search results instead of guessing nearby filenames.
+For supported external analysis, use security_radare2, security_r2ghidra, security_tshark, security_jadx, security_file, security_strings, security_readelf, security_objdump and security_nm. These tools use operator-selected environments and installations, preserve evidence, and report structured results. Collecting roles may use native file and shell tools to write and run Python, Bash or PowerShell analysis scripts in the workspace under existing DSH permissions. Use security_environment to check installation health. Dedicated adapters own their executable paths and execution locations. Discover launch configuration only for capabilities without a dedicated adapter. Container commands run through the Host Docker CLI in the selected running container. Collect background work with job_output. First call security_capture_analysis with assetId and no callIds to list capturable committed calls; use jobId to find collected background output. Then pass the returned callIds to save auxiliary evidence. Background job IDs are not call IDs. Script logs alone do not establish complete implementation evidence or approved runtime validation. Research and reviewer roles cannot execute scripts. Missing capabilities do not authorize another target or environment. For external source code, find the actual file in the official repository before fetching its raw URL. An HTTP error page is a failed retrieval, not source evidence; inspect repository listings or saved search results instead of guessing nearby filenames.
 
 ${TOOL_DISCOVERY_GUIDANCE}
 
@@ -232,7 +233,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private readonly delegationJobs = new WeakMap<Agent, Map<SecurityDelegationId, JobId>>()
   private readonly preferences = new Map<SessionId, ToolPreferences>()
   private readonly catalog: ToolCatalog
-  private readonly toolConfiguration: LocalToolConfiguration | undefined
+  private readonly toolConfiguration: LocalToolConfiguration
   private controller: SecurityController | undefined
   private creationQueue = Promise.resolve()
   private delegationCount = 0
@@ -268,13 +269,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
       throw new Error('Security root, import roots and environment working directories must be absolute')
     }
     validateSecurityEnvironments(config.environments)
-    if (config.toolConfiguration) {
-      const environment = config.environments.find(item => item.id === config.toolConfiguration?.environmentId)
-      if (!environment) throw new Error('Tool configuration refers to an unknown environment')
-      this.toolConfiguration = new LocalToolConfiguration(config.toolConfiguration.path, environment,
-        () => this.catalog.read(config.environments.flatMap(item => item.tools)).tools,
-        config.environments, config.toolAdapters.bindings)
-    }
+    const toolEnvironment = config.toolConfiguration
+      ? config.environments.find(item => item.id === config.toolConfiguration?.environmentId)
+      : config.environments.find(item => item.kind === 'local') ?? config.environments[0]
+    if (config.toolConfiguration && !toolEnvironment) throw new Error('Tool configuration refers to an unknown environment')
+    this.toolConfiguration = new LocalToolConfiguration(config.toolConfiguration?.path, toolEnvironment,
+      () => this.catalog.read(config.environments.flatMap(item => item.tools)).tools,
+      config.environments, config.toolAdapters.bindings)
     validateTaskIntake(config.taskIntake, config.environments.map(environment => environment.id))
     ctx.inject(['skills'], (skillCtx) => { installSecurityMethods(skillCtx) })
     this.ready = this.initialize()
@@ -393,6 +394,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
           const limit = z.number().int().positive().max(config.toolDiscoveryPageSize).parse(args.limit ?? config.toolDiscoveryPageSize)
           const page = matches.slice(offset, offset + limit)
+          const configurationEnvironment = config.environments.find(env => env.kind !== 'android' && !env.externalContainer)
+          const adapters = configurationEnvironment ? this.toolboxConfiguration(configurationEnvironment.id).adapters : undefined
           const project = controller.view(exec.agent.id).records.find(item => item.kind === 'engagement')
           return json({
             role: binding?.role ?? null,
@@ -402,9 +405,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
               .map(({ id, kind }) => ({ id, kind })),
             catalogRevision: catalog.revision,
             total: matches.length, nextOffset: offset + page.length < matches.length ? offset + page.length : null,
-            catalog: page.map(tool => args.details ? tool : ({ id: tool.id, label: tool.label,
-              description: tool.description, tags: tool.tags, invocation: tool.invocation,
-              dependency: tool.dependency, provider: tool.provider, skills: tool.skills })),
+            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false),
+              ...(adapters?.some(adapter => adapter.id === tool.id)
+                ? { adapter: adapters.find(adapter => adapter.id === tool.id) } : {}) })),
             collections: catalog.collections.slice(offset, offset + limit).map(({ id, label }) => ({ id, label })),
             preferences: this.preferences.get(exec.agent.id) ?? null,
             providers: controller.providers.list().map(id => ({ id,
@@ -432,18 +435,20 @@ export default class SecurityWorkbench extends TypertRemoteService {
             throw new Error('Environment is outside active project scope')
           const environment = config.environments.find(env => env.id === args.environmentId)
           assert(environment, 'Project environment must be configured')
-          this.toolConfiguration?.refresh()
+          this.toolConfiguration.refresh()
           const manager = controller.environments.get('local').manager
           if (args.devices) return json(await controller.manageEnvironment(environment.id, signal => manager.devices(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal])), project.value.id))
+          const key = this.toolObservationKey(environment)
           const inventory = await controller.manageEnvironment(environment.id, signal => manager.inventory(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal]),
             args.toolIds ?? (args.toolId === undefined ? undefined : [args.toolId])), project.value.id)
+          this.rememberTools(key, inventory)
           if (args.toolId !== undefined && args.toolIds === undefined) {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
           }
-          return json(inventory)
+          return json(modelToolInventory(inventory))
         },
       }),
     )
@@ -794,7 +799,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       name: 'security:workbench',
       order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX'),
       text: () => {
-        this.toolConfiguration?.refresh()
+        this.toolConfiguration.refresh()
         return GUIDANCE
       },
       interpolate: false,
@@ -1297,7 +1302,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('toolCatalog')
   toolCatalog(): ToolCatalogSnapshot {
-    this.toolConfiguration?.refresh()
+    this.toolConfiguration.refresh()
     return this.catalog.read(this.config.environments.flatMap(env => env.tools))
   }
   /** Read the bundled script library without selecting a project or probing tools.
@@ -1356,9 +1361,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
     }
     return structuredClone(this.preferences.get(agent.id) ?? { toolIds: [], tags: [], collectionIds: [] })
   }
-  /** Read unmeasured inventory rows for immediate operator display.
+  /** Read cached or unchecked inventory rows for immediate operator display.
    * @param environmentId - selected environment, defaulting to the first local environment.
-   * @returns declared installations, with every observation marked not checked.
+   * @returns declared installations and observations matching the current configuration.
    */
   @Remote('toolboxDirectory')
   toolboxDirectory(environmentId?: string): ToolboxDirectory {
@@ -1367,15 +1372,29 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const environment = environmentId === undefined ? environments.find(env => env.kind === 'local') ?? environments[0]
       : environments.find(env => env.id === environmentId)
     if (!environment) throw new Error('Configure an analysis environment before inspecting tools')
+    const measured = this.toolObservations.get(environment.id)
+    const observed = measured?.key === this.toolObservationKey(environment) ? measured.inventory : undefined
     return { environments: environments.map(({ id, label, kind }) => ({ id, label, kind })), inventory: {
       environmentId: environment.id, kind: environment.kind, runtime: 'unchecked', detail: '', checkedAt: 0,
-      workdir: environment.cwd, tools: catalog.tools.map((tool) => {
+      workdir: environment.cwd, ...observed, tools: catalog.tools.map((tool) => {
+        const row = observed?.tools.find(item => item.id === tool.id)
+        if (row) return row
         const pin = environment.tools.find(pin => pin.id === tool.id)
         return { id: tool.id, category: tool.category, status: 'not-checked', command: pin?.command ?? '',
           prefixArgs: pin?.prefixArgs ?? [], version: '', location: '', source: pin?.source ?? 'PATH',
           ...(tool.dependency ? { dependency: tool.dependency } : {}), detail: '', installUrl: tool.url, invocation: tool.invocation, ...(tool.provider ? { provider: tool.provider } : {}) }
       }),
     } }
+  }
+  private readonly toolObservations = new Map<string, { key: string; inventory: ToolboxInventory }>()
+  private toolObservationKey(environment: SecurityEnvironment): string {
+    return JSON.stringify([environment, this.catalog.read().revision])
+  }
+  private rememberTools(key: string, inventory: ToolboxInventory): void {
+    const previous = this.toolObservations.get(inventory.environmentId)
+    const tools = new Map(previous?.key === key ? previous.inventory.tools.map(tool => [tool.id, tool]) : [])
+    for (const tool of inventory.tools) tools.set(tool.id, tool)
+    this.toolObservations.set(inventory.environmentId, { key, inventory: { ...inventory, tools: [...tools.values()] } })
   }
   /** Inspect installed tools, starting managed Docker from an existing image when necessary.
    * @param environmentId - configured environment; omission selects the first local environment.
@@ -1385,7 +1404,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('toolboxInventory')
   async toolboxInventory(environmentId?: string, toolIds?: string[]): Promise<ToolboxDirectory> {
     const controller = await this.ready
-    this.toolConfiguration?.refresh()
+    this.toolConfiguration.refresh()
     const environments = this.config.environments
     const environment = environmentId === undefined ? environments.find(item => item.kind === 'local') ?? environments[0]
       : environments.find(item => item.id === environmentId)
@@ -1395,11 +1414,14 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const combined = AbortSignal.any([signal, this.shutdown.signal])
       if (environment.kind === 'docker' && !environment.externalContainer && !environment.containerId)
         await manager.start(environment, combined)
-      return manager.inventory(environment, combined, toolIds)
+      const key = this.toolObservationKey(environment)
+      const inventory = await manager.inventory(environment, combined, toolIds)
+      return { key, inventory }
     })
     this.pending.add(pending)
     try {
-      const inventory = await pending
+      const { key, inventory } = await pending
+      this.rememberTools(key, inventory)
       return { environments: environments.map(({ id, label, kind }) => ({ id, label, kind })), inventory }
     } finally { this.pending.delete(pending) }
   }
@@ -1423,7 +1445,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('deviceInventory')
   async deviceInventory(environmentId?: string): Promise<DeviceDirectory> {
     const controller = await this.ready
-    this.toolConfiguration?.refresh()
+    this.toolConfiguration.refresh()
     const directory = this.deviceDirectory(environmentId)
     const environment = this.config.environments.find(item => item.id === directory.inventory.environmentId)
     if (!environment) throw new Error('Selected device environment is no longer configured')
@@ -1447,8 +1469,21 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('toolboxConfiguration')
   toolboxConfiguration(environmentId: string): ToolboxConfiguration {
     const environment = this.config.environments.find(item => item.id === environmentId)
-    return this.toolConfiguration && environment && environment.kind !== 'android' && !environment.externalContainer
-      ? this.toolConfiguration.read(environmentId) : { editable: false, revision: '', tools: [] }
+    if (!environment || environment.kind === 'android' || environment.externalContainer)
+      return { editable: false, revision: '', tools: [] }
+    const configuration = this.toolConfiguration.read(environmentId)
+    for (const adapter of configuration.adapters ?? []) {
+      if (adapter.status === 'unconfigured') continue
+      const target = this.config.environments.find(item => item.id === adapter.environmentId)
+      if (!target) continue
+      const measured = this.toolObservations.get(target.id)
+      if (!measured || measured.key !== this.toolObservationKey(target)) continue
+      const rows = [adapter.id, ...adapter.dependencies].map(id => measured.inventory.tools.find(tool => tool.id === id))
+      adapter.status = measured.inventory.runtime === 'stopped' || measured.inventory.runtime === 'unavailable'
+        || rows.some(row => row?.status === 'missing' || row?.status === 'error') ? 'unavailable'
+        : measured.inventory.runtime === 'ready' && rows.every(row => row?.status === 'available') ? 'ready' : 'unchecked'
+    }
+    return configuration
   }
   /** Probe or save a tool selected by the authenticated operator.
    * @param environmentId - configured local environment.
@@ -1458,9 +1493,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('configureTool')
   async configureTool(environmentId: string, input: string): Promise<ToolboxConfigurationResult> {
     const settings = this.toolConfiguration
-    if (!settings) throw new Error('This environment has no editable tool configuration')
+    if (settings.path === undefined) throw new Error('This environment has no editable tool configuration')
     const selectedEnvironment = settings.editableEnvironment(environmentId)
     const update = toolConfigurationInput.parse(JSON.parse(input))
+    if (update.action === 'bind' || update.action === 'reset-binding') {
+      settings.bind(update.id, update.action === 'bind' ? update.defaultEnvironmentId : undefined, update.revision, environmentId)
+      return { saved: true, tool: null, configuration: this.toolboxConfiguration(environmentId) }
+    }
     const catalog = standaloneTool(update.id, this.toolCatalog().tools)
     const controller = await this.ready
     return controller.manageEnvironment(environmentId, async (signal) => {
@@ -1490,9 +1529,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
       }
       if (!tool) throw new Error('Choose a file for the custom tool before checking it')
       const saved = update.action === 'save' && tool.status === 'available'
-      const configuration = saved ? settings.commit(update.id, { ...pin, ...(tool.installation ?? { command: tool.command }) },
-        update.revision, environmentId, update.defaultEnvironmentId) : settings.read(environmentId)
-      return { saved, tool, configuration }
+      if (saved) {
+        settings.commit(update.id, { ...pin, ...(tool.installation ?? { command: tool.command }) },
+          update.revision, environmentId, update.defaultEnvironmentId)
+        this.rememberTools(this.toolObservationKey(selectedEnvironment), inventory)
+      }
+      return { saved, tool, configuration: this.toolboxConfiguration(environmentId) }
     })
   }
   /** Browse files on the Host for an explicit tool-selection gesture.
@@ -1503,7 +1545,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('toolboxFiles')
   async toolboxFiles(environmentId: string, directory?: string): Promise<ToolboxFiles> {
     const settings = this.toolConfiguration
-    if (!settings) throw new Error('This environment has no editable tool configuration')
+    if (settings.path === undefined) throw new Error('This environment has no editable tool configuration')
     const environment = settings.editableEnvironment(environmentId)
     if (environment.kind !== 'local') throw new Error('File selection requires a local environment')
     return browseToolFiles(directory ?? environment.cwd, this.config.maxDerivedAssets)

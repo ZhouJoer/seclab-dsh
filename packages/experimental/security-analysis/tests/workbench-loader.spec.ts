@@ -193,7 +193,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { adapters?: boolean; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -287,7 +287,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                           { cwd: options.taskIntake === 'current' ? root : join(root, 'other'), environmentIds: ['local'] },
                         ] } } : {}),
                       root: join(root, 'workbench'), importRoots: [root],
-                      ...(options.adapters ? { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' },
+                      ...(options.adapters ? { ...(options.adapters === 'deployment' ? {} : { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' } }),
                         toolAdapters: { bindings: { radare2: 'local' } } } : {}),
                       environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root, tools: options.installations ?? [] }] }
                     : {},
@@ -350,6 +350,54 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('runs deployment-only adapters and rejects model installation overrides before spawning', async () => {
+    const installation = { id: 'file', command: process.execPath, prefixArgs: ['-e', 'console.log("fixture file")', '--'],
+      versionArgs: ['--version'], source: 'Deployment' }
+    const { ctx, agent, controller } = await load(false, 0, { adapters: 'deployment', installations: [
+      { ...installation, id: 'radare2', prefixArgs: ['-e', 'console.log(JSON.stringify({core:{type:"fixture"}}))', '--'] },
+    ] })
+    const configuration = ctx.securityWorkbench.toolboxConfiguration('local')
+    expect(configuration.editable).toBe(false)
+    expect(configuration.adapters?.find(item => item.id === 'radare2')).toMatchObject({ bindingSource: 'deployment', status: 'unchecked' })
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Deployment configuration', objective: 'Inspect a fixture', environmentIds: ['local'], maxAttempts: 2 })
+    const path = join(roots[roots.length - 1]!, 'sample.bin')
+    await writeFile(path, 'fixture')
+    await send({ kind: 'import', path, label: 'Fixture' })
+    const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Missing fixture asset')
+    const args = { assetId: asset.value.id, operation: 'identity' }
+    const result = await execute(ctx, agent, 'security_radare2', args, 'deployment-call')
+    expect(result.isError, JSON.stringify(result)).toBe(false)
+    for (const override of [{ command: 'other' }, { environmentId: 'other' }, { count: 4 }])
+      expect((await execute(ctx, agent, 'security_radare2', { ...args, ...override }, JSON.stringify(override))).isError).toBe(true)
+    expect(controller.activity!.usage(controller.binding(agent.id)!.engagementId)).toEqual([
+      expect.objectContaining({ tool: 'radare2', completed: 1 }),
+    ])
+  })
+
+  it('changes adapter bindings without probing installations and derives health from matching configuration', async () => {
+    const { ctx } = await load(false, 0, { adapters: true })
+    const service = ctx.securityWorkbench
+    const spawn = vi.spyOn(ctx.subprocess, 'spawn')
+    const initial = service.toolboxConfiguration('local')
+    const saved = await service.configureTool('local', JSON.stringify({ action: 'bind', id: 'tshark',
+      revision: initial.revision, defaultEnvironmentId: 'local' }))
+    expect(saved.configuration.adapters?.find(item => item.id === 'tshark')).toMatchObject({ bindingSource: 'operator', status: 'unconfigured' })
+    const removed = await service.configureTool('local', JSON.stringify({ action: 'reset-binding', id: 'tshark', revision: saved.configuration.revision }))
+    expect(removed.configuration.adapters?.find(item => item.id === 'tshark')).toMatchObject({ bindingSource: 'none', status: 'unconfigured' })
+    expect(spawn).not.toHaveBeenCalled()
+    await expect(service.configureTool('local', JSON.stringify({ action: 'bind', id: 'tshark', revision: initial.revision,
+      defaultEnvironmentId: 'missing' }))).rejects.toThrow('environment')
+    const installation = await service.configureTool('local', JSON.stringify({ action: 'save', id: 'radare2', command: process.execPath,
+      versionArgs: ['--version'], revision: removed.configuration.revision }))
+    expect(installation.configuration.adapters?.find(item => item.id === 'radare2')?.status).toBe('ready')
+    expect(installation.configuration.adapters?.find(item => item.id === 'r2ghidra')?.status).toBe('unchecked')
+    const afterRemoval = await service.configureTool('local', JSON.stringify({ action: 'remove', id: 'radare2', revision: installation.configuration.revision }))
+    expect(afterRemoval.configuration.adapters?.find(item => item.id === 'radare2')?.status).toBe('unconfigured')
+    expect(service.toolboxDirectory('local').inventory.tools.find(item => item.id === 'radare2')?.status).toBe('not-checked')
+  })
+
   it('dispatches a dedicated adapter through the model and reuses saved evidence without extra activity', async () => {
     const { ctx, agent, controller, model } = await load(false, 0, { adapters: true })
     const root = roots[roots.length - 1]!
@@ -528,11 +576,13 @@ describe('security workbench Loader composition', () => {
     expect(request).not.toContain('rcTemplate')
     const result = await execute(ctx, agent, 'security_capabilities', { toolIds: ['radare2'], details: true })
     expect(result.isError).toBe(false)
-    expect(JSON.stringify(result)).toContain('prefer available radare2/r2')
+    expect(JSON.stringify(result)).toContain('security_radare2')
+    expect(JSON.stringify(result)).not.toContain('prefixArgs')
+    expect(JSON.stringify(result)).not.toContain('"commands"')
     expect(JSON.stringify(result)).not.toContain('USBPcapCMD.exe')
     const web = await execute(ctx, agent, 'security_capabilities', { collectionIds: ['web'] })
     expect(JSON.stringify(web.value)).toContain('nuclei')
-    expect(JSON.stringify(web.value)).not.toContain('radare2')
+    expect(JSON.stringify(web.value)).not.toContain('"id":"radare2"')
     expect(JSON.stringify(web.value)).not.toContain('Prefer native XML')
     expect(JSON.stringify(web.value)).not.toContain('rcTemplate')
     for (const query of ['IoT', '物联网', 'MQTT', 'pcapng', 'BLE', 'Wi-Fi']) {
@@ -815,7 +865,7 @@ describe('security workbench Loader composition', () => {
   })
   it('loads independent providers and logs model-visible scope through the unchanged loop', async () => {
     const { ctx, agent, controller, model } = await load()
-    expect(controller.providers.list().sort()).toEqual(['android', 'binary', 'external-web', 'frida', 'ghidra', 'native', 'offline', 'packet-capture', 'source', 'web'])
+    expect(controller.providers.list().sort()).toEqual(['android', 'binary', 'external-web', 'frida', 'ghidra', 'native', 'offline', 'packet-capture', 'source', 'tool-adapter', 'web'])
     expect(controller.environments.list()).toEqual(['local'])
     agent.followup(
       createUserMessage({ content: [{ type: 'text', text: 'Inspect the scope.' }], source: { kind: 'user' } }),

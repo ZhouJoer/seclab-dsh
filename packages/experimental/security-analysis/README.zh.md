@@ -46,7 +46,11 @@ kind: "package-reference"
 
 专用静态工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义各工具操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色检查、项目环境授权、执行租约和不可变证据。模型无需填写可执行文件路径、环境 ID 或命令程序。security_r2ghidra 跟随 radare2 的安装和环境绑定。Shell 和 security_static 继续支持既有流程。
 
+对于已适配工具，security_capabilities 提供专用接口及操作，security_environment 省略可执行文件路径和启动参数。操作员库存保留完整安装信息。导入定义不能替换已实现的适配接口。未覆盖能力继续使用既有 Provider 或 Shell 流程。
+
 在工具箱配置安装和固定的默认执行环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将独立工具 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属的本机环境；读取兼容旧文件，首次保存写入带版本的格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。保存比较整个文档的修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。工具缺失、环境未授权或绑定无效时明确失败，不切换环境。
+
+部署安装与绑定无需 toolConfiguration 即可运行；可选文件用于保存操作员修改。bind 与 reset-binding 只更新路由，不探测可执行文件或启动容器。专用适配器要求显式安装配置，不通过 PATH 寻找替代安装。操作员扫描可搜索 PATH 或明确指定的目录；工具专用环境变量及依赖环境变量的 searchPaths 不作为配置来源。旧配置中的空 searchPaths 数组仍可读取。
 
 托管 Docker 的检测和适配调用在环境租约内启动已配置的本地镜像，不拉取镜像。Docker 安装项填写容器内可执行文件，docker 安装项填写 Host 启动程序。输入和生成文件使用挂载到 /dsh-inputs 的私有运行目录，执行后清理。该适配层不支持外部容器、Android 设备或 SSH。配置和检测不安装或更新软件。
 
