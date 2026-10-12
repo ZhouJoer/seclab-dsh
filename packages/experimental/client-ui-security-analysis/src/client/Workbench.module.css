@@ -301,3 +301,8 @@
 .toolFileList button { text-align: left; overflow-wrap: anywhere; padding: 7px 10px; }
 
 .taskSummary .taskActions .primaryAction { background: var(--dsw-alias-link); border-color: transparent; color: var(--dsw-alias-label-primary-inverted); }
+
+.miningCard { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 10px 12px; margin-top: 14px; }
+.miningCard summary { cursor: pointer; font-weight: 600; }
+.miningCard ol { margin: 8px 0 0; padding-inline-start: 20px; display: grid; gap: 6px; }
+.miningCard code { overflow-wrap: anywhere; }

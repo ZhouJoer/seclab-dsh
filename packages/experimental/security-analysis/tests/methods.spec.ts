@@ -6,7 +6,7 @@ import { installSecurityMethods } from '../src/methods.ts'
 import { ANALYSIS_SCRIPTS_DIRECTORY } from '../src/analysis-scripts.ts'
 
 const contexts: Context[] = []
-const names = ['security-android', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-packet-analysis', 'security-web']
+const names = ['security-android', 'security-cve-mining', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-packet-analysis', 'security-web']
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
@@ -41,7 +41,9 @@ describe('security method skills', () => {
         name,
         source: 'bundled',
         provider: 'security-analysis',
-        invocation: { modelInvocable: true, userInvocable: true },
+        invocation: name === 'security-cve-mining'
+          ? { modelInvocable: false, userInvocable: true }
+          : { modelInvocable: true, userInvocable: true },
       })
       if (!skill) throw new Error(`Missing security method: ${name}`)
       expect(renderSkillContent(skill).replaceAll(ANALYSIS_SCRIPTS_DIRECTORY, '<analysis-scripts>')).toMatchSnapshot(name)

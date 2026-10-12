@@ -53,12 +53,12 @@ export function canObserve(role: SecurityRole, provider: string, operation: stri
 }
 
 /** Task types accepted by the delegated prompt builder. */
-export const taskKinds = ['inventory', 'surface', 'assessment', 'review'] as const
+export const taskKinds = ['inventory', 'surface', 'assessment', 'review', 'mining'] as const
 /** Bounded tasks do not confer additional execution authority. */
 export type SecurityTask = (typeof taskKinds)[number]
 const assignments: Record<DelegatedRole, readonly [SecurityTask, ...SecurityTask[]]> = {
   reconnaissance: ['inventory'],
-  'reverse-analyst': ['surface', 'assessment'],
+  'reverse-analyst': ['surface', 'assessment', 'mining'],
   'web-analyst': ['surface', 'assessment'],
   researcher: ['assessment'],
   reviewer: ['review'],
@@ -74,6 +74,7 @@ const taskPrompts: Record<SecurityTask, string> = {
   inventory: 'Deliver an asset inventory and candidate entry points, each linked to observations; list inaccessible environments separately.',
   surface: 'Deliver an entry-point map with inputs, trust boundaries, callers and reachable operations. State what has not been examined.',
   assessment: 'For each plausible weakness, assess applicability, supporting and contrary evidence, impact and uncertainty. Propose a controlled runtime check only when static material does not resolve it; do not execute the proposal.',
+  mining: 'Rediscover one candidate weakness end to end: name the root cause with file and line references and the violated invariant, construct a minimal reproducer, and propose the sanitizer build and differential run plans for the coordinator to approve. Report affected conditions from source evidence, and state exactly what remains unvalidated.',
   review: 'For a recorded finding of the assigned asset, read its actual ID and current finding hash with security_scope. Persist security_review with basis, supporting and opposing evidence, explanation and uncertainty; the verdict must be confirmed, refuted or inconclusive. Explain missing runtime proof without reopening unrelated questions. Without a recorded finding, return the evidence assessment through structured_output with summary, evidenceIds, uncertainty and nextSteps; state that no finding review was persisted. Do not call security_review or claim a confirmed finding in that case. If the evidence supports a candidate, recommend that the coordinator save a suspected finding before requesting its formal review. Never invent finding IDs or hashes.',
 }
 

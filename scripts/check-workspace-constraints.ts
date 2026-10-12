@@ -191,13 +191,13 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-client-shortcuts': ['lib/protocol.js'],
   // The CPython side ships as source .py files, published as-is rather than built.
   '@deepseek-ai/dsh-experimental-ptc-runtime-python': ['py/**/*.py'],
-  // Reverse providers are independently loaded exports. Their shared bundles and
-  // the Python/Ghidra helpers must remain available after package installation.
+  // Analysis providers are independently loaded exports. Their shared bundles,
+  // benchmark cases and Python/Ghidra helpers remain available after installation.
   '@deepseek-ai/dsh-experimental-security-analysis': [
     'lib/workbench.js', 'lib/environment.js', 'lib/ghidra.js', 'lib/frida.js',
-    'lib/android.js', 'lib/commands.js', 'lib/web.js', 'lib/external-web.js', 'lib/http-*.js', 'lib/laboratory.js', 'lib/offline.js', 'lib/native.js', 'lib/packet-capture.js',
+    'lib/android.js', 'lib/commands.js', 'lib/web.js', 'lib/external-web.js', 'lib/http-*.js', 'lib/laboratory.js', 'lib/offline.js', 'lib/native.js', 'lib/packet-capture.js', 'lib/mining.js', 'lib/mining-*.js',
     'lib/model-*.js', 'lib/process-*.js', 'lib/toolbox-*.js', 'lib/types-*.js', 'lib/source-*.js', 'lib/assessment-*.js', 'lib/artifacts-*.js', 'lib/device-inventory-*.js',
-    'resources/**/*.py', 'resources/**/*.js', 'resources/toolbox/Dockerfile', 'resources/offline/*',
+    'resources/**/*.py', 'resources/**/*.js', 'resources/cve-cases/*.json', 'resources/toolbox/Dockerfile', 'resources/offline/*',
   ],
   '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice': ['runtime/assets.json'],
   // The isolated Node bootstrap is a separately launched bundle.

@@ -58,6 +58,15 @@ These items describe product capabilities, not a test checklist. Existing implem
 - [ ] **Operator workflow**: offer clear plan approval/revocation, project stop/resume, live task progress and reconnection recovery; preserve chat while making domain actions discoverable.
 - [ ] **Extensible role and task templates**: register role tool policies, task prompts, completion conditions and environment needs without editing the fixed built-in role tables.
 
+### P1.5: CVE mining (N-day blind rediscovery)
+
+- [x] **Mining provider**: approved `mining` build/run operations in a managed Docker environment with isolated per-tag build roots, registered container tools, `{sourceDir}`/`{buildRoot}` tokens and sanitizer-crash observations (`packages/experimental/security-analysis/src/mining-provider.ts`).
+- [x] **Mining method and task**: `security-cve-mining` skill, `mining` delegated task kind and the toolbox `mining` collection with git/cmake/make/gcc/clang/pkg-config definitions plus a build-toolchain image recipe.
+- [x] **Blind benchmark harness**: `pnpm security:cve-bench` prepares pinned vulnerable/fixed checkouts and a patch lead, generates the blind task and overlay, and grades exported reports; three seed cases ship under `resources/cve-cases/`.
+- [ ] **Real-model blind acceptance**: run the seeds end to end through the security profile with a real model and record the rediscovery rate; ground-truth crash differentials pass in the mining container first.
+- [ ] **Phase 2 fuzzing**: AFL++ campaigns with campaign-level approval, crash collection, deduplication and minimization; fully blind (no patch lead) tier.
+- [ ] **Phase 3 advisory data**: NVD/OSV retrieval through the web service, affected-version range analysis and disclosure-ready report sections.
+
 ### P2: additional security projects
 
 - [ ] **Web security projects**: authorized target inventory, exposed-entry mapping, session/browser environments and controlled validation templates using the same evidence and approval services.

@@ -692,7 +692,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           checkId: { type: 'string', description: 'Optional planned check for the assigned asset. All dependencies must be complete; the report does not complete the check.' },
           inputEvidenceIds: { type: 'array', items: { type: 'string' }, description: 'Existing observations for this asset to read first, including failed or incomplete observations. Supply this list explicitly on retries.' },
           role: { type: 'string', required: true, enum: ['reconnaissance', 'reverse-analyst', 'web-analyst', 'researcher', 'reviewer'] },
-          task: { type: 'string', enum: [...taskKinds], description: 'inventory for reconnaissance; surface or assessment for reverse-analyst; assessment for researcher; review for reviewer. Omission uses the role default.' },
+          task: { type: 'string', enum: [...taskKinds], description: 'inventory for reconnaissance; surface, assessment or mining for reverse-analyst; assessment for researcher; review for reviewer. Omission uses the role default.' },
         },
         output,
         execute: async (args, exec) => {

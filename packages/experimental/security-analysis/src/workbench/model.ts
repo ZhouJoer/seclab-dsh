@@ -208,7 +208,7 @@ export const childReportSchema = z.object({
 export const delegationSchema = z.object({
   id: id.transform(brandString<SecurityDelegationId>), engagementId: id, assetId: id, checkpointId: z.string(),
   parentSessionId: id.transform(brandString<SessionId>), callId: id,
-  role: roleSchema.exclude(['coordinator']), task: z.enum(['inventory', 'surface', 'assessment', 'review']),
+  role: roleSchema.exclude(['coordinator']), task: z.enum(['inventory', 'surface', 'assessment', 'review', 'mining']),
   question: text, criterion: text, reason: text.optional(), retryOf: id.transform(brandString<SecurityDelegationId>).optional(),
   checkId: id.transform(brandString<CheckId>).optional(),
   inputEvidenceIds: z.array(id.transform(brandString<EvidenceId>)).optional(),

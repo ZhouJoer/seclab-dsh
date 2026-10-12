@@ -30,7 +30,7 @@ kind: "package-reference"
 
 分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好仅作为优先建议。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse` 与 `iot` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
 
-通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android` 和 `security-iot-offline`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。方法不安装工具，也不授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
+通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。方法不安装工具，也不授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
 
 1. 在已配置工作区的 Web 对话中描述任务，或创建项目并指定目标和已配置环境。从部署的 `importRoots` 导入 PE、ELF、APK、DEX 文件，或不可变源码文件或目录。
 2. 根据每项资产的研究问题选择下一步分析和 provider。APK 导入会分别测量 DEX 和 native 库，并保存父子关系。
@@ -61,7 +61,7 @@ toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分�
 <a id="configure-analysis-providers"></a>
 ### 配置分析 provider
 
-包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./ghidra`、`./frida`、`./android` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
+包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./ghidra`、`./frida`、`./android`、`./mining` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
 
 Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测、原生 Shell 调用和 `external-web` 请求；需要传输 Host 制品的 provider 会拒绝它们。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
 
@@ -95,7 +95,7 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 |---|---|---|
 | `coordinator` | 规划、汇总与验证 | 领域工具、原生脚本、网页资料、jobs/goal/todo；执行已批准的验证计划 |
 | `reconnaissance` | `inventory` | 原生脚本、二进制身份/十六进制/字符串、Ghidra 清单、固定 adb 查询、环境检查、证据检索 |
-| `reverse-analyst` | `surface`、`assessment` | 原生脚本、二进制检查、只读 Ghidra 查询、JADX 和固定 adb 查询、环境检查、证据检索与公开资料研究 |
+| `reverse-analyst` | `surface`、`assessment`、`mining` | 原生脚本、二进制检查、只读 Ghidra 查询、JADX 和固定 adb 查询、环境检查、证据检索与公开资料研究 |
 | `web-analyst` | `surface`、`assessment` | 原生脚本、已分配的 HTTP 证据、不可变源码读取/搜索、环境检查与公开资料研究 |
 | `researcher` | `assessment` | 项目证据、已审核知识、公开网页搜索与读取；不能执行样本或调用静态 provider |
 | `reviewer` | `review` | 指定资产的证据与知识检索；不能采集、访问网页或执行验证 |
@@ -152,6 +152,8 @@ Host 运行期间，配置成对的 `knowledgeProvider` 和 `knowledgeModel` 后
 `import-source` 将选定的源码文件或目录保存为一个资产，包含相对路径、SHA-256 哈希和不可变内容制品。选择单个文件时，清单仅包含以该文件名命名的一项，不会导入相邻文件。目录遍历会记录排除的链接而不跟随它们。`maxDerivedAssets` 限制遍历条目，`maxArtifactBytes` 限制源码总字节数。`source` provider 提供有界的 `list`、`read` 和字面文本 `search` 操作；结果保留文件哈希、行号和续读位置。旧文件资产仍可读取。
 
 `./native` 插件直接在 Host（包括 Windows）执行已审批的 `native/python` 计划。选择验证检查项和本机环境，提交完整 Python 脚本，参数为 `{}` 或环境工作区内的 `{cwd: 绝对目录}`。准备阶段发现已配置或可用的 Python，固定程序路径、版本、操作系统和已存在的工作目录。执行前重新核对这些值，通过标准输入和 `-I -u -B` 运行已保存脚本，不另行加载可变脚本包装器。输入和依赖仍为本机当前文件，应使用绝对路径并在结果中记录其身份。本机执行具有 Host 当前用户的文件、网络和设备权限，不提供 Docker 隔离；计划须说明影响和清理方式。审批、时长与输出上限、项目停止和子进程清理仍生效。脚本生成的文件保留；`graceMs` 配置进程清理宽限期。Windows DLL 需要 Windows 和兼容的 Python 架构。应新建本机计划，不能复用离线审批。
+
+`./mining` 插件在受管 Docker 环境内重编译导入的 C/C++ 源码并执行复现程序，用于盲测漏洞再发现。该能力为实验性且仅限手动：`security-cve-mining` 方法以 `modelInvocable: false` 注册，普通对话不会发现或启动它；只有用户显式手势或操作员启动的基准任务才会加载，任务提示词内联了方法约束。它注册 `mining` provider 的两个受计划约束的操作。`build` 接收 `sourceDir`（环境工作区内的绝对目录）、唯一 `buildTag` 和有序 `steps`；每个 step 选择该环境已注册的工具（`cmake`、`make`、`gcc`、`python`）并给出字面量 argv，其中 `{sourceDir}` 与 `{buildRoot}` 占位符会解析为映射进容器挂载点的 Host 路径。每棵构建树隔离在环境的交换挂载之下，漏洞版本与修复版本的产物不会混用。`run` 从对应构建根执行程序，argv 有界，可选标准输入文本（`maxInputBytes` 默认 262,144）；sanitizer 崩溃或非零退出记录为观察结果而非 provider 失败，超时和取消才是失败。两个操作均为 `analysis-write`，始终处于一次性审批计划内并受部署的 `maxDurationMs` 约束；完整 sanitizer 构建需要上调该时限。源码树保持只读，autotools 项目通过 `sh configure` 配置，二进制 PoC 文件通过构建步骤写入构建根而非标准输入。[工具箱镜像配方](resources/toolbox/Dockerfile) 安装构建工具链；[security-cve-bench](../../../scripts/security-cve-bench.ts) 准备带固定漏洞/修复 commit 的盲测案例，并按每个 [案例](resources/cve-cases/) 记录的补丁文件与崩溃特征对导出报告评分。
 
 `./offline` 插件仅通过已审批的不可变计划接收 Python 或浏览器脚本。配置本地 `docker` 和包含 Python、Node、Playwright、Chromium 的现有镜像；[镜像配方](resources/offline/Dockerfile) 与[浏览器运行器](resources/offline/browser.mjs) 定义运行时布局。准备阶段固定已安装镜像 ID，provider 不拉取镜像。计划提交完整脚本代码，不是宿主脚本路径；导入源码位于 /input/source（DSH_SOURCE_ROOT），临时文件放入 /tmp。给宿主路径加上 /tmp 前缀不会挂载该路径。可配置限制为 `image`、`memoryMb`、`cpus`、`pids`、`temporaryMb` 和 `graceMs`。这种 Linux 模拟不能读取 Host 磁盘路径或原生加载 Windows DLL；此类检查应选择 `native/python`。
 

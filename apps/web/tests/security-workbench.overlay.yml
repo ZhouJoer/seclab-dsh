@@ -62,6 +62,8 @@
       name: '@deepseek-ai/dsh-experimental-security-analysis/offline'
     - id: security-packet-capture
       name: '@deepseek-ai/dsh-experimental-security-analysis/packet-capture'
+    - id: security-mining
+      name: '@deepseek-ai/dsh-experimental-security-analysis/mining'
     - id: security-frida
       name: '@deepseek-ai/dsh-experimental-security-analysis/frida'
     - id: security-android

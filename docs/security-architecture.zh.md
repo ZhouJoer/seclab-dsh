@@ -35,6 +35,7 @@ flowchart TD
   Domain --> Registry[Provider registry and leases]
   Registry --> Static[Binary / Ghidra / Android]
   Registry --> Dynamic[Frida helper]
+  Registry --> Mining[Sanitizer builds and reproducers]
   Registry --> Environment[Local / Docker / Android environments]
   Domain --> Journal[SQLite append-only domain journal]
   Domain --> Artifacts[Immutable evidence and script artifacts]
@@ -89,7 +90,7 @@ Ghidra 查询需要明确绑定程序及受管理认证补丁。Frida 使用独�
 
 后续 Web、IoT 项目应同时增加资产/检查定义、provider 操作、环境要求、角色策略、提示词和证据消费入口；仅增加执行适配器不足以形成完整能力。Host 凭据和环境管理应留在分析目标之外。复用 DSH Session、jobs、subprocess、storage 与 Remote 服务，避免修改 agent-loop。
 
-下一步见 [功能 TODO](roadmaps/security-analysis.zh.md)。优先补齐 ELF/PE 结构化解析、真实 Ghidra 绑定与可靠复核；逆向分析基础闭环之后再扩展 Web/IoT。
+下一步见 [功能 TODO](roadmaps/security-analysis.zh.md)。优先补齐 ELF/PE 结构化解析、真实 Ghidra 绑定与可靠复核；逆向分析基础闭环之后再扩展 Web/IoT。CVE 挖掘（`mining` provider、`security-cve-mining` 方法与 `mining` 任务类型）是该模式的现成示例：provider 操作、环境要求、角色任务策略、方法提示词与证据消费方随盲测基准一并交付。
 
 ## Web 目标、复核与靶场
 
@@ -104,5 +105,7 @@ web-analyst 角色读取分配的证据并提出入口分析。独立 reviewer �
 源码目录是一个不可变资产。清单保存成员路径和哈希，使跨文件观察共享同一资产身份。源码工具只读取制品字节，返回有界、带行号的证据。文件、Web 与源码 provider 拒绝不兼容的资产类型。
 
 离线 Python 和浏览器验证复用计划审批、子进程监督、执行记录及清理。每份计划固定脚本、源码清单、镜像 ID 和资源限制。一次性容器不能访问网络和设备；浏览器运行器通过请求拦截提供快照文件。报告将这些观察标记为模拟，并保留失败，不将其视为硬件结果。
+
+CVE 挖掘在受管 Docker 环境中为源码分析补充经审批的 sanitizer 构建与复现执行。`build` 步骤选择容器内已注册工具并使用 `{sourceDir}`/`{buildRoot}` 占位符；每个构建标签在交换挂载下隔离一个源码变体。`run` 从对应构建根执行固定程序，argv 与标准输入有界，把 sanitizer 崩溃记录为观察结果，超时仍是失败。盲测基准（`pnpm security:cve-bench`）为每个案例固定漏洞与修复 commit，生成任务提示词，并按补丁文件和崩溃特征对导出报告评分。
 
 源码读取可并行。外部 provider 按实际共享实例租约，该环境存在活动运行时，环境生命周期操作拒绝受理。模型项目分页和变更确认独立于持久项目限制大小。子任务摘要在检查证据范围后保存在现有 Session 绑定中。

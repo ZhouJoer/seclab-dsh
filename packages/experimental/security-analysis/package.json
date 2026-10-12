@@ -79,6 +79,10 @@
     "./packet-capture": {
       "types": "./lib/types/packet-capture-provider.d.ts",
       "default": "./lib/packet-capture.js"
+    },
+    "./mining": {
+      "types": "./lib/types/mining-provider.d.ts",
+      "default": "./lib/mining.js"
     }
   },
   "files": [
@@ -96,6 +100,8 @@
     "lib/offline.js",
     "lib/native.js",
     "lib/packet-capture.js",
+    "lib/mining.js",
+    "lib/mining-*.js",
     "lib/model-*.js",
     "lib/process-*.js",
     "lib/toolbox-*.js",
@@ -106,6 +112,7 @@
     "lib/device-inventory-*.js",
     "resources/**/*.py",
     "resources/**/*.js",
+    "resources/cve-cases/*.json",
     "resources/toolbox/Dockerfile",
     "resources/offline/*",
     "lib/types/**/*.js",

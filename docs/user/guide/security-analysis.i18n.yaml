@@ -39,8 +39,11 @@
   en: 05637cc148e589a5
   zh: b77c34c2d2d8116f
 /security-analysis-workbench/local-web-laboratory:
-  en: 71c5e663c4dc2080
-  zh: cc6640325722e4da
+  en: f2b9ab482e023a73
+  zh: cc9030ade5ef46ae
+/security-analysis-workbench/cve-blind-rediscovery-benchmark:
+  en: fd3b45ea1a54dcbb
+  zh: 53f65c0a5d896fe4
 /security-analysis-workbench/source-and-static-frontend-projects:
   en: a6d24d35f960e337
   zh: dc3dbd9161cfa6ee

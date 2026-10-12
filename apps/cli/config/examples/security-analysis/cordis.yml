@@ -2,6 +2,7 @@
 - id: security-workbench
   config:
     analysisTurnTokens: 360000
+    maxDurationMs: 1800000
     evolution:
       auto: true
     root: !!js dshHomePath('security')
@@ -36,3 +37,39 @@
             command: john
             versionArgs: [--list=build-info]
             source: Operator audit tools; inventory only
+      # Managed mining container for sanitizer builds and PoC differential runs.
+      # The image must already exist locally; the dsh toolbox recipe builds one.
+      - id: mining
+        kind: docker
+        label: Mining sanitizer builds
+        cwd: !!js process.cwd()
+        image: dsh-security-toolbox:latest
+        tools:
+          - id: docker
+            command: docker
+            versionArgs: [--version]
+            source: Operator Docker installation
+          - id: python
+            command: python3
+            versionArgs: [--version]
+            source: Toolbox image
+          - id: cmake
+            command: cmake
+            versionArgs: [--version]
+            source: Toolbox image
+          - id: make
+            command: make
+            versionArgs: [--version]
+            source: Toolbox image
+          - id: gcc
+            command: gcc
+            versionArgs: [--version]
+            source: Toolbox image
+          - id: clang
+            command: clang
+            versionArgs: [--version]
+            source: Toolbox image
+          - id: pkg-config
+            command: pkg-config
+            versionArgs: [--version]
+            source: Toolbox image

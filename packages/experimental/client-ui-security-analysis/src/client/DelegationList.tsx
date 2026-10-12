@@ -17,6 +17,7 @@ const roles: Record<SecurityDelegation['role'], SecurityKey> = {
 }
 const tasks: Record<SecurityDelegation['task'], SecurityKey> = {
   inventory: 'delegationInventory', surface: 'delegationSurface', assessment: 'delegationAssessment', review: 'delegationReview',
+  mining: 'delegationMining',
 }
 const states: Record<SecurityDelegation['status'], SecurityKey> = {
   pending: 'delegationPending', running: 'running', completed: 'delegationReturned',

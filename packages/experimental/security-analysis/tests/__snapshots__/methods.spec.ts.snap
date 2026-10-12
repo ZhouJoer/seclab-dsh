@@ -23,6 +23,31 @@ Resolve Android API, platform-version or library uncertainty with public primary
 </skill_content>"
 `;
 
+exports[`security method skills > discovers summaries and loads the requested instruction bodies > security-cve-mining 1`] = `
+"<skill_content name="security-cve-mining">
+<skill_resources>
+Resources for this skill are managed by provider "security-analysis".
+Load referenced resources only as needed.
+</skill_resources>
+
+<skill_instructions>
+# CVE mining
+
+Apply security-investigation to the assigned imported source snapshot. The objective is an independently established weakness: a root cause grounded in the code, a reproducer whose behavior distinguishes the claimed defect, and honest limits. A public advisory, CVE identifier or copied exploit text is reference material, never a finding.
+
+Work from the imported snapshot. When a fix reference is part of the task (a patch file, a second imported snapshot of the fixed tree, or a commit range in an imported history), read the changed code as a lead: reconstruct what invariant the change restores, which inputs reach the changed operation, and what the vulnerable revision allowed. Do not restate the patch as a conclusion; the code path and the trigger must come from the analyzed source itself. Without a fix reference, proceed from entry points, parsers, allocation boundaries and trust transitions.
+
+For each candidate, name the violated invariant (bounds, lifetime, integer range, type identity, format-string argument match), the exact function and source lines, the reachable input path from an external entry point, and the conditions under which the invariant does not hold. Trace the value through transformations before claiming reachability; a dangerous routine without an external caller is not a finding. Prefer one resolved candidate over several unresolved suspicions.
+
+Construct the smallest reproducer that reaches the candidate code with the violating condition. Build the imported source under sanitizers through approved mining provider plans: address sanitizer builds with -fno-omit-frame-pointer -g -O1, one buildTag per source variant so a vulnerable and a fixed tree never share outputs. Autotools projects configure through sh configure because imported sources stay read-only. Validate differentially: the reproducer must fail on the vulnerable build and settle normally on the fixed build; a crash on both is a build or harness defect, not a rediscovery. Record both evidence records.
+
+A sanitizer report establishes a memory-safety violation, not its security impact. State impact separately from the crash: reachable attacker input, affected configuration or platform, and consequences beyond the crash itself where the code shows them. Determine affected conditions from source preconditions, not from advisory text. A non-crashing timeout, an assertion in debug-only code, or a defect unreachable from any external input must be reported with those limits.
+
+Keep every build and run inside approved plans in the mining environment. Reproducers and build outputs belong to the isolated build root; never write into the imported source tree. Analysis covers the imported snapshot only: do not contact vendor infrastructure, attack third-party systems, or attempt disclosure; reporting to any party is the operator's decision. Record the reconstructed weakness as a suspected finding with its evidence chain and request independent review before any confirmed verdict; report unvalidated parts as uncertainty rather than widening the claim.
+</skill_instructions>
+</skill_content>"
+`;
+
 exports[`security method skills > discovers summaries and loads the requested instruction bodies > security-dynamic 1`] = `
 "<skill_content name="security-dynamic">
 <skill_resources>
@@ -97,7 +122,7 @@ Load referenced resources only as needed.
 
 Use these methods as guidance for the current question, not a mandatory checklist. Work within the current task scope, available resources, and execution permissions. A skill or delegated assignment grants no additional authority. Stop affected work when the scope is narrowed.
 
-Choose methods from the available material and the unresolved question: security-web for source, captured requests or a permitted running application; security-firmware for images, extracted filesystems and native code; security-android for APK/DEX or an explicitly selected adb environment; security-iot-offline for captures, logs and protocol documents. Combine methods when a data flow crosses components. A role defines responsibility and permissions, not a required sequence of methods. Do not force every task through reconnaissance, analysis, design and runtime validation.
+Choose methods from the available material and the unresolved question: security-web for source, captured requests or a permitted running application; security-firmware for images, extracted filesystems and native code; security-android for APK/DEX or an explicitly selected adb environment; security-iot-offline for captures, logs and protocol documents; security-cve-mining for rediscovering a memory-safety weakness in imported source with sanitizer builds. Combine methods when a data flow crosses components. A role defines responsibility and permissions, not a required sequence of methods. Do not force every task through reconnaissance, analysis, design and runtime validation.
 
 Before writing analysis code, load security-packet-analysis for offline captures, security-mqtt for MQTT captures, or security-dynamic for native-process observations. Prefer an applicable bundled script with explicit parameters; write new analysis logic only when the library cannot answer the question.
 

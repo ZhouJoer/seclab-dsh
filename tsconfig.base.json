@@ -60,6 +60,7 @@
       "@deepseek-ai/dsh-experimental-security-analysis/offline": ["./packages/experimental/security-analysis/src/offline-provider.ts"],
       "@deepseek-ai/dsh-experimental-security-analysis/native": ["./packages/experimental/security-analysis/src/native-provider.ts"],
       "@deepseek-ai/dsh-experimental-security-analysis/packet-capture": ["./packages/experimental/security-analysis/src/packet-capture-provider.ts"],
+      "@deepseek-ai/dsh-experimental-security-analysis/mining": ["./packages/experimental/security-analysis/src/mining-provider.ts"],
       "@deepseek-ai/dsh-experimental-security-analysis/web": ["./packages/experimental/security-analysis/src/web-provider.ts"],
       "@deepseek-ai/dsh-experimental-security-analysis/external-web": ["./packages/experimental/security-analysis/src/external-web-provider.ts"],
       "@deepseek-ai/dsh-experimental-security-analysis/laboratory": ["./packages/experimental/security-analysis/src/laboratory.ts"],

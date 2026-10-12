@@ -33,7 +33,7 @@ describe('immutable binary inspection', () => {
     const asset = sourceAssetSchema.parse({ ...file, kind: 'source' })
     for (const parameters of [{ path: 'bin64/sample.dll' }, {}])
       expect(() => provider.resolve({ ...operation, parameters }, { ...context, asset }))
-        .toThrow('The coordinator must read security_help(action: "import")')
+        .toThrow('the coordinator must read security_help(action: "import-member")')
     expect(() => request('identity', { path: 'sample.dll' })).toThrow('select the imported file with assetId')
     expect(request('identity').parameters).toEqual({})
   })

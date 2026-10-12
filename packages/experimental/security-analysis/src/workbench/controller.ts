@@ -480,7 +480,7 @@ export class SecurityController {
       material: materialInputSchema.optional(),
       target: externalTargetInput.optional(),
 
-      task: commandSchema.shape.action.options[0].omit({ kind: true }).optional(),
+      task: commandSchema.shape.action.options[0].omit({ kind: true, target: true }).optional(),
     }).strict().parse(input)
     await this.journal.commit(request.operationId, request.expectedRevision, { sessionId, material: request }, async (view) => {
       const bound = this.binding(sessionId)

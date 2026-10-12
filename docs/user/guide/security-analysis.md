@@ -174,6 +174,13 @@ The sidebar **Security analysis** entry opens persistent projects independently 
 
 Dedicated Nuclei and Metasploit provider execution, reviewed module catalogues, Vulhub orchestration and arbitrary external targets through those providers are unavailable. The build recipe installs their binaries, which does not establish usable provider support. The John provider accepts only the fixed capability test; offline password auditing is deferred. If a build fails, inspect its recorded error and stop owned resources before retrying. Host restart marks interrupted labs for reconciliation and never replays a check.
 
+<a id="cve-blind-rediscovery"></a>
+## CVE blind rediscovery benchmark
+
+The mining environment rebuilds imported C/C++ source with sanitizers and runs reproducers inside a managed Docker container. Configure a Docker environment whose image contains the build toolchain (the toolbox recipe in the package installs git, cmake, make, gcc, clang and pkg-config), register those tools under `environments[].tools`, and raise `maxDurationMs` so a full sanitizer build fits one approved plan.
+
+This capability is experimental and manual-only: conversations never start mining automatically, and the toolbox shows it only inside a collapsed card. `pnpm security:cve-bench prepare` clones the pinned vulnerable and fixed commits of each seed case under `.dsh/cve-bench/`, writes `patch.diff` as the only lead, and generates the blind task and overlay. `pnpm security:cve-bench run` prints the exact profile launch command; run it, paste the generated task into the conversation, approve the mining plans after inspecting their steps, and export the report. `pnpm security:cve-bench grade --case <id> --report <report.json>` scores the export against the case's patched files and crash pattern. The task never sees the CVE identifier or advisory text; a sanitizer crash on the vulnerable build that the fixed build survives is the rediscovery criterion. Add cases by dropping a JSON file with pinned commits and grading fields into `resources/cve-cases/`.
+
 ## Source and static frontend projects
 
 Under **Advanced details** → **Assets**, import the authorized source file or directory. Selecting one file imports only that file. Select its environment, then list files, read a relative path from a chosen line, or search literal text. Evidence previews include member hashes, line numbers and continuation positions; changing the original source does not change the imported snapshot.

@@ -35,6 +35,7 @@ flowchart TD
   Domain --> Registry[Provider registry and leases]
   Registry --> Static[Binary / Ghidra / Android]
   Registry --> Dynamic[Frida helper]
+  Registry --> Mining[Sanitizer builds and reproducers]
   Registry --> Environment[Local / Docker / Android environments]
   Domain --> Journal[SQLite append-only domain journal]
   Domain --> Artifacts[Immutable evidence and script artifacts]
@@ -89,7 +90,7 @@ After restart, unfinished execution requires reconciliation rather than automati
 
 Future Web and IoT projects should add asset/check definitions, provider operations, environment requirements, role policies, prompts and evidence consumers together. An execution adapter alone is insufficient. Keep Host credentials and environment management outside the analyzed target. Reuse DSH Session, jobs, subprocess, storage and Remote services instead of changing the loop.
 
-Start with the [feature TODO](roadmaps/security-analysis.md). ELF/PE structured parsing, real Ghidra binding and reliable review are the next priorities; Web/IoT expansion follows a working reverse-analysis baseline.
+Start with the [feature TODO](roadmaps/security-analysis.md). ELF/PE structured parsing, real Ghidra binding and reliable review are the next priorities; Web/IoT expansion follows a working reverse-analysis baseline. CVE mining (the `mining` provider, `security-cve-mining` method and the `mining` task kind) is a worked example of this pattern: provider operations, environment requirements, role task policy, method prompt and evidence consumers shipped together with a blind benchmark harness.
 
 ## Web targets, reviews and laboratories
 
@@ -104,5 +105,7 @@ Laboratory ownership is saved before resource creation. Restart marks unsettled 
 A source directory is one immutable asset. Its manifest owns member paths and hashes, so cross-file observations share one asset identity. Source tools read only artifact bytes and return bounded line-addressed evidence. File, Web and source providers reject incompatible asset kinds.
 
 Offline Python and browser validation reuse plan approval, subprocess supervision, execution records and cleanup. Each plan pins its script, source manifest, image ID and resource limits. A disposable container has no network or device access; its browser runner serves snapshot files through request interception. Reports identify these observations as simulations and preserve failures rather than treating them as hardware results.
+
+CVE mining extends source analysis with approved sanitizer builds and reproducer runs inside a managed Docker environment. `build` steps select registered container tools with `{sourceDir}`/`{buildRoot}` tokens; each build tag isolates one source variant under the exchange mount. `run` executes a pinned program from that build root with bounded argv and stdin, recording sanitizer crashes as observations while timeouts remain failures. The blind benchmark (`pnpm security:cve-bench`) pins vulnerable and fixed commits per case, generates the task prompt and grades exported reports against patched files and crash patterns.
 
 Source reads can run concurrently. External providers name actual shared instances for leases, while environment lifecycle actions reject admission while that environment has active runs. Model-facing project pages and mutation receipts are bounded independently from the durable project. Child summaries are persisted on existing Session bindings after evidence scope checks.

@@ -417,12 +417,13 @@
           },
           "task": {
             "type": "string",
-            "description": "inventory for reconnaissance; surface or assessment for reverse-analyst; assessment for researcher; review for reviewer. Omission uses the role default.",
+            "description": "inventory for reconnaissance; surface, assessment or mining for reverse-analyst; assessment for researcher; review for reviewer. Omission uses the role default.",
             "enum": [
               "inventory",
               "surface",
               "assessment",
-              "review"
+              "review",
+              "mining"
             ]
           }
         },

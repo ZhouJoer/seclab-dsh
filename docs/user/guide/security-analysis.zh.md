@@ -174,6 +174,13 @@ Windows Frida 的正常结束和取消，以及 Docker 生命周期已有本地�
 
 Nuclei 与 Metasploit 专用 provider 执行、审核模块目录、Vulhub 编排及通过这些 provider 访问任意外部目标尚不可用。配方安装其二进制不代表 provider 能力已可用。John provider 仅进行固定能力检测，离线密码审计后续实现。构建失败时查看记录的错误，先停止已拥有资源再重试。Host 重启将未完成靶场标为待核对，不会重放检查。
 
+<a id="cve-blind-rediscovery"></a>
+## CVE 盲测复现基准
+
+挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。配置一个镜像内含构建工具链的 Docker 环境（包内 toolbox 配方安装 git、cmake、make、gcc、clang 和 pkg-config），在 `environments[].tools` 下注册这些工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。
+
+该能力为实验性且仅限手动：对话不会自动启动挖掘，工具箱只在折叠卡片中展示。`pnpm security:cve-bench prepare` 将每个种子案例固定的漏洞与修复 commit 克隆到 `.dsh/cve-bench/`，写出 `patch.diff` 作为唯一线索，并生成盲测任务与 overlay。`pnpm security:cve-bench run` 打印精确的 profile 启动命令；启动后把生成的任务粘贴进会话，检查计划步骤后批准 mining 计划，并导出报告。`pnpm security:cve-bench grade --case <id> --report <report.json>` 按案例的补丁文件与崩溃特征对导出评分。任务全程看不到 CVE 编号或公告文字；复现标准是同一 PoC 在漏洞构建上触发 sanitizer 崩溃而修复构建正常结束。把包含固定 commit 与评分字段的 JSON 放入 `resources/cve-cases/` 即可新增案例。
+
 ## 源码与静态前端项目
 
 在**高级详情** → **资产**中导入已授权的源码文件或目录。选择单个文件时仅导入该文件。选择环境后可清点文件、从指定行读取相对路径或搜索字面文本。证据预览包含成员哈希、行号及续读位置；修改原始源码不会改变已导入快照。

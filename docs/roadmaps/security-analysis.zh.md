@@ -58,6 +58,15 @@ r2pipe、Capstone、pefile 和 Unicorn 保留 Python/脚本能力。Fastboot 和
 - [ ] **操作者交互**：提供清晰的计划批准/撤销、项目停止/恢复、实时任务进度与断线恢复；保留聊天，同时让领域操作容易找到。
 - [ ] **可扩展角色与任务模板**：可注册角色工具策略、任务提示词、完成条件和环境要求，不必修改固定的内置角色表。
 
+### P1.5：CVE 挖掘（N-day 盲测复现）
+
+- [x] **挖掘 provider**：受管 Docker 环境中经审批的 `mining` build/run 操作，构建根按标签隔离，选择容器内已注册工具，支持 `{sourceDir}`/`{buildRoot}` 占位符，sanitizer 崩溃按观察记录（`packages/experimental/security-analysis/src/mining-provider.ts`）。
+- [x] **挖掘方法与任务**：`security-cve-mining` 技能、`mining` 委派任务类型、工具箱 `mining` 集合（git/cmake/make/gcc/clang/pkg-config 定义）与构建工具链镜像配方。
+- [x] **盲测基准 harness**：`pnpm security:cve-bench` 准备固定漏洞/修复检出与补丁线索，生成盲测任务与 overlay，并对导出报告评分；三个种子案例位于 `resources/cve-cases/`。
+- [ ] **真实模型盲测验收**：通过 security profile 用真实模型端到端运行种子案例并记录再发现率；先在挖掘容器中通过 ground-truth 崩溃差分。
+- [ ] **Phase 2 模糊测试**：AFL++ campaign 与 campaign 级审批、崩溃收集、去重与最小化；无补丁线索的全盲档位。
+- [ ] **Phase 3 公告数据**：经 web 服务获取 NVD/OSV、受影响版本范围分析与披露就绪的报告段落。
+
 ### P2：扩展安全子项目
 
 - [ ] **Web 安全项目**：授权目标清点、暴露入口整理、会话/浏览器环境与受控验证模板，复用同一套证据和授权服务。

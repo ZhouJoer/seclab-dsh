@@ -21,7 +21,8 @@ it('offers overlapping analysis collections and preserves existing selections', 
   expect(discoverTools(tools, collections, { collectionIds: ['iot'] }).map(tool => tool.id))
     .toEqual(expect.arrayContaining(['tshark', 'radare2']))
   expect(discoverTools(tools, collections, { collectionIds: ['reverse'] }).map(tool => tool.id)).toContain('radare2')
-  expect(discoverTools(tools, collections, { collectionIds: ['capture'] }).map(tool => tool.id)).toEqual(['tshark'])
+  expect(discoverTools(tools, collections, { collectionIds: ['capture'] }).map(tool => tool.id))
+    .toEqual(['packet-capture', 'tshark'])
 })
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }) })
 function fixture() {

@@ -10,14 +10,14 @@ import tempfile
 timeout = float(sys.argv[1])
 inventory = "--inventory" in sys.argv[2:]
 versions = {"python": sys.version.split()[0]}
-for key, command in {"curl": ["curl", "--version"], "nuclei": ["nuclei", "-version"], "metasploit": ["msfconsole", "--version"], "john": ["john", "--list=build-info"]}.items():
+for key, command in {"curl": ["curl", "--version"], "nuclei": ["nuclei", "-version"], "metasploit": ["msfconsole", "--version"], "john": ["john", "--list=build-info"], "git": ["git", "--version"], "cmake": ["cmake", "--version"], "make": ["make", "--version"], "gcc": ["gcc", "--version"], "clang": ["clang", "--version"]}.items():
     versions[key + ".installed"] = "yes" if shutil.which(command[0]) else "no"
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         versions[key] = (result.stdout + result.stderr).strip()[:4096] if result.returncode == 0 else "version query failed"
     except (OSError, subprocess.TimeoutExpired) as error:
         versions[key] = str(error)[:4096]
-for key, package in {"python": "python3", "curl": "curl", "nuclei": "nuclei", "metasploit": "metasploit-framework", "john": "john", "libcrypt": "libcrypt1"}.items():
+for key, package in {"python": "python3", "curl": "curl", "nuclei": "nuclei", "metasploit": "metasploit-framework", "john": "john", "libcrypt": "libcrypt1", "git": "git", "cmake": "cmake", "gcc": "gcc", "make": "make", "clang": "clang", "autoconf": "autoconf", "automake": "automake", "libtool": "libtool"}.items():
     result = subprocess.run(["dpkg-query", "-W", "-f=" + chr(36) + "{Version}", package], capture_output=True, text=True, timeout=timeout)
     versions[key + ".package"] = result.stdout.strip() if result.returncode == 0 else "not installed"
 with tempfile.TemporaryDirectory(prefix="dsh-yescrypt-") as directory:

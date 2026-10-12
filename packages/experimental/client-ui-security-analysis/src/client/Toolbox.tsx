@@ -4,6 +4,7 @@ import { SegmentedTabs } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AnalysisScript } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { ScriptLibrary } from './ScriptLibrary.tsx'
 import { DevicePanel, type DeviceActions } from './DevicePanel.tsx'
+import { MiningPanel } from './MiningPanel.tsx'
 import type { ToolboxDirectory, ToolboxConfiguration, ToolCatalogSnapshot } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { ToolSettings, type ToolConfigurationActions } from './ToolSettings.tsx'
@@ -32,7 +33,10 @@ export function Toolbox(props: ToolboxActions & { notifyImprovement?: (text: str
       { value: 'devices', label: props.t('deviceTab'), id: id + '-devices', panelId: id + '-devices-panel' },
     ]} />
     <div role="tabpanel" id={id + '-' + tab + '-panel'} aria-labelledby={id + '-' + tab}>
-      {tab === 'tools' ? <ToolInstallations {...props} /> : tab === 'devices' ? <DevicePanel {...props} /> : <ScriptLibrary scriptCatalog={props.scriptCatalog} t={props.t} />}
+      {tab === 'tools' ? <>
+        <ToolInstallations {...props} />
+        <MiningPanel t={props.t} />
+      </> : tab === 'devices' ? <DevicePanel {...props} /> : <ScriptLibrary scriptCatalog={props.scriptCatalog} t={props.t} />}
     </div>
   </section>
 }
