@@ -37,24 +37,29 @@ export function adapterInstallation(id: string): string {
 /** Project task-facing capabilities without executable discovery or launcher configuration.
  * @param tool - Operator catalog definition.
  * @param details - Whether to include the invocation guide.
+ * @param native - Include the existing advanced workflow instead of the dedicated interface.
  * @returns model-facing definition, retaining legacy workflows for tools without an adapter.
  */
-export function modelToolDefinition(tool: ToolDefinition, details: boolean): object {
+export function modelToolDefinition(tool: ToolDefinition, details: boolean, native = false): object {
   const adapter = toolAdapters.find(item => item.id === tool.id)
   const brief = { id: tool.id, label: tool.label, description: adapter?.description ?? tool.description,
     tags: tool.tags, dependency: tool.dependency, provider: tool.provider, skills: tool.skills }
   if (!adapter) return details ? tool : { ...brief, invocation: tool.invocation }
+  if (native) return { ...(details ? tool : { ...brief, invocation: tool.invocation }),
+    adapter: { toolName: 'security_' + adapter.id, operations: [...adapter.operations] } }
   return { ...brief, invocation: 'adapter', toolName: 'security_' + adapter.id, operations: [...adapter.operations],
     ...(details ? { guide: adapter.description + ' Call security_' + adapter.id
-      + ' with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations.' } : {}) }
+      + ' with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.' } : {}) }
 }
 
 /** Remove launch configuration from model inventory rows backed by dedicated adapters.
  * @param inventory - Operator installation observations.
+ * @param options - Native workflow selection and external-container ownership.
  * @returns task-facing health without launch arguments for adapted tools.
  */
-export function modelToolInventory(inventory: ToolboxInventory): object {
-  return { ...inventory, tools: inventory.tools.map(tool => toolAdapters.some(adapter => adapter.id === tool.id)
+export function modelToolInventory(inventory: ToolboxInventory, options: { native?: boolean; externalContainer?: boolean } = {}): object {
+  return { ...inventory, tools: inventory.tools.map(tool => !options.native && !options.externalContainer
+    && toolAdapters.some(adapter => adapter.id === tool.id)
     ? { id: tool.id, status: tool.status, version: tool.version, dependency: tool.dependency,
       toolName: 'security_' + tool.id, detail: tool.status === 'available' ? '' : 'Check this tool and its dependencies in operator tool settings.' }
     : tool) }

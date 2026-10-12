@@ -284,6 +284,10 @@
           "details": {
             "type": "boolean"
           },
+          "native": {
+            "type": "boolean",
+            "description": "Load existing advanced workflows for operations or environments outside dedicated adapter coverage. Select toolIds and details."
+          },
           "offset": {
             "type": "integer"
           },
@@ -419,6 +423,10 @@
               "type": "string"
             }
           },
+          "native": {
+            "type": "boolean",
+            "description": "Include measured launch configuration for advanced native workflows. External-container inventory always retains it."
+          },
           "devices": {
             "type": "boolean",
             "description": "Inspect Windows interfaces only; does not open devices or validate capture."
@@ -455,6 +463,14 @@
           },
           "lineCount": {
             "type": "integer"
+          },
+          "itemOffset": {
+            "type": "integer",
+            "description": "First retained adapter observation; does not rerun analysis."
+          },
+          "itemLimit": {
+            "type": "integer",
+            "description": "Maximum retained adapter observations to read."
           }
         },
         "required": [
@@ -486,6 +502,29 @@
       }
     },
     {
+      "name": "security_file",
+      "description": "Identify an imported file using its contents. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "identity"
+            ]
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
       "name": "security_help",
       "description": "Read the exact JSON command envelope used by security_command. Set action to the needed command kind, such as import-source, check or finding, to receive only its fields. Omit action only when the full command catalog is needed.",
       "parameters": {
@@ -496,6 +535,176 @@
             "description": "Command action kind to inspect; omission returns the full command schema."
           }
         }
+      }
+    },
+    {
+      "name": "security_jadx",
+      "description": "Decompile an imported APK or DEX, optionally selecting one class. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "decompile"
+            ]
+          },
+          "className": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
+      "name": "security_nm",
+      "description": "List object symbols and their addresses. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "symbols"
+            ]
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
+      "name": "security_objdump",
+      "description": "Inspect object headers or disassemble a bounded address range. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "headers",
+              "disassemble"
+            ]
+          },
+          "startAddress": {
+            "type": "string"
+          },
+          "endAddress": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
+      "name": "security_r2ghidra",
+      "description": "Decompile one function at a hexadecimal virtual address. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "decompile"
+            ]
+          },
+          "address": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "operation",
+          "address"
+        ]
+      }
+    },
+    {
+      "name": "security_radare2",
+      "description": "Inspect binary metadata, functions, references and bounded disassembly. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "identity",
+              "functions",
+              "imports",
+              "exports",
+              "strings",
+              "xrefs-to",
+              "xrefs-from",
+              "disassemble"
+            ]
+          },
+          "address": {
+            "type": "string",
+            "description": "Hexadecimal virtual address, for example 0x401000."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Maximum instructions for disassembly."
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
+      "name": "security_readelf",
+      "description": "Inspect ELF headers and named tables. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "headers",
+              "sections",
+              "symbols",
+              "dynamic"
+            ]
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
       }
     },
     {
@@ -594,6 +803,78 @@
           "assetId",
           "environmentId",
           "parameters"
+        ]
+      }
+    },
+    {
+      "name": "security_strings",
+      "description": "Read printable strings with byte offsets. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "strings"
+            ]
+          },
+          "minLength": {
+            "type": "integer"
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "ascii",
+              "utf16le"
+            ]
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
+      "name": "security_tshark",
+      "description": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "packets"
+            ]
+          },
+          "filter": {
+            "type": "string",
+            "description": "Wireshark display filter."
+          },
+          "fields": {
+            "type": "array",
+            "description": "Packet fields, such as frame.number, ip.src and tcp.port.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "description": "Maximum input packets decoded."
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
         ]
       }
     },

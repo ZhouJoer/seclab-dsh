@@ -381,7 +381,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
         description: 'Discover task-relevant tools by query, tags, collectionIds or toolIds. Default returns brief definitions without probing. Set details with toolIds or providerId to load selected invocation guides. Use offset and limit for bounded pages. Definitions do not establish installation or execution permission.',
         parameters: { query: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } },
           collectionIds: { type: 'array', items: { type: 'string' } }, toolIds: { type: 'array', items: { type: 'string' } },
-          providerId: { type: 'string' }, details: { type: 'boolean' }, offset: { type: 'integer' }, limit: { type: 'integer' } },
+          providerId: { type: 'string' }, details: { type: 'boolean' },
+          native: { type: 'boolean', description: 'Load existing advanced workflows for operations or environments outside dedicated adapter coverage. Select toolIds and details.' },
+          offset: { type: 'integer' }, limit: { type: 'integer' } },
         output,
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error('Security tools require a session')
@@ -389,6 +391,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const binding = controller.binding(exec.agent.id)
           const catalog = this.toolCatalog()
           if (args.details && !args.toolIds?.length && !args.providerId) throw new Error('Select toolIds before loading details')
+          if (args.native && (!args.details || !args.toolIds?.length)) throw new Error('Select toolIds and details for native workflows')
           if (args.providerId && !controller.providers.list().includes(args.providerId)) throw new Error('Unknown provider: ' + args.providerId)
           const matches = args.providerId && !args.toolIds?.length ? [] : discoverTools(catalog.tools, catalog.collections, args)
           const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
@@ -405,7 +408,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
               .map(({ id, kind }) => ({ id, kind })),
             catalogRevision: catalog.revision,
             total: matches.length, nextOffset: offset + page.length < matches.length ? offset + page.length : null,
-            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false),
+            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false, args.native ?? false),
               ...(adapters?.some(adapter => adapter.id === tool.id)
                 ? { adapter: adapters.find(adapter => adapter.id === tool.id) } : {}) })),
             collections: catalog.collections.slice(offset, offset + limit).map(({ id, label }) => ({ id, label })),
@@ -425,7 +428,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
       defineTool({
         name: 'security_environment',
         description: 'Check tool versions and runtime readiness in one project environment. Optionally select toolId when a full inventory exceeds the output budget. Does not install tools, start containers or change devices. Health is not sample evidence.',
-        parameters: { environmentId: { type: 'string', required: true }, toolId: { type: 'string' }, toolIds: { type: 'array', items: { type: 'string' } }, devices: { type: 'boolean', description: 'Inspect Windows interfaces only; does not open devices or validate capture.' } },
+        parameters: { environmentId: { type: 'string', required: true }, toolId: { type: 'string' }, toolIds: { type: 'array', items: { type: 'string' } },
+          native: { type: 'boolean', description: 'Include measured launch configuration for advanced native workflows. External-container inventory always retains it.' },
+          devices: { type: 'boolean', description: 'Inspect Windows interfaces only; does not open devices or validate capture.' } },
         output,
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error('Security tools require a session')
@@ -448,7 +453,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
           }
-          return json(modelToolInventory(inventory))
+          return json(modelToolInventory(inventory, { native: args.native ?? false,
+            externalContainer: environment.externalContainer !== undefined }))
         },
       }),
     )

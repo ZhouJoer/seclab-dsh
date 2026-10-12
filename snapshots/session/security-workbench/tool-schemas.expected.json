@@ -284,6 +284,10 @@
           "details": {
             "type": "boolean"
           },
+          "native": {
+            "type": "boolean",
+            "description": "Load existing advanced workflows for operations or environments outside dedicated adapter coverage. Select toolIds and details."
+          },
           "offset": {
             "type": "integer"
           },
@@ -418,6 +422,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "native": {
+            "type": "boolean",
+            "description": "Include measured launch configuration for advanced native workflows. External-container inventory always retains it."
           },
           "devices": {
             "type": "boolean",

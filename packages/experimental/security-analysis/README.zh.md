@@ -46,7 +46,7 @@ kind: "package-reference"
 
 专用静态工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义各工具操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色检查、项目环境授权、执行租约和不可变证据。模型无需填写可执行文件路径、环境 ID 或命令程序。security_r2ghidra 跟随 radare2 的安装和环境绑定。Shell 和 security_static 继续支持既有流程。
 
-对于已适配工具，security_capabilities 提供专用接口及操作，security_environment 省略可执行文件路径和启动参数。操作员库存保留完整安装信息。导入定义不能替换已实现的适配接口。未覆盖能力继续使用既有 Provider 或 Shell 流程。
+对于已适配工具，security_capabilities 提供专用接口及操作。指定 toolIds、details 和 native: true，可加载未覆盖操作或不支持环境的既有高级流程。security_environment 默认省略已适配工具的启动配置；native: true 返回实测启动配置，外部容器库存始终保留该信息。操作员库存保留完整安装信息。导入定义不能替换默认语义接口。既有 Provider 和 Shell 流程继续可用，不会静默切换执行环境。
 
 在工具箱配置安装和固定的默认执行环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将独立工具 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属的本机环境；读取兼容旧文件，首次保存写入带版本的格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。保存比较整个文档的修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。工具缺失、环境未授权或绑定无效时明确失败，不切换环境。
 
