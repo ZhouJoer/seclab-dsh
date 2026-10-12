@@ -92,6 +92,7 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
           if (generationAtStart !== generation.current) throw new Error(t('analysisSessionChanged'))
         }}
         send={objective => props.sendAnalysis(sessionId, objective)}
+        continueInChat={(objective) => { props.openAnalysisChat(sessionId, objective) }}
         started={() => {
           const project = prepared.current?.records.find(item => item.kind === 'engagement')
           if (project) props.started(project.value.id)

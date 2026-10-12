@@ -22,6 +22,8 @@ import { TechnicalDetails } from './TechnicalDetails.tsx'
 /** Service actions injected by the Cordis browser plugin. */
 export interface WorkbenchActions extends ActivityActions, ToolPreferenceActions {
   sendAnalysis(sessionId: SessionId, objective: string): Promise<void>
+  /** Open the native composer with an objective draft, preserving any existing draft and attachments. */
+  openAnalysisChat(sessionId: SessionId, objective: string): void
   /** Re-pull authoritative records after a new connection generation. */
   subscribeReset(this: void, listener: () => void): () => void
   manageProject(projectId: string, input: string): Promise<string>
@@ -396,6 +398,10 @@ export function Workbench(props: WorkbenchProps) {
                           send={async (objective) => {
                             if (activeSession.current !== sessionId) throw new Error(t('analysisSessionChanged'))
                             await props.sendAnalysis(sessionId, objective)
+                          }}
+                          continueInChat={(objective) => {
+                            if (activeSession.current !== sessionId) throw new Error(t('analysisSessionChanged'))
+                            props.openAnalysisChat(sessionId, objective)
                           }}
                           started={() => { if (activeSession.current === sessionId) setOpen(false) }} />
                         <button onClick={() => { setOpen(false) }}>{t('backToConversation')}</button>

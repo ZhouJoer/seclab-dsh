@@ -18,7 +18,7 @@ it('waits for applied preferences and preserves the objective after a failed sav
   const prepare = vi.fn(async () => {}), send = vi.fn(async () => {})
   render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false}
     environments={[{ id: 'host', label: 'Host', kind: 'local' }]} limits={{ bytes: 1024, entries: 10 }}
-    prepare={prepare} send={send} started={() => {}}
+    prepare={prepare} send={send} continueInChat={() => {}} started={() => {}}
     toolPreferences={{ sessionId: SessionId('session'), toolPreferences: preferences,
       toolCatalog: async () => ({ editable: false, revision: '', packs: [builtinToolPack], tools: builtinToolPack.tools, collections: builtinToolPack.collections }) }} />)
   fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Compare firmware and traffic' } })
@@ -48,12 +48,22 @@ function setup(local = true) {
   const prepare = vi.fn<AnalysisStartProps['prepare']>(async () => {})
   const send = vi.fn(async (_objective: string) => {})
   const started = vi.fn()
+  const continueInChat = vi.fn()
   render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false}
     environments={[{ id: 'container', label: 'Container', kind: 'docker' },
       ...(local ? [{ id: 'host', label: 'Host', kind: 'local' }] : [])]}
-    limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} started={started} />)
-  return { prepare, send, started }
+    limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} continueInChat={continueInChat} started={started} />)
+  return { prepare, send, continueInChat, started }
 }
+it('saves the task and opens an editable objective without starting a model turn', async () => {
+  const api = setup()
+  fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Inspect with my chosen model' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.saveAnalysisAndChat }))
+  await waitFor(() => { expect(api.continueInChat).toHaveBeenCalledWith('Inspect with my chosen model') })
+  expect(api.prepare).toHaveBeenCalledOnce()
+  expect(api.send).not.toHaveBeenCalled()
+  expect(api.started).toHaveBeenCalledOnce()
+})
 it('stages selected material and uses the local environment without a task name or workspace form', async () => {
   const api = setup()
   fireEvent.click(screen.getByRole('button', { name: zh.pasteText }))
@@ -80,6 +90,18 @@ it('retries failed submission without creating another task or importing materia
   await waitFor(() => { expect(api.started).toHaveBeenCalledOnce() })
   expect(api.prepare).toHaveBeenCalledOnce()
   expect(api.send).toHaveBeenCalledTimes(2)
+})
+it('opens the saved task in chat after a failed send without importing or sending again', async () => {
+  const api = setup()
+  api.send.mockRejectedValueOnce(new Error('Connection unavailable'))
+  fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Inspect the saved materials' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.startAnalysis }))
+  await screen.findByRole('alert')
+  fireEvent.click(screen.getByRole('button', { name: zh.saveAnalysisAndChat }))
+  await waitFor(() => { expect(api.started).toHaveBeenCalledOnce() })
+  expect(api.continueInChat).toHaveBeenCalledWith('Inspect the saved materials')
+  expect(api.prepare).toHaveBeenCalledOnce()
+  expect(api.send).toHaveBeenCalledOnce()
 })
 it('lists every selected file and appends another batch before importing once', async () => {
   const api = setup()
@@ -126,7 +148,7 @@ it('explains a missing service environment without offering an empty selector', 
   const prepare = vi.fn<AnalysisStartProps['prepare']>(async () => {})
   const send = vi.fn(async () => {})
   render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} environments={[]}
-    limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} started={() => {}} />)
+    limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} continueInChat={() => {}} started={() => {}} />)
   expect(screen.getByRole('alert').textContent).toBe(zh.noAnalysisEnvironment)
   expect(screen.getByText(zh.analysisRecordHint)).toBeDefined()
   expect(screen.queryByRole('combobox')).toBeNull()

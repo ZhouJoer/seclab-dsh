@@ -257,7 +257,8 @@ export const zh = {
   toolCheckPassed: '检测成功，可以保存。', toolCheckFailed: '检测失败，未保存配置，请检查下面的原因。', toolOperationPending: '正在处理，请稍候…',
 
   newAnalysis: '新建分析', analysisHistory: '历史分析',
-  simpleStartHint: '添加材料并描述目标，助手会根据内容和可用环境自动选择逆向、Web、IoT 或组合分析方法。也可以先描述目标，稍后添加材料。',
+  simpleStartHint: '保存材料、目标和环境后，进入 DSH 对话框选择模型、引用文件，发送消息开始分析。也可以先描述目标，稍后添加材料。',
+  saveAnalysisAndChat: '保存并进入对话',
   startWithMaterials: '添加材料并开始分析',
   analysisRecordHint: '材料、证据与报告将保存在本次任务中。',
   noAnalysisEnvironment: '当前服务未配置运行环境，暂时无法开始分析。请配置本机环境并重启安全分析服务，再点击“刷新”。',
@@ -265,7 +266,7 @@ export const zh = {
   analysisRequest: '你想分析什么？', analysisRequestHint: '例如：分析程序逻辑、检查网站源码或网络目标、研究设备固件，或从抓包中定位通信问题。',
   runOn: '运行位置：', chooseAnalysisEnvironment: '请选择下面的运行环境。',
   analysisOptions: '更多选项', startAnalysis: '开始分析', retryAnalysis: '重试发送',
-  analysisPrepared: '任务和材料已保存。发送失败时可重试，无需重新添加。',
+  analysisPrepared: '任务和材料已保存，可进入对话或重试发送，无需重新添加。',
   analysisSessionChanged: '对话已切换，分析目标未发送。请回到原对话继续。',
 
   toolbox: '分析工具箱',
@@ -779,7 +780,8 @@ export const en: Record<SecurityKey, string> = {
   toolCheckPassed: 'Check passed. Ready to save.', toolCheckFailed: 'Check failed; settings were not saved. See the reason below.', toolOperationPending: 'Working, please wait…',
 
   newAnalysis: 'New analysis', analysisHistory: 'Analysis history',
-  simpleStartHint: 'Add materials and describe your objective. The assistant selects reverse engineering, Web, IoT or combined methods from the contents and available environment. You can also add materials later.',
+  simpleStartHint: 'Save materials, objective and environment, then choose a model and reference files in the DSH composer. Analysis begins when you send a message. You can also add materials later.',
+  saveAnalysisAndChat: 'Save and open chat',
   startWithMaterials: 'Add materials and start analysis',
   analysisRecordHint: 'Materials, evidence and reports are saved with this task.',
   noAnalysisEnvironment: 'This service has no configured analysis environment. Configure a local environment, restart the security service, then click Refresh.',
@@ -787,7 +789,7 @@ export const en: Record<SecurityKey, string> = {
   analysisRequest: 'What would you like to analyze?', analysisRequestHint: 'For example: explain program logic, review website source or a network target, inspect device firmware, or investigate captured traffic.',
   runOn: 'Run on:', chooseAnalysisEnvironment: 'Choose a run environment below.',
   analysisOptions: 'More options', startAnalysis: 'Start analysis', retryAnalysis: 'Retry sending',
-  analysisPrepared: 'The task and materials are saved. Retry sending without adding them again.',
+  analysisPrepared: 'The task and materials are saved. Open chat or retry sending without adding them again.',
   analysisSessionChanged: 'The conversation changed. Return to the original conversation to send the objective.',
   toolbox: 'Analysis toolbox',
   toolDomain: 'Analysis domain', toolDomainReverse: 'Reverse engineering', toolDomainIot: 'IoT', toolDomainGeneral: 'General tools',

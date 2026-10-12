@@ -24,6 +24,7 @@ function actions(overrides: Partial<WorkbenchActions> = {}) {
     },
     activityDetails: vi.fn(async () => ({ items: [], next: null, through: 0 })), openChild: vi.fn(),
     sendAnalysis: vi.fn(async () => {}),
+    openAnalysisChat: vi.fn(),
     manageProject: vi.fn(async () => '[]'),
     importMaterials: vi.fn(async () => view),
     observe: vi.fn(async () => view),

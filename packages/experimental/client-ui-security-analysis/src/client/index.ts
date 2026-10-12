@@ -39,7 +39,7 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap { securityWorkbench: unknown }
 }
 /** Services required to mount security RPC and the input dock. */
-export const inject = ['remote', 'slots', 'locale', 'sessions', 'layout', 'workspaces', 'uiWorkspace', 'sidebarRight', 'sidebarRightTabs']
+export const inject = ['remote', 'slots', 'locale', 'sessions', 'conversation', 'layout', 'workspaces', 'uiWorkspace', 'sidebarRight', 'sidebarRightTabs']
 
 async function unwrap<T>(pending: Promise<RemoteResult<T>>): Promise<T> {
   const result = await pending
@@ -92,6 +92,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         const session = scoped.sessions.binding(id)?.session
         if (!session) throw new Error(scoped.locale.bind(NS)('analysisSessionChanged'))
         await unwrap(session.prompt([{ type: 'text', text: objective }], 'queue'))
+      },
+      openAnalysisChat: (id, objective) => {
+        const binding = scoped.sessions.binding(id)
+        if (!binding) throw new Error(scoped.locale.bind(NS)('analysisSessionChanged'))
+        const input = scoped.conversation.input.for(binding.ctx)
+        if (!input.state.getSnapshot().draft) input.setDraft(objective)
+        scoped.uiWorkspace.openSession(id)
       },
       manageProject: projectActions.manageProject,
       importMaterials: (id, input) => unwrap(remote.importMaterials(id, input)),

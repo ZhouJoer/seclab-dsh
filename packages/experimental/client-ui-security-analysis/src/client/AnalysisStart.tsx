@@ -1,4 +1,4 @@
-/** Stage an analysis request before saving materials and submitting the user's objective. @module */
+/** Save analysis materials before opening the native composer or sending immediately. @module */
 import { useRef, useState } from 'react'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -23,6 +23,7 @@ export interface AnalysisStartProps extends PropsLocale<typeof NS> {
     target?: { origin: string; pathPrefix: string; allowedAddresses: string[] }
   }): Promise<void>
   send(objective: string): Promise<void>
+  continueInChat(objective: string): void
   started(): void
 }
 
@@ -43,13 +44,15 @@ export function AnalysisStart(props: AnalysisStartProps) {
   const attempt = useRef<{ payload: string; operationId: string }>()
   const environmentId = environment ?? props.environments.find(item => item.kind === 'local')?.id ?? ''
   const locked = props.disabled || busy || prepared
+  const cannotStart = props.disabled || busy || selecting || !preferencesReady || !objective.trim()
+    || !props.environments.some(item => item.id === environmentId)
   const files = selection?.material.kind === 'files' && !selection.material.directory ? selection.material.files : undefined
   const remaining = props.limits && files ? {
     entries: props.limits.entries - files.length,
     bytes: props.limits.bytes - files.reduce((sum, file) =>
       sum + file.base64.length * 3 / 4 - (file.base64.match(/=*$/)?.[0].length ?? 0), 0),
   } : props.limits
-  const start = async () => {
+  const start = async (sendImmediately: boolean) => {
     setBusy(true); setError('')
     try {
       if (!prepared) {
@@ -62,7 +65,8 @@ export function AnalysisStart(props: AnalysisStartProps) {
         await props.prepare({ ...input, operationId: attempt.current.operationId })
         setPrepared(true)
       }
-      await props.send(objective.trim())
+      if (sendImmediately) await props.send(objective.trim())
+      else props.continueInChat(objective.trim())
       props.started()
     } catch (error) { setError(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(false) }
@@ -101,8 +105,9 @@ export function AnalysisStart(props: AnalysisStartProps) {
     {prepared && <p>{t('analysisPrepared')}</p>}
     {error && <p role="alert" className={css.error}>{error}</p>}
     <div className={css.taskActions}><button className={css.primaryAction}
-      disabled={props.disabled || busy || selecting || !preferencesReady || !objective.trim()
-        || !props.environments.some(item => item.id === environmentId)}
-      onClick={() => void start()}>{t(prepared ? 'retryAnalysis' : 'startAnalysis')}</button></div>
+      disabled={cannotStart}
+      onClick={() => void start(false)}>{t('saveAnalysisAndChat')}</button>
+    <button disabled={cannotStart}
+      onClick={() => void start(true)}>{t(prepared ? 'retryAnalysis' : 'startAnalysis')}</button></div>
   </section>
 }

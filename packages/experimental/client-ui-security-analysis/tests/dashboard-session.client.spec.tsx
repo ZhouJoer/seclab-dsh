@@ -23,12 +23,24 @@ function harness(extra: object = {}) {
     configuration: vi.fn(async () => workbenchConfiguration()),
     configureWorkspace: vi.fn(async () => workbenchConfiguration()),
     load: vi.fn(async () => ({ revision: 0, records: [] })),
-    importMaterials: vi.fn<WorkbenchActions['importMaterials']>(async () => prepared), sendAnalysis: vi.fn(async () => {}), renderFactorySlot: () => null,
+    importMaterials: vi.fn<WorkbenchActions['importMaterials']>(async () => prepared), sendAnalysis: vi.fn(async () => {}), openAnalysisChat: vi.fn(), renderFactorySlot: () => null,
     ...extra,
   }
   // Unused framework seats and advanced actions do not participate in this creation fixture.
   return { api, props: api as Parameters<typeof DashboardSession>[0] }
 }
+it('keeps the saved project bound when handing its objective to the native composer', async () => {
+  const { api, props } = harness()
+  render(<DashboardSession {...props} />)
+  fireEvent.change(screen.getByLabelText('What would you like to analyze?'), { target: { value: 'Inspect code' } })
+  const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Save and open chat' })
+  await waitFor(() => { expect(button.disabled).toBe(false) })
+  fireEvent.click(button)
+  await waitFor(() => { expect(api.started).toHaveBeenCalledWith('task') })
+  expect(api.openAnalysisChat).toHaveBeenCalledWith('session', 'Inspect code')
+  expect(api.importMaterials).toHaveBeenCalledOnce()
+  expect(api.sendAnalysis).not.toHaveBeenCalled()
+})
 it('retries sending without recreating a prepared task or importing its materials again', async () => {
   const send = vi.fn().mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue(undefined)
   const { api, props } = harness({ sendAnalysis: send })
@@ -42,17 +54,19 @@ it('retries sending without recreating a prepared task or importing its material
   expect(api.importMaterials).toHaveBeenCalledTimes(1)
   expect(send).toHaveBeenCalledTimes(2)
 })
-it('does not send after the creation view leaves while material preparation is pending', async () => {
+it.each(['Start analysis', 'Save and open chat'])('does not complete %s after the creation view leaves while material preparation is pending', async (action) => {
   const pending = Promise.withResolvers<WorkbenchView>()
   const { api, props } = harness({ importMaterials: vi.fn(() => pending.promise) })
   const mounted = render(<DashboardSession {...props} />)
   fireEvent.change(screen.getByLabelText('What would you like to analyze?'), { target: { value: 'Inspect code' } })
-  await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Start analysis' }).disabled).toBe(false) })
-  fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+  await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>('button', { name: action }).disabled).toBe(false) })
+  fireEvent.click(screen.getByRole('button', { name: action }))
   await waitFor(() => { expect(api.importMaterials).toHaveBeenCalledTimes(1) })
   mounted.unmount()
   await act(async () => { pending.resolve(prepared); await pending.promise })
   expect(api.sendAnalysis).not.toHaveBeenCalled()
+  expect(api.openAnalysisChat).not.toHaveBeenCalled()
+  expect(api.started).not.toHaveBeenCalled()
 })
 
 it('requires a saved attempt limit before creating an analysis', async () => {
