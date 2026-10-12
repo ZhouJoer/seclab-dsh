@@ -252,6 +252,35 @@
       }
     },
     {
+      "name": "security_adb",
+      "description": "Inspect the operator-selected Android device and installed packages. Does not accept shell commands or change the device. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "device",
+              "packages",
+              "package-info"
+            ]
+          },
+          "packageName": {
+            "type": "string",
+            "description": "Package identity required for package-info."
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
       "name": "security_capabilities",
       "description": "Discover task-relevant tools by query, tags, collectionIds or toolIds. Default returns brief definitions without probing. Set details with toolIds or providerId to load selected invocation guides. Use offset and limit for bounded pages. Definitions do not establish installation or execution permission.",
       "parameters": {
@@ -328,7 +357,7 @@
     },
     {
       "name": "security_command",
-      "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: import, import-source, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
+      "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -503,7 +532,7 @@
     },
     {
       "name": "security_file",
-      "description": "Identify an imported file using its contents. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Identify an imported file using its contents. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -516,6 +545,50 @@
             "enum": [
               "identity"
             ]
+          }
+        },
+        "required": [
+          "assetId",
+          "operation"
+        ]
+      }
+    },
+    {
+      "name": "security_ghidra",
+      "description": "Query the managed Ghidra program bound to an imported sample. Database writes still require a validation plan. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "identity",
+              "functions",
+              "imports",
+              "exports",
+              "strings",
+              "decompile",
+              "disassemble",
+              "xrefs-to",
+              "xrefs-from"
+            ]
+          },
+          "address": {
+            "type": "string",
+            "description": "Function or reference hexadecimal address."
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "filter": {
+            "type": "string"
           }
         },
         "required": [
@@ -539,7 +612,7 @@
     },
     {
       "name": "security_jadx",
-      "description": "Decompile an imported APK or DEX, optionally selecting one class. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Decompile an imported APK or DEX, optionally selecting one class. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -565,7 +638,7 @@
     },
     {
       "name": "security_nm",
-      "description": "List object symbols and their addresses. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "List object symbols and their addresses. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -588,7 +661,7 @@
     },
     {
       "name": "security_objdump",
-      "description": "Inspect object headers or disassemble a bounded address range. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Inspect object headers or disassemble a bounded address range. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -617,8 +690,50 @@
       }
     },
     {
+      "name": "security_packet_capture",
+      "description": "Decode Wi-Fi or BLE records from an imported PCAP/PCAPNG. Never opens a live interface. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Imported file asset ID."
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "packets"
+            ]
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "wifi",
+              "ble"
+            ]
+          },
+          "filter": {
+            "type": "string",
+            "description": "TShark display filter."
+          },
+          "maxPackets": {
+            "type": "integer"
+          },
+          "maxDecodeBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assetId",
+          "operation",
+          "protocol"
+        ]
+      }
+    },
+    {
       "name": "security_r2ghidra",
-      "description": "Decompile one function at a hexadecimal virtual address. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Decompile one function at a hexadecimal virtual address. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -645,7 +760,7 @@
     },
     {
       "name": "security_radare2",
-      "description": "Inspect binary metadata, functions, references and bounded disassembly. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Inspect binary metadata, functions, references and bounded disassembly. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -683,7 +798,7 @@
     },
     {
       "name": "security_readelf",
-      "description": "Inspect ELF headers and named tables. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Inspect ELF headers and named tables. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -808,7 +923,7 @@
     },
     {
       "name": "security_strings",
-      "description": "Read printable strings with byte offsets. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Read printable strings with byte offsets. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -841,7 +956,7 @@
     },
     {
       "name": "security_tshark",
-      "description": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+      "description": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
       "parameters": {
         "type": "object",
         "properties": {

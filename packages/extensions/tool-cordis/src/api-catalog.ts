@@ -8036,7 +8036,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxAdapter',
-    declaration: 'export interface ToolboxAdapter {\n    id: string;\n    toolName: string;\n    operations: string[];\n    installationId: string;\n    dependencies: string[];\n    environmentId?: string;\n    bindingSource: \'operator\' | \'deployment\' | \'none\';\n    status: \'unconfigured\' | \'unchecked\' | \'unavailable\' | \'ready\';\n}',
+    declaration: 'export interface ToolboxAdapter {\n    id: string;\n    toolName: string;\n    operations: string[];\n    installationId?: string;\n    provider?: string;\n    bindingId?: string;\n    environmentIds?: string[];\n    prerequisite?: \'device\' | \'provider\';\n    dependencies: string[];\n    environmentId?: string;\n    bindingSource: \'operator\' | \'deployment\' | \'none\';\n    status: \'unconfigured\' | \'unchecked\' | \'unavailable\' | \'ready\';\n}',
   },
   {
     name: 'ToolboxConfiguration',

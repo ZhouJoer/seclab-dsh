@@ -8,7 +8,7 @@ describe('security role assignments', () => {
       const prompt = delegationPrompt({ role, task: resolveTask(role), assetId: 'sample', question: 'Inspect ELF functions',
         criterion: 'Identify one function', durationMs: 3000, maxOutputBytes: 4096 })
       expect(prompt).toContain('query security_capabilities')
-      expect(prompt).toContain('dedicated security_<tool> adapter')
+      expect(prompt).toContain('dedicated interface listed by security_capabilities')
       expect(prompt).toContain('security_environment')
       expect(prompt).toContain('demonstrated gap')
     }

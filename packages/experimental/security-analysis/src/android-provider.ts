@@ -51,6 +51,9 @@ export class AndroidProvider implements AnalysisProvider {
     if (!this.operations.some(operation => operation === request.operation) || request.script)
       throw new Error('Unsupported Android operation')
     const args = argsSchema.parse(request.parameters)
+    const allowed = request.operation === 'decompile' ? ['className'] : request.operation === 'package-info' ? ['packageName'] : []
+    for (const key of Object.keys(args)) if (!allowed.includes(key))
+      throw new Error('Unsupported parameter for Android ' + request.operation + ': ' + key)
     if (request.operation === 'decompile' && !['apk', 'dex'].includes(fileAsset(context.asset).format))
       throw new Error('JADX requires an APK or DEX asset')
     if (request.operation !== 'decompile' && !context.environment.deviceId) throw new Error('Select an Android device')

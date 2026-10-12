@@ -1113,7 +1113,7 @@ export interface Config {
 export interface WorkbenchConfig {
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
-    /** Fixed default environment IDs for standalone adapter tools. */
+    /** Fixed environment IDs keyed by adapter binding identity. */
     bindings: Record<string, string>
   }
   /** Engineering improvement scheduling and model budgets. */

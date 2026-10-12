@@ -10,7 +10,7 @@ import { toolboxCatalog } from './toolbox.ts'
 import type { ToolDefinition } from './tool-definitions.ts'
 import type { ToolboxConfiguration, ToolboxFiles } from './toolbox-types.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
-import { adapterInstallation, toolAdapters } from './tool-adapter-catalog.ts'
+import { supportsAdapterEnvironment, toolAdapters, type ToolAdapterDefinition } from './tool-adapter-catalog.ts'
 
 /** Wire input for probing, committing or removing one environment's executable. */
 export const toolConfigurationInput = z.union([z.object({
@@ -59,8 +59,9 @@ export class LocalToolConfiguration {
       }
     }
     for (const [id, environmentId] of Object.entries({ ...this.defaultBindings, ...document.bindings })) {
-      standaloneTool(id, this.catalog())
-      this.editableEnvironment(environmentId)
+      const adapter = toolAdapters.find(adapter => adapter.id === id)
+      if (adapter) this.adapterEnvironment(adapter, environmentId)
+      else { standaloneTool(id, this.catalog()); this.editableEnvironment(environmentId) }
     }
     return document
   }
@@ -74,17 +75,35 @@ export class LocalToolConfiguration {
       throw new Error('Tool settings require a local or managed Docker environment: ' + id)
     return environment
   }
-  /** Resolve the exact operator-selected environment without availability fallback.
+  private adapterEnvironment(adapter: ToolAdapterDefinition, id: string): SecurityEnvironment {
+    const environment = this.environments.find(item => item.id === id)
+    if (!environment || !supportsAdapterEnvironment(adapter, environment))
+      throw new Error('Unsupported execution environment for ' + adapter.id + ': ' + id)
+    return environment
+  }
+  /** Resolve an explicit binding or the task's unique compatible environment, without availability fallback.
    * @param tool - catalog identity.
+   * @param environmentIds - environments already authorized by the task.
    * @returns configured environment identity.
    */
-  route(tool: string): string {
-    const id = adapterInstallation(tool)
+  route(tool: string, environmentIds: readonly string[] = []): string {
+    const adapter = toolAdapters.find(adapter => adapter.id === tool)
+    if (!adapter) throw new Error('Unknown tool adapter: ' + tool)
     const document = this.document()
     this.apply(document)
-    const environment = document.bindings[id] ?? this.defaultBindings[id]
-    if (!environment) throw new Error('Configure a default execution environment for ' + id)
-    return this.editableEnvironment(environment).id
+    const binding = document.bindings[adapter.bindingId] ?? this.defaultBindings[adapter.bindingId]
+    const candidates = this.environments.filter(item => environmentIds.includes(item.id) && supportsAdapterEnvironment(adapter, item))
+    const id = binding ?? (candidates.length === 1 ? candidates[0]?.id : undefined)
+    if (!id) throw new Error('Configure a default execution environment for ' + adapter.bindingId
+      + '; the task must authorize exactly one compatible environment to inherit it. Do not retry until configuration changes.')
+    if (environmentIds.length && !environmentIds.includes(id))
+      throw new Error('Adapter binding is outside the task environments: ' + id)
+    const environment = this.adapterEnvironment(adapter, id)
+    if (adapter.requiresDevice && !environment.deviceId) throw new Error('Configure a deviceId in environment ' + id)
+    const missing = adapter.installationIds.filter(dependency => !environment.tools.some(tool => tool.id === dependency))
+    if (missing.length) throw new Error('Configure an installation for ' + missing.join(', ') + ' in ' + id
+      + '. Open Toolbox once to configure these dependencies; do not retry until configuration changes.')
+    return environment.id
   }
   /** Read the current editable installation configuration.
    * @param environmentId - selected local or managed Docker environment.
@@ -100,17 +119,22 @@ export class LocalToolConfiguration {
     const bindings = { ...this.defaultBindings, ...document.bindings }
     return { editable: this.path !== undefined, revision: revision(document),
       environmentKind: environment.kind,
-      environments: this.environments.filter(item => item.kind === 'local' || (item.kind === 'docker' && !item.externalContainer))
+      environments: this.environments.filter(item => !item.externalContainer)
         .map(({ id, label, kind }) => ({ id, label, kind })),
       bindings, adapters: toolAdapters.map((adapter) => {
-        const installationId = adapterInstallation(adapter.id)
-        const environmentId = bindings[installationId]
-        const installed = this.environments.find(item => item.id === environmentId)?.tools.some(tool => tool.id === installationId)
-        return { id: adapter.id, toolName: 'security_' + adapter.id, operations: [...adapter.operations], installationId,
-          dependencies: adapter.id === installationId ? [] : [installationId],
+        const environmentId = bindings[adapter.bindingId]
+        const target = this.environments.find(item => item.id === environmentId)
+        const installed = target && adapter.installationIds.every(id => target.tools.some(tool => tool.id === id))
+        const device = !adapter.requiresDevice || !!target?.deviceId
+        return { id: adapter.id, toolName: adapter.toolName, provider: adapter.provider,
+          operations: [...adapter.operations], bindingId: adapter.bindingId,
+          ...(adapter.installationIds.length === 1 ? { installationId: adapter.installationIds[0] } : {}),
+          dependencies: adapter.probeIds.filter(id => id !== adapter.id),
+          environmentIds: this.environments.filter(item => supportsAdapterEnvironment(adapter, item)).map(item => item.id),
           ...(environmentId ? { environmentId } : {}),
-          bindingSource: Object.hasOwn(document.bindings, installationId) ? 'operator' : environmentId ? 'deployment' : 'none',
-          status: environmentId && installed ? 'unchecked' : 'unconfigured' }
+          bindingSource: Object.hasOwn(document.bindings, adapter.bindingId) ? 'operator' : environmentId ? 'deployment' : 'none',
+          status: !environmentId || installed && device ? 'unchecked' : 'unconfigured',
+          ...(!device && environmentId ? { prerequisite: 'device' as const } : {}) }
       }), tools: [...ids].filter(id =>
         !toolboxCatalog.some(tool => tool.id === id && !tool.commands.length)).map((id) => {
         const tool = environment.tools.find(tool => tool.id === id)
@@ -157,9 +181,11 @@ export class LocalToolConfiguration {
    */
   bind(id: string, target: string | undefined, expectedRevision: string, environmentId: string): ToolboxConfiguration {
     if (this.path === undefined) throw new Error('Tool configuration is read-only')
-    if (adapterInstallation(id) !== id) throw new Error('Configure the radare2 binding for r2ghidra')
+    const adapter = toolAdapters.find(adapter => adapter.id === id)
+    if (!adapter) throw new Error('Unknown tool adapter: ' + id)
+    if (adapter.bindingId !== id) throw new Error('Configure the ' + adapter.bindingId + ' binding for ' + id)
     this.editableEnvironment(environmentId)
-    if (target !== undefined) this.editableEnvironment(target)
+    if (target !== undefined) this.adapterEnvironment(adapter, target)
     const document = this.document()
     if (revision(document) !== expectedRevision) throw new Error('Tool configuration changed; reload before saving')
     if (target === undefined) Reflect.deleteProperty(document.bindings, id)

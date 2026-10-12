@@ -21,7 +21,7 @@ Choose material, describe an objective and start an analysis with the local envi
 
 Choose **Add materials** in the task overview to upload files or a folder, paste text, or import a Host path. Types are detected automatically. New analysis stages the selection until Start analysis creates the task and saves its materials; imported names appear in the overview. **Manage task** renames or removes a project. Removal stops work and hides the project while retaining evidence and reports; the sidebar’s **Removed tasks** list offers restoration. Restored projects remain paused until explicitly resumed. Long selection labels are shortened, with full names retained in tooltips.
 
-The Toolbox selects installations per configured local or managed Docker environment and a fixed default execution environment per tool. Local installations offer a Host file picker; Docker installations accept container paths. Save checks the installation before applying it and reports completion through the shared notification surface. Inspection may start a configured managed container without installing software or pulling an image. Research-direction cards show total counts, confirmed and unverified tool identities, and execution status; expand the calls to read linked evidence.
+The Toolbox selects installations per configured local or managed Docker environment and optionally pins an execution environment per adapter. Local installations offer a Host file picker; Docker installations accept container paths. Save checks the installation before applying it and reports completion through the shared notification surface. Inspection may start a configured managed container without installing software or pulling an image. Research-direction cards show total counts, confirmed and unverified tool identities, and execution status; expand the calls to read linked evidence.
 
 -----
 
@@ -68,6 +68,8 @@ The task list uses one Host directory subscription for live running, stopping, p
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
+
+Tool cards share the adapter operation declarations and display independent dependencies, supported routes and unavailable prerequisites. Ghidra edits only its route; authentication remains provider configuration. ADB can target Android environments. Packet analysis lists Python and TShark separately. Unbound tools display **Use task environment**. See [Provider design](../security-analysis/README.md#provider-design).
 
 <details>
 <summary>Implementation details</summary>

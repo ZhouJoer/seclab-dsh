@@ -234,6 +234,39 @@
     "kind": "chunks",
     "chunks": [
       {
+        "index": 0,
+        "blockType": "tool-call",
+        "type": "block-start"
+      },
+      {
+        "index": 0,
+        "type": "block-end",
+        "block": {
+          "id": "adapter-device-packages",
+          "name": "security_adb",
+          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"operation\":\"packages\"}",
+          "type": "tool-call"
+        }
+      },
+      {
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        },
+        "type": "usage"
+      },
+      {
+        "reason": {
+          "kind": "tool-calls"
+        },
+        "type": "finish"
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
         "type": "block-start",
         "index": 0,
         "blockType": "text"

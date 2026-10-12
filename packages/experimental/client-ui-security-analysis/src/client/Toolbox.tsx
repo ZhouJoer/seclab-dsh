@@ -153,8 +153,12 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
               {adapter && <section aria-label={t('toolAdapterConfiguration')}>
                 <p>{t('toolViaAdapter')}: <code>{adapter.toolName}</code> · {t(adapterStates[adapter.status])}</p>
                 <p>{t('toolAdapterOperations')}: {adapter.operations.join(', ')}</p>
-                <p>{t('toolDefaultEnvironment')}: {adapter.environmentId ?? t('toolAdapterUnconfigured')}</p>
-                {adapter.installationId !== adapter.id && <p>{t('toolAdapterSharedInstallation')} {adapter.installationId}</p>}
+                <p>{t('toolDefaultEnvironment')}: {adapter.environmentId ?? t('toolInheritEnvironment')}</p>
+                {adapter.installationId && adapter.installationId !== adapter.id
+                  && <p>{t('toolAdapterSharedInstallation')} {adapter.installationId}</p>}
+                {!!adapter.dependencies.length && <p>{t('toolDependency')} {adapter.dependencies.join(', ')}</p>}
+                {adapter.prerequisite && <p>{t(adapter.prerequisite === 'device' ? 'toolAdapterNeedsDevice' : 'toolAdapterNeedsProvider')}</p>}
+                {!adapter.installationId && <p>{t('toolProviderSetupHint')}</p>}
                 {adapter.status === 'ready' && <p>{t('toolAdapterReadinessHint')}</p>}
               </section>}
               <p>{catalog?.tools.find(item => item.id === tool.id)?.description}</p>
@@ -169,8 +173,10 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
               {tool.detail === 'configuration-required' && <p>{t('toolConfigurationRequired')}</p>}
               {(tool.version.includes('\n') || (tool.detail && !['dependency-unavailable', 'configuration-required'].includes(tool.detail))) &&
             <details><summary>{t('toolDiagnostics')}</summary><pre>{tool.version}{'\n'}{tool.detail}</pre></details>}
-              {configuration?.editable && tool.invocation !== 'provider' &&
-            <button disabled={busy || editing !== undefined} onClick={() => { setEditing(tool.dependency ?? tool.id) }}>{t('toolConfigure')}{tool.dependency ? ' · ' + tool.dependency : ''}</button>}
+              {configuration?.editable && (tool.invocation !== 'provider' || adapter) &&
+            <button disabled={busy || editing !== undefined} onClick={() => {
+              setEditing(adapter && adapter.bindingId === adapter.id ? tool.id : tool.dependency ?? tool.id)
+            }}>{t('toolConfigure')}{tool.dependency ? ' · ' + tool.dependency : ''}</button>}
               {tool.installUrl && <a href={tool.installUrl} target="_blank" rel="noreferrer">{t('toolInstallGuide')}</a>}
             </article>})}
         </section>)}

@@ -54,7 +54,16 @@ export interface ToolboxAdapter {
   id: string
   toolName: string
   operations: string[]
-  installationId: string
+  /** Executable installation, absent for service-backed adapters. */
+  installationId?: string
+  /** Provider implementation required by this interface. */
+  provider?: string
+  /** Shared or independent route key in the operator bindings. */
+  bindingId?: string
+  /** Configured environments supported by this adapter. */
+  environmentIds?: string[]
+  /** Additional setup not established by an executable version check. */
+  prerequisite?: 'device' | 'provider'
   dependencies: string[]
   environmentId?: string
   bindingSource: 'operator' | 'deployment' | 'none'

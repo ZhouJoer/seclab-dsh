@@ -12,11 +12,28 @@ description: "安全 Harness 的交付优先级、依赖和验收条件。"
 
 ## 目录
 
+- [Provider 适配](#provider-adaptation)
 - [功能 TODO](#feature-todo)
 - [当前基础](#baseline)
 - [交付里程碑](#delivery-milestones)
 - [工具与环境扩展](#tool-and-environment-expansion)
 - [发布验收](#release-acceptance)
+
+<a id="provider-adaptation"></a>
+## Provider 适配
+
+[Provider 设计](../../packages/experimental/security-analysis/README.zh.md#provider-design)维护当前行为。以下交付顺序始终保留 Shell 和自定义脚本；外部 Kali 继续由操作员管理。配置与资产准备不应消耗反复的分析轮次。
+
+| 批次 | 范围 | 验收 |
+|---|---|---|
+| 0 | 保留不支持环境及操作的原生发现 | 外部容器与发现回归测试已覆盖。 |
+| 1 | Ghidra 只读查询、ADB 查询、Wi-Fi/BLE 离线分析；自动二进制资产与任务环境继承 | 已实现；Loader 和 UI 夹具覆盖路由与证据。Windows 本机 radare2、r2ghidra、JADX 和 TShark 通过已安装工具测试。3081 上的真实模型 Web 流程通过自动文件资产及 radare2/Wi-Fi 观察验收，并保存了证据。真实 Ghidra、Android、外部 Kali 组合尚未验证。 |
+| 2 | Ghidra 写操作/Frida、Web/external-web、native/offline 分单元交付 | 待实现；复用已批准计划与 security_execute。 |
+| 3 | Nmap、Nuclei 分别交付 | 待实现；部署限额、目标和模板绑定项目范围及已批准计划。 |
+| 4 | Metasploit 查询、选项、recipe 与明确选择的验证 | 待实现；保留高级流程。 |
+| 5 | 外部 Kali 传输、结果回收、执行身份和取消 | 待实现；不转移容器所有权。 |
+
+r2pipe、Capstone、pefile 和 Unicorn 保留 Python/脚本能力。Fastboot 和 John 执行接口继续暂缓。各批验收包括受影响测试、模型日志快照、文档及可获得的真实环境证据。模拟子进程响应不能证明真实工具兼容性。
 
 <a id="feature-todo"></a>
 ## 功能 TODO

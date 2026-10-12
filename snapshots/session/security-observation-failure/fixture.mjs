@@ -59,6 +59,14 @@ export function apply(ctx) {
         assert.deepEqual(activity.evidenceIds, [result.value.evidenceId])
         assert.equal(controller.activity.usage(projectId).find(row => row.tool === 'radare2').total, 1)
       }
+      if (exec.callId === 'adapter-device-packages') {
+        assert.notEqual(result.isError, true)
+        assert.equal(result.value.tool, 'adb')
+        const view = await service.view(exec.agent)
+        const evidence = view.records.find(record => record.kind === 'evidence' && record.value.id === result.value.evidenceId)
+        assert.equal(evidence.value.provider, 'android')
+        assert.equal(evidence.value.incomplete, false)
+      }
       if (exec.name === 'security_evidence') {
         assert.notEqual(result.isError, true)
         assert.equal(result.value.incomplete, true)

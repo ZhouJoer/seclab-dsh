@@ -12,11 +12,28 @@ The [security enhancement and interaction simplification plan](security-harness-
 
 ## Contents
 
+- [Provider adaptation](#provider-adaptation)
 - [Feature TODO](#feature-todo)
 - [Baseline](#baseline)
 - [Delivery milestones](#delivery-milestones)
 - [Tool and environment expansion](#tool-and-environment-expansion)
 - [Release acceptance](#release-acceptance)
+
+<a id="provider-adaptation"></a>
+## Provider adaptation
+
+The [Provider design](../../packages/experimental/security-analysis/README.md#provider-design) owns current behavior. This delivery order retains Shell and custom scripts throughout; external Kali remains operator-managed. Configuration and asset preparation must not consume repeated analysis rounds.
+
+| Batch | Scope | Acceptance |
+|---|---|---|
+| 0 | Preserve native discovery for unsupported environments and operations | Covered by external-container and discovery regression tests. |
+| 1 | Ghidra read queries, ADB queries, offline Wi-Fi/BLE; automatic binary assets and task environment inheritance | Implemented; Loader and UI fixtures cover routing and evidence. Windows local radare2, r2ghidra, JADX and TShark passed installed-tool tests. The real-model Web flow on port 3081 passed automatic file assets and radare2/Wi-Fi observations with saved evidence. Real Ghidra, Android and external Kali combinations remain unverified. |
+| 2 | Ghidra writes/Frida, Web/external-web, native/offline in separate units | Pending; reuse approved plans and security_execute. |
+| 3 | Nmap and Nuclei separately | Pending; deployment limits, targets and templates bind to project scope and approved plans. |
+| 4 | Metasploit query, options, recipes and selected validation | Pending; retain advanced workflows. |
+| 5 | External Kali transport, output recovery, execution identity and cancellation | Pending; no container ownership transfer. |
+
+Keep r2pipe, Capstone, pefile and Unicorn through Python/scripts. Fastboot and John execution interfaces remain deferred. Per-batch acceptance includes scoped tests, logged model snapshots, documentation and real-environment evidence when available. Simulated subprocess responses do not establish real-tool compatibility.
 
 <a id="feature-todo"></a>
 ## Feature TODO

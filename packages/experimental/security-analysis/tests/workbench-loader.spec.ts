@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, readdir } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { afterEach, describe, expect, it, vi, onTestFinished } from 'vitest'
@@ -193,7 +193,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -271,7 +271,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
               : name === 'storage-domain'
                 ? { backend: 'json' }
                 : name === 'ghidra'
-                  ? { programs: [] }
+                  ? { programs: options.programs ?? [] }
                   : name === 'security'
                     ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
                       ...(options.evolution ? { evolution: options.evolution } : {}),
@@ -288,8 +288,9 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                         ] } } : {}),
                       root: join(root, 'workbench'), importRoots: [root],
                       ...(options.adapters ? { ...(options.adapters === 'deployment' ? {} : { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' } }),
-                        toolAdapters: { bindings: { radare2: 'local' } } } : {}),
-                      environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root, tools: options.installations ?? [] }] }
+                        toolAdapters: { bindings: { radare2: 'local', ...options.bindings } } } : {}),
+                      environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root,
+                        ...(options.deviceId ? { deviceId: options.deviceId } : {}), tools: options.installations ?? [] }] }
                     : {},
       })),
     ),
@@ -350,6 +351,99 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it.each(['adb', 'packet-capture'] as const)('dispatches the %s provider adapter and reads retained evidence without another process', async (id) => {
+    const fixture = `import fs from 'node:fs'; import crypto from 'node:crypto'; import assert from 'node:assert/strict';
+const args = process.argv.slice(1);
+if (args[0] === '-c' || args.includes('--version')) console.log(JSON.stringify({version:'fixture',location:process.execPath,prefix:'fixture',basePrefix:'fixture',virtualEnvironment:false,pipAvailable:false}));
+else if (args.includes('version')) console.log('Android Debug Bridge fixture');
+else if (args.includes('--output')) {
+  const input = args[args.indexOf('--input')+1], output = args[args.indexOf('--output')+1];
+  assert.equal(args[args.indexOf('--protocol')+1], 'wifi');
+  fs.writeFileSync(output, JSON.stringify({inputSha256:crypto.createHash('sha256').update(fs.readFileSync(input)).digest('hex'),
+    incomplete:false,toolVersion:'TShark fixture',warnings:[],records:[{kind:'capture',matchedFrames:0}]}));
+} else { assert.deepEqual(args, ['-s','fixture-device','shell','pm','list','packages','-f']); console.log('package:/data/app/fixture.apk=org.example.fixture'); }
+`
+    const { ctx, agent, controller, model } = await load(false, 0, { adapters: true,
+      bindings: { [id]: 'local' }, deviceId: 'fixture-device', installations: [
+        { id: 'adb', command: process.execPath, prefixArgs: ['--input-type=module', '-e', fixture, '--'], versionArgs: ['version'], source: 'Fixture' },
+        { id: 'python', command: process.execPath, prefixArgs: ['--input-type=module', '-e', fixture, '--'], versionArgs: ['--version'], source: 'Fixture' },
+        { id: 'tshark', command: process.execPath, versionArgs: ['--version'], source: 'Fixture' },
+      ] })
+    const send = operator(controller, agent), root = roots[roots.length - 1]!
+    await send({ kind: 'create', title: 'Provider adapters', objective: 'Read owned inputs', environmentIds: ['local'], maxAttempts: 3 })
+    const path = join(root, 'input.pcap')
+    await writeFile(path, Buffer.from('d4c3b2a1020004000000000000000000ffff000069000000', 'hex'))
+    await send({ kind: 'import', path, label: 'Fixture capture' })
+    const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Missing asset')
+    const toolName = id === 'adb' ? 'security_adb' : 'security_packet_capture'
+    const args = { assetId: asset.value.id, operation: id === 'adb' ? 'packages' : 'summary',
+      ...(id === 'packet-capture' ? { protocol: 'wifi' } : {}) }
+    const spawn = vi.spyOn(ctx.subprocess, 'spawn')
+    model.nativeCalls = [{ name: toolName, args }]
+    agent.followup(webPrompt('Collect the configured read-only observation.'))
+    await agent.whenIdle()
+    const evidence = controller.view(agent.id).records.find(record => record.kind === 'evidence')
+    expect(evidence, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).toBeDefined()
+    if (evidence?.kind !== 'evidence') throw new Error('Missing evidence')
+    expect(evidence.value, JSON.stringify(evidence.value)).toMatchObject({ provider: id === 'adb' ? 'android' : 'packet-capture', incomplete: false })
+    const count = spawn.mock.calls.length
+    const page = await execute(ctx, agent, 'security_evidence', { evidenceId: evidence.value.id, offset: 0, length: 2048 })
+    expect(page.isError).toBe(false)
+    expect(JSON.stringify(page)).toContain(id === 'adb' ? 'org.example.fixture' : 'matchedFrames')
+    expect((await execute(ctx, agent, toolName, args, 'native-1')).isError).toBe(false)
+    for (const override of [{ command: 'other' }, { environmentId: 'other' }, { deviceId: 'other' }])
+      expect((await execute(ctx, agent, toolName, { ...args, ...override }, JSON.stringify(override))).isError).toBe(true)
+    expect(spawn).toHaveBeenCalledTimes(count)
+    expect(await readdir(join(root, 'workbench', 'runs'))).toEqual([])
+    expect(controller.activity!.usage(controller.binding(agent.id)!.engagementId).find(row => row.tool === id)?.completed).toBe(1)
+  })
+
+  it('queries a bound Ghidra service through its adapter without executable configuration or database writes', async () => {
+    const bytes = Buffer.from('owned Ghidra input'), sha256 = createHash('sha256').update(bytes).digest('hex')
+    const token = 'fixture-token-'.repeat(4), calls: string[] = []
+    const server = createServer((request, response) => {
+      calls.push(request.url ?? '')
+      if (request.headers.authorization !== 'Bearer ' + token || request.headers['x-dsh-sha256'] !== sha256) {
+        response.writeHead(403); response.end(); return
+      }
+      response.writeHead(200, { 'X-DSH-SHA256': sha256, 'X-DSH-Ghidra-Version': 'fixture' })
+      response.end('0x401000 main\n0x402000 parse_packet\n')
+    })
+    onTestFinished(async () => { server.closeAllConnections(); await new Promise<void>((resolve, reject) => {
+      server.close((error) => { if (error) reject(error); else resolve() })
+    }) })
+    server.listen(0, '127.0.0.1'); await once(server, 'listening')
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Missing server address')
+    const { ctx, agent, controller, model } = await load(false, 0, { adapters: true, bindings: { ghidra: 'local' },
+      programs: [{ sha256, programId: '/fixture', token, baseUrl: 'http://127.0.0.1:' + String(address.port) }] })
+    const send = operator(controller, agent), root = roots[roots.length - 1]!
+    await send({ kind: 'create', title: 'Ghidra adapter', objective: 'Read the bound program', environmentIds: ['local'], maxAttempts: 3 })
+    const path = join(root, 'sample.bin'); await writeFile(path, bytes)
+    await send({ kind: 'import', path, label: 'Owned sample' })
+    const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Missing asset')
+    const args = { assetId: asset.value.id, operation: 'functions', limit: 2 }
+    model.nativeCalls = [{ name: 'security_ghidra', args }]
+    agent.followup(webPrompt('Read two functions from the configured Ghidra program.'))
+    await agent.whenIdle()
+    const evidence = controller.view(agent.id).records.find(record => record.kind === 'evidence')
+    expect(evidence).toMatchObject({ kind: 'evidence', value: { provider: 'ghidra', incomplete: false } })
+    const query = new URL(calls[0]!, 'http://localhost')
+    expect(query.pathname).toBe('/methods')
+    expect(Object.fromEntries(query.searchParams)).toEqual({ limit: '2', offset: '0' })
+    for (const denied of [{ ...args, token }, { ...args, operation: 'rename', address: '0x401000', name: 'changed' },
+      { ...args, environmentId: 'other' }, { assetId: asset.value.id, operation: 'identity', address: '0x401000' }])
+      expect((await execute(ctx, agent, 'security_ghidra', denied, JSON.stringify(denied))).isError).toBe(true)
+    expect(calls).toHaveLength(1)
+    const discovery = await execute(ctx, agent, 'security_capabilities', { toolIds: ['ghidra'], details: true })
+    expect(JSON.stringify(discovery)).not.toContain(token)
+    expect(JSON.stringify(discovery)).not.toContain(String(address.port))
+    expect(ctx.securityWorkbench.toolboxConfiguration('local').adapters?.find(adapter => adapter.id === 'ghidra'))
+      .toMatchObject({ status: 'unchecked', provider: 'ghidra', bindingId: 'ghidra' })
+  })
+
   it('runs deployment-only adapters and rejects model installation overrides before spawning', async () => {
     const installation = { id: 'file', command: process.execPath, prefixArgs: ['-e', 'console.log("fixture file")', '--'],
       versionArgs: ['--version'], source: 'Deployment' }
@@ -385,7 +479,7 @@ describe('security workbench Loader composition', () => {
       revision: initial.revision, defaultEnvironmentId: 'local' }))
     expect(saved.configuration.adapters?.find(item => item.id === 'tshark')).toMatchObject({ bindingSource: 'operator', status: 'unconfigured' })
     const removed = await service.configureTool('local', JSON.stringify({ action: 'reset-binding', id: 'tshark', revision: saved.configuration.revision }))
-    expect(removed.configuration.adapters?.find(item => item.id === 'tshark')).toMatchObject({ bindingSource: 'none', status: 'unconfigured' })
+    expect(removed.configuration.adapters?.find(item => item.id === 'tshark')).toMatchObject({ bindingSource: 'none', status: 'unchecked' })
     expect(spawn).not.toHaveBeenCalled()
     await expect(service.configureTool('local', JSON.stringify({ action: 'bind', id: 'tshark', revision: initial.revision,
       defaultEnvironmentId: 'missing' }))).rejects.toThrow('environment')
@@ -1861,9 +1955,9 @@ it('recovers binary identity from a directory asset by importing one file withou
   expect(childResult.isError).toBe(true)
   expect(JSON.stringify(childResult)).toContain('Delegated analysts must ask the coordinator')
   const command = { operationId: 'import-single-binary', expectedRevision: controller.view(agent.id).revision,
-    action: { kind: 'import', path, label: 'sample.dll' } }
+    action: { kind: 'import-member', assetId: source.value.id, path: 'sample.dll', label: 'sample.dll' } }
   expect((await execute(ctx, child, 'security_command', { command: JSON.stringify(command) })).isError).toBe(true)
-  expect((await execute(ctx, agent, 'security_help', { action: 'import' })).isError).toBe(false)
+  expect((await execute(ctx, agent, 'security_help', { action: 'import-member' })).isError).toBe(false)
   expect((await execute(ctx, agent, 'security_command', { command: JSON.stringify(command) })).isError).toBe(false)
   const imported = controller.view(agent.id).records.find(item => item.kind === 'asset' && !('kind' in item.value))
   if (imported?.kind !== 'asset') throw new Error('Missing imported file')

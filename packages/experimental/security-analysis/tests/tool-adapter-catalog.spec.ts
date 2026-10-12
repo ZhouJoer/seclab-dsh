@@ -3,12 +3,12 @@ import { expect, it } from 'vitest'
 import { modelToolDefinition, modelToolInventory, toolAdapters } from '../src/tool-adapter-catalog.ts'
 import { parseToolDefinition } from '../src/tool-definitions.ts'
 
-it.each(toolAdapters)('publishes the $id adapter independently of imported launcher instructions', ({ id, operations }) => {
+it.each(toolAdapters)('publishes the $id adapter independently of imported launcher instructions', ({ id, operations, toolName }) => {
   const definition = parseToolDefinition({ id, label: id, commands: ['/operator/private'], args: ['--private'],
     guide: 'Run the raw executable with shell' })
   for (const details of [true, false]) {
     const projection = modelToolDefinition(definition, details)
-    expect(projection).toMatchObject({ id, invocation: 'adapter', toolName: 'security_' + id, operations })
+    expect(projection).toMatchObject({ id, invocation: 'adapter', toolName, operations })
     expect(JSON.stringify(projection)).not.toMatch(/operator\/private|--private|raw executable|"commands"|"args"/u)
   }
 })
@@ -36,7 +36,8 @@ it('preserves advanced guides on demand without replacing the default semantic i
   const definition = parseToolDefinition({ id: 'radare2', label: 'radare2', commands: ['r2'], guide: 'Advanced analysis workflow' })
   expect(modelToolDefinition(definition, true, true)).toMatchObject({ invocation: 'shell', commands: ['r2'],
     guide: 'Advanced analysis workflow', adapter: { toolName: 'security_radare2' } })
-  expect(modelToolDefinition(definition, true)).toMatchObject({ invocation: 'adapter', guide: expect.stringContaining('native: true') })
+  expect(modelToolDefinition(definition, true)).toHaveProperty('invocation', 'adapter')
+  expect(modelToolDefinition(definition, true)).toHaveProperty('guide', expect.stringContaining('native: true'))
 })
 
 it('preserves the measured Kali launcher and Docker context, and exposes advanced local launchers on demand', () => {

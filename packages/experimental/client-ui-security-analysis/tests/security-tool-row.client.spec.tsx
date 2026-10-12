@@ -4,10 +4,15 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { SecurityToolRow } from '../src/client/SecurityToolRow.tsx'
+import { SecurityToolRow, securityToolNames } from '../src/client/SecurityToolRow.tsx'
+import { toolAdapters } from '@deepseek-ai/dsh-experimental-security-analysis/src/tool-adapter-catalog.ts'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
+it('registers a tool card for every declared semantic adapter', () => {
+  const names: readonly string[] = securityToolNames
+  expect(toolAdapters.filter(adapter => !names.includes(adapter.toolName))).toEqual([])
+})
 it.each(['preparing', 'start'] as const)('shows the running state during %s without reading result content', (phase) => {
   const props = { phase, block: { phase, callId: 'pending', name: 'security_static' },
     callId: 'pending', toolName: 'security_static', t: makeTranslate(zh),

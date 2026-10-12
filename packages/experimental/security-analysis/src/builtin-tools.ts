@@ -7,6 +7,13 @@ export const builtinToolPack = parseToolPack({
   'label': 'Built-in tools',
   'tools': [
     {
+      id: 'packet-capture', label: 'Wi-Fi / BLE capture analysis', category: 'reverse',
+      description: 'Offline Wi-Fi and BLE packet observations / 离线无线数据包分析',
+      tags: ['capture', 'iot', 'wifi', 'ble', 'pcapng'], invocation: 'provider', provider: 'packet-capture',
+      dependencies: ['python', 'tshark'], skills: ['security-packet-analysis', 'security-iot-offline'],
+      guide: 'Use security_packet_capture for imported Wi-Fi or BLE captures. The operator configures Python and TShark in the same local environment. Read the packet-capture provider guide for existing security_static queries. Live capture and external-container scripts retain their native workflows.',
+    },
+    {
       'id': 'python',
       'label': 'python',
       'description': 'Python interpreter and virtual environment / Python 环境',
@@ -586,7 +593,7 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
     {
       'id': 'iot',
       'label': 'IoT / 物联网',
-      'toolIds': ['tshark', 'radare2', 'r2ghidra', 'readelf', 'objdump', 'strings', 'unicorn', 'nmap'],
+      'toolIds': ['tshark', 'packet-capture', 'radare2', 'r2ghidra', 'readelf', 'objdump', 'strings', 'unicorn', 'nmap'],
     },
     {
       'id': 'firmware',
@@ -625,6 +632,7 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
       'label': 'Packet capture',
       'toolIds': [
         'tshark',
+        'packet-capture',
       ],
     },
   ],

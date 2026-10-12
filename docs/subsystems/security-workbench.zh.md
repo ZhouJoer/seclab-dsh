@@ -10,7 +10,7 @@
 
 `ToolboxDirectory` 包含已配置的环境选项和一份实测或显式未检测的 `ToolboxInventory`。其中的 `ToolboxTool` 条目分别描述可用性、调用方式和可选 provider 集成。可用 Docker 工具提供宿主 `command` 和 `prefixArgs`，并在 `installation` 中保留原始容器可执行文件与参数，供配置持久化使用。这些只读观察不属于项目证据或执行权限；字段定义见[工具箱类型](../../packages/experimental/security-analysis/src/toolbox-types.ts)。
 
-`ToolboxConfiguration.adapters` 包含 Host 计算的 `ToolboxAdapter` 条目，描述模型工具名、操作、安装依赖、绑定来源及绑定环境中的检测状态。状态为 unconfigured、unchecked、unavailable 或 ready，不持久化，也不授予执行权限。`configureTool` 除安装 probe/save/remove 外，还接受独立的 bind/reset-binding 动作。模型发现接口提供语义能力，省略已适配工具的启动配置。
+`ToolboxConfiguration.adapters` 包含共享 provider 与操作声明、可选安装身份、独立依赖、支持环境 ID、绑定来源和前置条件。服务适配器无需可执行文件。健康状态为临时观测，不授予权限。`configureTool` 将路由修改与安装修改分开；[Provider 设计](../../packages/experimental/security-analysis/README.zh.md#provider-design)维护解析、资产复用和原生发现规则。
 
 `DeviceDirectory` 包含已配置的环境选项和缓存或未检测的 `DeviceInventory`。独立前提检查与 branded `RadioDeviceId` 描述软件、驱动及可见接口；观测时间用于区分保留数据和失败的刷新。这些值仅保存在内存中，不代表抓包权限或无线采集就绪。参见[设备类型](../../packages/experimental/security-analysis/src/device-types.ts)。
 

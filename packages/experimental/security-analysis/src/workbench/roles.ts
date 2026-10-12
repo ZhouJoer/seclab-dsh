@@ -14,7 +14,7 @@ const evidenceTools = ['skill', 'security_scope', 'security_capabilities', 'secu
 const researchTools = [...evidenceTools, 'web_search', 'web_fetch']
 /** Native workspace tools available to collecting roles. */
 export const analysisTools = ['bash', 'pwsh', 'read', 'read_image', 'write', 'edit', 'glob', 'grep',
-  ...toolAdapters.map(tool => 'security_' + tool.id),
+  ...toolAdapters.map(tool => tool.toolName),
   'job_list', 'job_output', 'job_kill', 'security_capture_analysis'] as const
 const roleTools: Record<SecurityRole, readonly string[]> = {
   coordinator: [...researchTools, ...analysisTools, 'security_environment', 'security_static', 'security_command', 'security_execute', 'security_delegate',
@@ -42,19 +42,14 @@ export function toolsForRole(role: SecurityRole | undefined): readonly string[] 
  */
 export function canObserve(role: SecurityRole, provider: string, operation: string): boolean {
   if (provider === 'tool-adapter') return canUseAdapter(role, operation)
+  const adapter = toolAdapters.find(tool => tool.provider === provider && tool.operations.some(candidate => candidate === operation))
+  if (adapter) return canUseAdapter(role, adapter.id + '.' + operation)
   if (role === 'researcher' || role === 'reviewer') return false
-  if (provider === 'packet-capture') return ['summary', 'packets'].includes(operation)
   if (provider === 'source') return ['list', 'read', 'search'].includes(operation) &&
     (role !== 'reconnaissance' || operation !== 'read')
   if (role === 'web-analyst') return false
-  if (!['binary', 'ghidra', 'android'].includes(provider)) return false
-  if (provider === 'ghidra' && !['identity', 'functions', 'imports', 'exports', 'strings', 'decompile', 'disassemble', 'xrefs-to', 'xrefs-from'].includes(operation)) return false
-  if (provider === 'android' && !['device', 'packages', 'package-info', 'decompile'].includes(operation)) return false
-  if (provider === 'binary' && !['identity', 'strings', 'hex'].includes(operation)) return false
-  if (role !== 'reconnaissance') return true
-  if (provider === 'binary') return ['identity', 'strings', 'hex'].includes(operation)
-  if (provider === 'ghidra') return ['identity', 'functions', 'imports', 'exports', 'strings'].includes(operation)
-  return ['device', 'packages', 'package-info'].includes(operation)
+  if (provider === 'android') return operation === 'decompile' && role !== 'reconnaissance'
+  return provider === 'binary' && ['identity', 'strings', 'hex'].includes(operation)
 }
 
 /** Task types accepted by the delegated prompt builder. */

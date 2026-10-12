@@ -22,12 +22,21 @@ export async function apply(ctx) {
   const originalResolve = subprocess.resolveExecutable
   const originalSpawn = subprocess.spawn
   const radareCommand = join(process.cwd(), 'fixture-radare2')
+  const adbCommand = join(process.cwd(), 'fixture-adb')
   const dockerCommand = 'fixture-docker'
   const dockerPrefix = ['--context', 'fixture-remote']
   subprocess.resolveExecutable = async function(command, ...args) {
-    return command === dockerCommand || command === radareCommand ? command : originalResolve.call(this, command, ...args)
+    return [dockerCommand, radareCommand, adbCommand].includes(command) ? command : originalResolve.call(this, command, ...args)
   }
   subprocess.spawn = function(spec) {
+    if (spec.argv[0] === adbCommand) {
+      const version = spec.argv[1] === 'version'
+      assert.deepEqual(spec.argv.slice(1), version ? ['version'] : ['-s', 'fixture-device', 'shell', 'pm', 'list', 'packages', '-f'])
+      return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: {
+        stdout: { readFrom: () => ({ text: version ? 'Android Debug Bridge fixture\n' : 'package:/data/app/fixture.apk=org.example.fixture\n', lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', lossy: false }) },
+      }, terminate() {}, waitForExit: async () => true }
+    }
     if (spec.argv[0] === radareCommand) {
       const output = spec.argv.includes('-v') ? 'radare2 fixture 1\n' : '[{"offset":4096,"name":"main"}]'
       return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: {
@@ -80,7 +89,11 @@ export async function apply(ctx) {
     environments: [{ id: 'fixture-remote', label: 'Remote toolbox', kind: 'docker', cwd: process.cwd(),
       externalContainer: { name: 'fixture-container', workdir: '/analysis' },
       tools: [{ id: 'docker', command: dockerCommand, prefixArgs: dockerPrefix, versionArgs: ['--version'], source: 'Fixture endpoint' }] },
-      ...observationFailure ? [{ id: 'fixture-local', label: 'Local binary observations', kind: 'local', cwd: process.cwd(), tools: [{ id: 'radare2', command: radareCommand, prefixArgs: [], versionArgs: ['-v'], source: 'Fixture tool' }] }] : []],
+      ...observationFailure ? [{ id: 'fixture-local', label: 'Local binary observations', kind: 'local', cwd: process.cwd(),
+        deviceId: 'fixture-device', tools: [
+          { id: 'radare2', command: radareCommand, prefixArgs: [], versionArgs: ['-v'], source: 'Fixture tool' },
+          { id: 'adb', command: adbCommand, prefixArgs: [], versionArgs: ['version'], source: 'Fixture device' },
+        ] }] : []],
     knowledgeIntervalMs: 0,
     analysisTurnTokens: 1000,
     evolution: { provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' },
@@ -92,6 +105,9 @@ export async function apply(ctx) {
   const native = await import(new URL(`../../../packages/experimental/security-analysis/${nativeEntry}`, import.meta.url))
   await ctx.plugin(native, {})
   if (observationFailure) {
+    const androidEntry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/android.js' : 'src/android-provider.ts'
+    const android = await import(new URL(`../../../packages/experimental/security-analysis/${androidEntry}`, import.meta.url))
+    await ctx.plugin(android, {})
     const failure = await import('../security-observation-failure/fixture.mjs')
     failure.apply(ctx)
   }
@@ -127,14 +143,17 @@ export async function apply(ctx) {
       const elf = Buffer.alloc(64)
       elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1])
       selected = await service.importMaterials(exec.agent, JSON.stringify({ operationId: 'fixture-paste', expectedRevision: selected.revision,
-        title: 'Mixed materials', objective: 'Inspect source, firmware and traffic together', material: { kind: 'files', directory: false,
+        title: 'Mixed materials', objective: 'Inspect source, firmware and traffic together', material: { kind: 'files', directory: true,
           files: [
             { name: 'handler.js', base64: Buffer.from('export const read = request => request.query;\n').toString('base64') },
             { name: 'firmware.elf', base64: elf.toString('base64') },
-            { name: 'traffic.pcapng', base64: Buffer.from('0a0d0d0a', 'hex').toString('base64') },
+            { name: 'traffic.pcapng', base64: Buffer.from('0a0d0d0a1c0000004d3c2b1a01000000ffffffffffffffff1c000000', 'hex').toString('base64') },
             { name: 'unknown.bin', base64: Buffer.from([0, 1, 2, 3]).toString('base64') },
           ] } }))
       assert(selected.records.some(record => record.kind === 'asset'))
+      const source = selected.records.find(record => record.kind === 'asset' && record.value.kind === 'source')
+      assert(source)
+      assert.equal(selected.records.filter(record => record.kind === 'asset' && record.value.parentId === source.value.id).length, 3)
       for (const kind of ['rename', 'archive', 'restore']) {
         await service.manageProject(project.value.id, JSON.stringify({ operationId: 'fixture-' + kind, expectedRevision: selected.revision,
           action: kind === 'rename' ? { kind, title: '静态安全简报' } : { kind } }))

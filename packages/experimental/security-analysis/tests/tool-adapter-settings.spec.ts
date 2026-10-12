@@ -71,7 +71,7 @@ it('saves and restores routes independently while preserving every installation 
   const saved = settings.bind('radare2', 'box', settings.read().revision, 'local')
   expect(readToolSettings(path).installations).toEqual(before.installations)
   expect(saved.bindings).toEqual({ radare2: 'box', tshark: 'box' })
-  expect(settings.route('r2ghidra')).toBe('box')
+  expect(() => settings.route('r2ghidra')).toThrow('Configure an installation for radare2 in box')
   expect(docker.containerId).toBe('owned-container')
   const reset = settings.bind('radare2', undefined, saved.revision, 'local')
   expect(reset.bindings).toEqual({ radare2: 'local', tshark: 'box' })
@@ -87,4 +87,49 @@ it('rejects executable fields on binding-only wire actions', () => {
   expect(toolConfigurationInput.parse({ action: 'bind', id: 'radare2', revision: 'r', defaultEnvironmentId: 'local' }))
     .toEqual({ action: 'bind', id: 'radare2', revision: 'r', defaultEnvironmentId: 'local' })
   expect(() => toolConfigurationInput.parse({ action: 'bind', id: 'radare2', revision: 'r', defaultEnvironmentId: 'local', command: 'r2' })).toThrow()
+})
+
+it('inherits a unique task environment and reports missing dependencies together without switching targets', () => {
+  const { local, docker } = fixture()
+  const settings = new LocalToolConfiguration(undefined, local, undefined, [local, docker])
+  expect(settings.route('ghidra', ['local'])).toBe('local')
+  expect(() => settings.route('packet-capture', ['local'])).toThrow('python, tshark')
+  expect(() => settings.route('radare2', ['local', 'box'])).toThrow('exactly one compatible')
+  expect(() => settings.route('radare2', ['box'])).toThrow('in box')
+  const pinned = new LocalToolConfiguration(undefined, local, undefined, [local, docker], { radare2: 'local' })
+  expect(() => pinned.route('radare2', ['box'])).toThrow('outside the task')
+})
+
+it('routes service, device and multiple-installation adapters without making services executable installations', () => {
+  const { path, local, docker } = fixture()
+  const device: SecurityEnvironment = { ...local, id: 'phone', kind: 'android', deviceId: 'operator-device',
+    tools: [{ id: 'adb', command: process.execPath, versionArgs: ['version'], source: 'Deployment' }] }
+  const settings = new LocalToolConfiguration(path, local, undefined, [local, docker, device],
+    { ghidra: 'local', adb: 'phone', 'packet-capture': 'local' })
+  expect(settings.route('ghidra')).toBe('local')
+  expect(settings.route('adb')).toBe('phone')
+  expect(() => settings.route('packet-capture')).toThrow('python')
+  const config = settings.read()
+  expect(config.adapters?.find(item => item.id === 'ghidra')).toMatchObject({ provider: 'ghidra', status: 'unchecked', dependencies: [] })
+  expect(config.adapters?.find(item => item.id === 'ghidra')).not.toHaveProperty('installationId')
+  expect(config.adapters?.find(item => item.id === 'packet-capture')).toMatchObject({
+    dependencies: ['python', 'tshark'], status: 'unconfigured', environmentIds: ['local'] })
+  expect(config.adapters?.find(item => item.id === 'packet-capture')).not.toHaveProperty('installationId')
+  expect(() => settings.bind('ghidra', 'box', config.revision, 'local')).toThrow('Unsupported execution environment')
+  expect(() => settings.commit('ghidra', undefined, config.revision)).toThrow('provider')
+  settings.bind('adb', 'local', config.revision, 'local')
+  expect(settings.read().adapters?.find(item => item.id === 'adb')).toMatchObject({ status: 'unconfigured', prerequisite: 'device' })
+  expect(() => settings.route('adb')).toThrow('deviceId')
+  expect(new LocalToolConfiguration(path, local, undefined, [local, docker, device]).read().bindings?.adb).toBe('local')
+})
+
+it('rejects external Kali adapter bindings while preserving its deployment installations', () => {
+  const { local, docker } = fixture()
+  const { image: _image, ...base } = docker
+  const kali: SecurityEnvironment = { ...base, id: 'kali', externalContainer: { name: 'existing-kali', workdir: '/analysis' } }
+  const tools = structuredClone(kali.tools)
+  expect(() => new LocalToolConfiguration(undefined, local, undefined, [local, kali], { radare2: 'kali' }))
+    .toThrow('Unsupported execution environment')
+  expect(kali.tools).toEqual(tools)
+  expect(kali.externalContainer).toEqual({ name: 'existing-kali', workdir: '/analysis' })
 })

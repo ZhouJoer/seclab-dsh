@@ -1,6 +1,6 @@
 /** Mouse-driven local tool selection with bounded Host probes and immediate save feedback. @module */
 import { useEffect, useRef, useState } from 'react'
-import type { ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles, ToolboxInstallation } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
 import css from './Workbench.module.css'
@@ -28,7 +28,7 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
   const initial = configuration.tools.find(tool => tool.id === selectedId)
   const [settings, setSettings] = useState(configuration)
   const [id, setId] = useState(selectedId)
-  const [custom, setCustom] = useState(!initial)
+  const [custom, setCustom] = useState(!initial && !configuration.adapters?.some(adapter => adapter.id === selectedId))
   const [command, setCommand] = useState(initial?.command ?? '')
   const [prefix, setPrefix] = useState(initial?.prefixArgs.join('\n') ?? '')
   const [version, setVersion] = useState(initial?.versionArgs.join('\n') ?? '--version')
@@ -38,12 +38,16 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState('')
   const [result, setResult] = useState<ToolboxConfigurationResult>()
+  const adapter = settings.adapters?.find(adapter => adapter.id === id)
+  const bindingOnly = adapter !== undefined && adapter.installationId !== id
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  function select(tool: ToolboxInstallation | undefined) {
-    setId(tool?.id ?? ''); setCustom(!tool); setCommand(tool?.command ?? '')
+  function select(value: string) {
+    const tool = settings.tools.find(tool => tool.id === value)
+    const id = value === '__custom__' ? '' : value
+    setId(id); setCustom(!id); setCommand(tool?.command ?? '')
     setPrefix(tool?.prefixArgs.join('\n') ?? ''); setVersion(tool?.versionArgs.join('\n') ?? '--version')
-    setDefaultEnvironment(settings.bindings?.[tool?.id ?? ''] ?? '')
+    setDefaultEnvironment(settings.bindings?.[id] ?? '')
     setResult(undefined); setFeedback(''); setError(''); setFiles(undefined)
   }
   async function browse(directory?: string) {
@@ -79,56 +83,62 @@ export function ToolSettings({ environmentId, configuration, selectedId, configu
       <button disabled={busy} onClick={onClose}>{t('toolCloseEditor')}</button></header>
     <fieldset disabled={busy} className={css.toolFields}>
       <label className={css.field}>{t('toolChooseType')}
-        <select value={custom ? '__custom__' : id} onChange={(event) => { select(settings.tools.find(tool => tool.id === event.target.value)) }}>
+        <select value={custom ? '__custom__' : id} onChange={(event) => { select(event.target.value) }}>
           {settings.tools.map(tool => <option key={tool.id} value={tool.id}>{tool.id}</option>)}
+          {settings.adapters?.filter(adapter => adapter.bindingId === adapter.id && !settings.tools.some(tool => tool.id === adapter.id))
+            .map(adapter => <option key={adapter.id} value={adapter.id}>{adapter.id}</option>)}
           <option value="__custom__">{t('toolCustom')}</option>
         </select>
       </label>
       {custom && <label className={css.field}>{t('toolIdentifier')}<input value={id} onChange={(event) => { setId(event.target.value); setFeedback(''); setResult(undefined) }} /></label>}
-      <label className={css.field}>{t('toolExecutable')}<input value={command} onChange={(event) => { setCommand(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
-      <p>{t(settings.environmentKind === 'docker' ? 'toolContainerExecutableHint' : 'toolExecutableHint')}</p>
-      {settings.environmentKind !== 'docker' && <button onClick={() => void browse()}>{t('toolBrowseExecutable')}</button>}
-      {files && <section className={css.toolFilePicker} aria-label={t('toolBrowseExecutable')}>
-        <p><code>{files.directory}</code></p>
+      {bindingOnly ? <p>{t('toolProviderSetupHint')}</p> : <>
+        <label className={css.field}>{t('toolExecutable')}<input value={command} onChange={(event) => { setCommand(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
+        <p>{t(settings.environmentKind === 'docker' ? 'toolContainerExecutableHint' : 'toolExecutableHint')}</p>
+        {settings.environmentKind !== 'docker' && <button onClick={() => void browse()}>{t('toolBrowseExecutable')}</button>}
+        {files && <section className={css.toolFilePicker} aria-label={t('toolBrowseExecutable')}>
+          <p><code>{files.directory}</code></p>
+          <div className={css.tabs}>
+            {files.roots.map(root => <button key={root} onClick={() => void browse(root)}>{root}</button>)}
+            <button disabled={files.parent === files.directory} onClick={() => void browse(files.parent)}>{t('toolParentDirectory')}</button>
+            <button onClick={() => { setFiles(undefined) }}>{t('toolClosePicker')}</button>
+          </div>
+          <div className={css.toolFileList}>
+            {files.entries.map(entry => <button key={entry.path} title={entry.path} onClick={() => {
+              if (entry.directory) void browse(entry.path)
+              else { setCommand(entry.path); setFiles(undefined); setResult(undefined); setFeedback('') }
+            }}><span aria-hidden="true">{entry.directory ? '📁' : '📄'}</span> {entry.name}</button>)}
+          </div>
+          {files.truncated && <p role="status">{t('toolFilesTruncated')}</p>}
+        </section>}
+        <details><summary>{t('toolAdvancedArguments')}</summary>
+          <p>{t('toolArgumentsHint')}</p>
+          <label className={css.field}>{t('toolPrefixArgs')}<textarea value={prefix} onChange={(event) => { setPrefix(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
+          <label className={css.field}>{t('toolVersionArgs')}<textarea value={version} onChange={(event) => { setVersion(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
+        </details>
         <div className={css.tabs}>
-          {files.roots.map(root => <button key={root} onClick={() => void browse(root)}>{root}</button>)}
-          <button disabled={files.parent === files.directory} onClick={() => void browse(files.parent)}>{t('toolParentDirectory')}</button>
-          <button onClick={() => { setFiles(undefined) }}>{t('toolClosePicker')}</button>
-        </div>
-        <div className={css.toolFileList}>
-          {files.entries.map(entry => <button key={entry.path} title={entry.path} onClick={() => {
-            if (entry.directory) void browse(entry.path)
-            else { setCommand(entry.path); setFiles(undefined); setResult(undefined); setFeedback('') }
-          }}><span aria-hidden="true">{entry.directory ? '📁' : '📄'}</span> {entry.name}</button>)}
-        </div>
-        {files.truncated && <p role="status">{t('toolFilesTruncated')}</p>}
-      </section>}
-      <details><summary>{t('toolAdvancedArguments')}</summary>
-        <p>{t('toolArgumentsHint')}</p>
-        <label className={css.field}>{t('toolPrefixArgs')}<textarea value={prefix} onChange={(event) => { setPrefix(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
-        <label className={css.field}>{t('toolVersionArgs')}<textarea value={version} onChange={(event) => { setVersion(event.target.value); setFeedback(''); setResult(undefined) }} /></label>
-      </details>
-      <div className={css.tabs}>
-        <button disabled={!id} onClick={() => void run('probe')}>{t('toolCheckSelection')}</button>
-        <button disabled={!id} onClick={() => void run('save')}>{t('toolCheckAndSave')}</button>
-        {settings.tools.find(tool => tool.id === id)?.saved &&
+          <button disabled={!id} onClick={() => void run('probe')}>{t('toolCheckSelection')}</button>
+          <button disabled={!id} onClick={() => void run('save')}>{t('toolCheckAndSave')}</button>
+          {settings.tools.find(tool => tool.id === id)?.saved &&
           <button onClick={() => void run('remove')}>{t('toolRemoveOverride')}</button>}
-      </div>
+        </div>
+      </>}
     </fieldset>
-    {settings.adapters?.some(adapter => adapter.id === id && adapter.installationId === id) &&
+    {adapter && (adapter.bindingId ?? adapter.installationId) === id &&
     <fieldset disabled={busy} className={css.toolFields}>
       <legend>{t('toolAdapterConfiguration')}</legend>
       <label className={css.field}>{t('toolDefaultEnvironment')}
         <select value={defaultEnvironment} onChange={(event) => { setDefaultEnvironment(event.target.value); setResult(undefined); setFeedback('') }}>
-          <option value="">{t('toolAdapterUnconfigured')}</option>
-          {settings.environments?.map(environment =>
-            <option key={environment.id} value={environment.id}>{environment.label} · {environment.kind}</option>)}
+          <option value="">{t('toolInheritEnvironment')}</option>
+          {settings.environments?.filter(environment => !adapter.environmentIds || adapter.environmentIds.includes(environment.id))
+            .map(environment =>
+              <option key={environment.id} value={environment.id}>{environment.label} · {environment.kind}</option>)}
         </select>
       </label>
       <p>{t('toolBindingHint')}</p>
+      {!!adapter.dependencies.length && <p>{t('toolDependency')} {adapter.dependencies.join(', ')}</p>}
       <div className={css.tabs}>
         <button disabled={!defaultEnvironment} onClick={() => void run('bind')}>{t('toolSaveBinding')}</button>
-        <button disabled={settings.adapters.find(adapter => adapter.id === id)?.bindingSource !== 'operator'}
+        <button disabled={adapter.bindingSource !== 'operator'}
           onClick={() => void run('reset-binding')}>{t('toolResetBinding')}</button>
       </div>
     </fieldset>}

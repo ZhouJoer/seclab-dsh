@@ -503,6 +503,29 @@ describe('security workbench', () => {
       material: { kind: 'files', directory: true, files: [{ name: '../escape.js', base64: 'eA==' }] } })).rejects.toThrow()
   })
 
+  it('exposes binary directory members and reuses saved members after the original path disappears', async () => {
+    const { controller, journal, artifacts, send } = await harness()
+    const view = await controller.importMaterials('parent', { operationId: randomUUID(), expectedRevision: journal.view().revision,
+      material: { kind: 'files', directory: true, files: [
+        { name: 'bundle/app.elf', base64: Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0]).toString('base64') },
+        { name: 'bundle/note.txt', base64: Buffer.from('saved original text').toString('base64') },
+      ] } })
+    const source = view.records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'source')!
+    if (source.kind !== 'asset') throw new Error('Missing source')
+    const binary = view.records.find(item => item.kind === 'asset' && !('kind' in item.value) && item.value.parentId === source.value.id)
+    expect(binary).toMatchObject({ kind: 'asset', value: { label: 'bundle/app.elf', format: 'elf' } })
+    const before = view.records.filter(item => item.kind === 'asset').length
+    await send({ kind: 'import-member', assetId: source.value.id, path: 'bundle/app.elf', label: 'existing' })
+    expect(controller.view('parent').records.filter(item => item.kind === 'asset')).toHaveLength(before)
+    await send({ kind: 'import-member', assetId: source.value.id, path: 'bundle/note.txt', label: 'saved note' })
+    const note = controller.view('parent').records.find(item => item.kind === 'asset' && item.value.label === 'saved note')!
+    if (note.kind !== 'asset' || !('artifact' in note.value)) throw new Error('Missing member')
+    expect((await artifacts.read(note.value.artifact)).toString()).toBe('saved original text')
+    for (const path of ['../outside', '/bundle/note.txt', 'bundle/absent.bin'])
+      await expect(send({ kind: 'import-member', assetId: source.value.id, path, label: 'invalid' })).rejects.toThrow('not present')
+    await expect(send({ kind: 'import-member', assetId: 'foreign', path: 'bundle/app.elf', label: 'invalid' })).rejects.toThrow('foreign')
+  })
+
 
   it('initializes simultaneous tasks independently without a shared revision conflict', async () => {
     const { controller, journal } = await harness()

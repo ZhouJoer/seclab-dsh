@@ -1,10 +1,10 @@
 /** Security command validation and durable project authority. @module */
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { commandSchema, type SecurityCommand } from './commands.ts'
 import {
   engagementSchema,
   checkpointSchema,
-  phaseSchema,
   assetSchema,
   fileAssetSchema,
   sourceAssetSchema,
@@ -20,8 +20,6 @@ import {
   evidenceSchema,
   bindingSchema,
   delegationSchema,
-  knowledgeEntrySchema,
-  operationSchema,
   type AnalysisOperation,
   type Asset,
   type CheckStep,
@@ -37,11 +35,11 @@ import type { SecurityActivityStore } from './activity.ts'
 import { canObserve, toolsForRole, resolveTask } from './roles.ts'
 import { findingHash } from './assessment.ts'
 import { reportPrompt, renderReport, type ReportLimits } from './report.ts'
-import { importSource } from './source.ts'
+import { importSource, sourceManifest } from './source.ts'
 import { materialInputSchema, prepareMaterials } from './materials.ts'
 import { apkMembers } from './apk.ts'
 import { validateExternalTarget } from '../http-scope.ts'
-import { ArtifactStore } from './artifacts.ts'
+import { ArtifactStore, detectFileFormat } from './artifacts.ts'
 import { reportExportResponse } from './report-export.ts'
 import { unsharedArtifacts, referencedArtifacts } from './purge.ts'
 import {
@@ -53,80 +51,9 @@ import {
   type AnalysisResult,
 } from './providers.ts'
 
+export { commandSchema, type SecurityCommand } from './commands.ts'
+
 const text = z.string().trim().min(1)
-const checkInput = checkSchema.omit({
-  id: true,
-  engagementId: true,
-  status: true,
-  attempts: true,
-  rationale: true,
-  ownerSessionId: true,
-})
-const actions = z.discriminatedUnion('kind', [
-  z
-    .object({
-      kind: z.literal('create'),
-      title: text,
-      objective: text,
-      environmentIds: z.array(text),
-      maxAttempts: z.number().int().positive(),
-    })
-    .strict(),
-  z.object({ kind: z.literal('select'), engagementId: text }).strict(),
-  z.object({ kind: z.literal('leave') }).strict(),
-  z.object({ kind: z.literal('checkpoint'), id: text.optional(), phase: phaseSchema,
-    title: text.max(100), reason: z.string().max(300), summary: z.string().max(300), next: z.string().max(300),
-    evidenceIds: z.array(text), findingIds: z.array(text),
-  }).strict(),
-  z.object({ kind: z.literal('import'), path: text, label: text }).strict(),
-  z.object({ kind: z.literal('import-source'), path: text.describe('Absolute source file or directory inside the configured import roots. A selected file imports only that file.'), label: text }).strict(),
-  z.object({ kind: z.literal('import-legacy'), path: text, title: text }).strict(),
-  z.object({ kind: z.literal('check'), check: checkInput }).strict(),
-  z.object({ kind: z.literal('web-target'), environmentId: text, label: text, pathPrefix: text.default('/') }).strict(),
-  z.object({ kind: z.literal('external-web-target'), environmentId: text, label: text,
-    origin: text, pathPrefix: text, allowedAddresses: z.array(text).min(1) }).strict(),
-  z.object({ kind: z.literal('finding-http-reference'), findingId: text, evidenceId: text, stepId: text,
-    role: z.enum(['baseline', 'verification', 'supporting']) }).strict(),
-  z.object({ kind: z.literal('revise-finding'), findingId: text, title: text, explanation: text, conditions: text, evidenceIds: z.array(text).min(1) }).strict(),
-  z.object({ kind: z.literal('conclude'), reviewId: text }).strict(),
-  z.object({ kind: z.literal('delegation-disposition'), delegationId: text,
-    decision: z.enum(['accepted', 'needs-more', 'rejected']), reason: text }).strict(),
-  z.object({ kind: z.literal('report') }).strict(),
-  z.object({ kind: z.literal('template'), assetId: text }).strict(),
-  z.object({ kind: z.literal('finish'), checkId: text, evidenceIds: z.array(text), rationale: text }).strict(),
-  z.object({ kind: z.literal('reopen'), checkId: text, rationale: text }).strict(),
-  z.object({ kind: z.literal('reconcile'), checkId: text, rationale: text }).strict(),
-  z.object({ kind: z.literal('finding'), finding: findingSchema.omit({ id: true, engagementId: true }) }).strict(),
-  z
-    .object({
-      kind: z.literal('plan'),
-      checkId: text,
-      operation: operationSchema,
-      script: z.string().optional(),
-      hypothesis: text,
-      expectedObservation: text,
-      impact: text,
-      cleanup: text,
-      durationMs: z.number().int().positive(),
-    })
-    .strict(),
-  z.object({ kind: z.literal('approve'), planId: text }).strict(),
-  z.object({ kind: z.literal('revoke'), planId: text }).strict(),
-  z.object({ kind: z.literal('stop') }).strict(),
-  z.object({ kind: z.literal('resume') }).strict(),
-  z.object({ kind: z.literal('publish'), knowledgeId: text }).strict(),
-  z.object({ kind: z.literal('remember'), entry: knowledgeEntrySchema }).strict(),
-])
-/** Structured command shared by model tools and the Web controller. */
-export const commandSchema = z
-  .object({
-    operationId: text,
-    expectedRevision: z.number().int().nonnegative(),
-    action: actions,
-  })
-  .strict()
-/** Parsed, boundary-validated command. */
-export type SecurityCommand = z.infer<typeof commandSchema>
 /** Fixed deployment limits and import authority. */
 export interface WorkbenchOptions {
   importRoots: string[]
@@ -551,7 +478,7 @@ export class SecurityController {
       target: externalWebAssetSchema.pick({ origin: true, pathPrefix: true,
         allowedAddresses: true, environmentId: true, label: true }).optional(),
 
-      task: actions.options[0].omit({ kind: true }).optional(),
+      task: commandSchema.shape.action.options[0].omit({ kind: true }).optional(),
     }).strict().parse(input)
     await this.journal.commit(request.operationId, request.expectedRevision, { sessionId, material: request }, async (view) => {
       const bound = this.binding(sessionId)
@@ -580,6 +507,19 @@ export class SecurityController {
 
   private async importedRecords(sample: Asset): Promise<SecurityRecord[]> {
     const samples: Asset[] = [sample]
+    if ('kind' in sample && sample.kind === 'source') {
+      const manifest = await sourceManifest(this.artifacts, sample)
+      for (const member of manifest.files) {
+        const bytes = await this.artifacts.read(member.artifact)
+        const format = detectFileFormat(bytes, member.path)
+        if (member.text && format === 'other') continue
+        const child = fileAssetSchema.parse({ id: randomUUID(), engagementId: sample.engagementId,
+          parentId: sample.id, label: member.path, artifact: member.artifact, format, identity: 'measured' })
+        const records = await this.importedRecords(child)
+        for (const record of records) if (record.kind === 'asset') samples.push(record.value)
+        if (samples.length - 1 > this.options.maxDerivedAssets) throw new Error('Source files exceed the derived asset limit')
+      }
+    }
     if (!('kind' in sample) && sample.format === 'apk') {
       const members = await apkMembers(await this.artifacts.read(sample.artifact),
         this.options.maxArtifactBytes, this.options.maxDerivedAssets)
@@ -859,10 +799,25 @@ export class SecurityController {
           case 'import-source': {
             const artifact = await importSource(this.artifacts, action.path, operator ? [action.path] : this.options.importRoots,
               { entries: this.options.maxDerivedAssets, bytes: this.options.maxArtifactBytes })
-            return [{ kind: 'asset', value: sourceAssetSchema.parse({
+            return this.importedRecords(sourceAssetSchema.parse({
               kind: 'source', id: randomUUID(), engagementId: project.id, label: action.label,
               artifact, identity: 'measured',
-            }) }]
+            }))
+          }
+          case 'import-member': {
+            const source = asset(action.assetId)
+            const manifest = await sourceManifest(this.artifacts, source)
+            const member = manifest.files.find(file => file.path === action.path)
+            if (!member) throw new Error('Source member is not present at that exact manifest path. Use source list to read the saved manifest, then pass its complete relative path, including any directory prefix. Do not re-import a Host path.')
+            const existing = view.records.find(record => record.kind === 'asset' && !('kind' in record.value)
+              && record.value.parentId === source.id && record.value.label === member.path
+              && record.value.artifact.sha256 === member.artifact.sha256)
+            if (existing) return [existing]
+            const bytes = await this.artifacts.read(member.artifact)
+            const sample = fileAssetSchema.parse({ id: randomUUID(), engagementId: project.id,
+              label: action.label, parentId: source.id, artifact: member.artifact,
+              format: detectFileFormat(bytes, member.path), identity: 'measured' })
+            return this.importedRecords(sample)
           }
           case 'import': {
             const measured = await this.artifacts.import(action.path, operator ? [action.path] : this.options.importRoots)

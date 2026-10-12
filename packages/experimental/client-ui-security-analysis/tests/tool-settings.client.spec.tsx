@@ -15,6 +15,26 @@ const configuration: ToolboxConfiguration = { editable: true, revision: 'revisio
     dependencies: [], environmentId: 'local', bindingSource: 'operator', status: 'unchecked' }],
   bindings: { radare2: 'local' }, tools: [{ id: 'radare2', command: '/bin/r2', prefixArgs: [], versionArgs: ['-v'], saved: true }] }
 
+it.each(['ghidra', 'packet-capture'])('edits the %s route without requiring a service executable', async (id) => {
+  const settings: ToolboxConfiguration = { ...configuration, bindings: {}, adapters: [{ id, bindingId: id,
+    toolName: 'security_' + id, provider: id, operations: ['summary'], dependencies: id === 'ghidra' ? [] : ['python', 'tshark'],
+    environmentIds: ['local'], bindingSource: 'none', status: 'unchecked' }] }
+  const configure = vi.fn(async (_environment: string, _input: string): Promise<ToolboxConfigurationResult> => ({
+    saved: true, tool: null, configuration: settings,
+  }))
+  render(<ToolSettings environmentId="local" configuration={settings} selectedId={id}
+    configureTool={configure} toolboxFiles={vi.fn()} onResult={vi.fn()} onClose={vi.fn()} t={makeTranslate(zh, common)} />)
+  expect(screen.queryByLabelText(zh.toolExecutable)).toBeNull()
+  const environments = screen.getByLabelText<HTMLSelectElement>(zh.toolDefaultEnvironment)
+  expect([...environments.options].map(option => option.value)).toEqual(['', 'local'])
+  expect(screen.getByText(zh.toolInheritEnvironment)).toBeDefined()
+  if (id === 'packet-capture') expect(screen.getByText(/python, tshark/)).toBeDefined()
+  fireEvent.change(environments, { target: { value: 'local' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.toolSaveBinding }))
+  await waitFor(() => { expect(configure).toHaveBeenCalledOnce() })
+  expect(JSON.parse(configure.mock.calls[0]![1])).toEqual({ action: 'bind', id, revision: 'revision-1', defaultEnvironmentId: 'local' })
+})
+
 it('saves a container installation without changing its adapter route or offering a Host picker', async () => {
   const pending = Promise.withResolvers<ToolboxConfigurationResult>()
   const configure = vi.fn((_environment: string, _input: string) => pending.promise), changed = vi.fn(), notify = vi.fn(), browse = vi.fn()

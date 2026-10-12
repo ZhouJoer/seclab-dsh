@@ -25,8 +25,11 @@ export function registerToolAdapters(ctx: Context, options: {
   for (const adapter of toolAdapters) {
     const parameters: ParameterSchemaSpec = { assetId: { type: 'string', required: true, description: 'Imported file asset ID.' },
       operation: { type: 'string', required: true, enum: [...adapter.operations] }, ...adapter.parameters }
-    ctx.effect(() => ctx.tools.register(defineTool({ name: 'security_' + adapter.id,
-      description: adapter.description + ' Uses the operator-configured installation and environment. Returns saved evidence and a bounded item page; read further items with security_evidence itemOffset/itemLimit.',
+    ctx.effect(() => ctx.tools.register(defineTool({ name: adapter.toolName,
+      description: adapter.description + ' Uses operator configuration and saves evidence. '
+        + (adapter.provider === 'tool-adapter'
+          ? 'Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.'
+          : 'Returns a bounded receipt; read original retained output with security_evidence offset/length.'),
       parameters,
       output: { schema: { type: 'json' }, render: (_args, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec) {
@@ -35,12 +38,18 @@ export function registerToolAdapters(ctx: Context, options: {
         const run = async () => {
           const controller = await options.ready
           const { assetId, operation, ...parameters } = z.looseObject({ assetId: z.string().min(1), operation: z.string() }).parse(args)
-          parseAdapterParameters(adapter.id + '.' + operation, parameters)
+          if (!adapter.operations.some(candidate => candidate === operation)) throw new Error('Unsupported operation for ' + adapter.toolName)
+          if (adapter.provider === 'tool-adapter') parseAdapterParameters(adapter.id + '.' + operation, parameters)
           const settings = options.settings
           const previous = controller.activity?.invocation(sessionId, exec.callId)
           const admitted = previous?.verified ? operationSchema.safeParse(JSON.parse(previous.parameters)) : undefined
-          const request = operationSchema.parse({ provider: 'tool-adapter', operation: adapter.id + '.' + operation,
-            assetId, environmentId: admitted?.success ? admitted.data.environmentId : settings.route(adapter.id), parameters, impact: 'observe' })
+          const project = controller.view(sessionId).records.find(record => record.kind === 'engagement'
+            && record.value.id === controller.binding(sessionId)?.engagementId)
+          if (project?.kind !== 'engagement') throw new Error('Select a security task before using an adapter')
+          const request = operationSchema.parse({ provider: adapter.provider,
+            operation: adapter.provider === 'tool-adapter' ? adapter.id + '.' + operation : operation,
+            assetId, environmentId: admitted?.success ? admitted.data.environmentId
+              : settings.route(adapter.id, project.value.environmentIds), parameters, impact: 'observe' })
           const evidence = await controller.observe(sessionId, request, exec.callId, AbortSignal.any([exec.signal, options.signal]))
             .catch((error: unknown) => {
               const saved = controller.view(sessionId).records.find(record => record.kind === 'evidence'
@@ -50,6 +59,16 @@ export function registerToolAdapters(ctx: Context, options: {
               throw error
             })
           if (evidence.kind !== 'evidence') throw new Error('Adapter observation did not publish evidence')
+          if (adapter.provider !== 'tool-adapter') {
+            const receipt = { evidenceId: evidence.value.id,
+              revision: controller.view(sessionId).revision, tool: adapter.id, operation,
+              incomplete: evidence.value.incomplete, summary: evidence.value.summary,
+              detail: 'Read original retained observations with security_evidence offset/length.' }
+            while (receipt.summary && Buffer.byteLength(JSON.stringify(receipt)) > options.modelResultBytes)
+              receipt.summary = receipt.summary.slice(0, Math.floor(receipt.summary.length / 2))
+            if (Buffer.byteLength(JSON.stringify(receipt)) > options.modelResultBytes) throw new Error('Receipt metadata exceeds response budget')
+            return receipt
+          }
           const page = adapterResultPage(await controller.artifacts.read(evidence.value.artifact), evidence.value.id,
             0, options.maxItems, options.modelResultBytes - 128)
           if (!page || typeof page !== 'object' || Array.isArray(page)) throw new Error('Expected an adapter result page')

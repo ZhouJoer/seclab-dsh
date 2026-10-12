@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { AndroidProvider } from './android-provider.ts'
 import { inspectToolbox } from './toolbox.ts'
 import { toolboxCatalog } from './toolbox.ts'
-import { adapterInstallation, toolAdapters } from './tool-adapter-catalog.ts'
+import { adapterInstallation, staticToolAdapters } from './tool-adapter-catalog.ts'
 import { adapterProcessFailure, retainAdapterResult } from './tool-adapter-results.ts'
 import { fileAsset } from './workbench/assessment.ts'
 import { isPacketCapture } from './workbench/artifacts.ts'
@@ -33,7 +33,7 @@ const argsSchema = z.object({ address: address.optional(), startAddress: address
   encoding: z.enum(['ascii', 'utf16le']).optional(),
 }).strict()
 const operationParts = (operation: string) => {
-  const adapter = toolAdapters.find(tool => tool.operations.some(action => tool.id + '.' + action === operation))
+  const adapter = staticToolAdapters.find(tool => tool.operations.some(action => tool.id + '.' + action === operation))
   if (!adapter) throw new Error('Unknown static tool adapter operation')
   return { adapter, action: operation.slice(adapter.id.length + 1) }
 }
@@ -166,7 +166,7 @@ export function decodeAdapterOutput(operation: string, stdout: string): JsonValu
 /** Executes fixed read-only queries with environment-owned installations. */
 export class ToolAdapterProvider implements AnalysisProvider {
   readonly id = 'tool-adapter'
-  readonly operations = toolAdapters.flatMap(tool => tool.operations.map(action => tool.id + '.' + action))
+  readonly operations = staticToolAdapters.flatMap(tool => tool.operations.map(action => tool.id + '.' + action))
   readonly inputGuide = 'Use the dedicated security_<tool> tools with an imported asset and semantic parameters. Environment selection and installation belong to operator settings.'
   constructor(private readonly ctx: Context, private readonly limits: ToolAdapterLimits, private readonly maxFiles: number) {}
   activityTools(request: AnalysisOperation): string[] { return [operationParts(request.operation).adapter.id] }

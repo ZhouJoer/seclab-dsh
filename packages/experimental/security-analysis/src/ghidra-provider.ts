@@ -101,6 +101,14 @@ export class GhidraProvider implements AnalysisProvider {
       throw new Error('No managed Ghidra program matches this sample')
     if (request.script) throw new Error('Ghidra does not accept arbitrary scripts')
     const args = parameters.parse(request.parameters)
+    const fields: Record<string, readonly string[]> = {
+      identity: [], functions: ['offset', 'limit', 'filter'], imports: ['offset', 'limit'], exports: ['offset', 'limit'],
+      strings: ['offset', 'limit', 'filter'], decompile: ['address'], disassemble: ['address'],
+      'xrefs-to': ['address', 'offset', 'limit'], 'xrefs-from': ['address', 'offset', 'limit'],
+      rename: ['address', 'name'], comment: ['address', 'comment'], prototype: ['address', 'prototype'],
+    }
+    for (const key of Object.keys(args)) if (!fields[request.operation]?.includes(key))
+      throw new Error('Unsupported parameter for Ghidra ' + request.operation + ': ' + key)
     if (
       ['decompile', 'disassemble', 'xrefs-to', 'xrefs-from', ...Object.keys(writes)].includes(request.operation) &&
       !args.address

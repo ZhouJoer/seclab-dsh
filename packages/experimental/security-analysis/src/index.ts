@@ -45,7 +45,7 @@ import { TOOL_DISCOVERY_GUIDANCE } from './analysis-tools.ts'
 import { ToolCatalog, type ToolCatalogSnapshot, type ToolPackPreview } from './tool-catalog.ts'
 import { discoverTools, toolPreferencesSchema, type ToolPreferences } from './tool-definitions.ts'
 import { LocalToolConfiguration, browseToolFiles, toolConfigurationInput } from './tool-configuration.ts'
-import { modelToolDefinition, modelToolInventory } from './tool-adapter-catalog.ts'
+import { modelToolDefinition, modelToolInventory, toolAdapters } from './tool-adapter-catalog.ts'
 import { ToolAdapterProvider, type ToolAdapterLimits } from './tool-adapter-provider.ts'
 import { registerToolAdapters } from './tool-adapter-tools.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
@@ -81,7 +81,7 @@ declare module '@deepseek-ai/dsh-llm' {
 export interface WorkbenchConfig {
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
-    /** Fixed default environment IDs for standalone adapter tools. */
+    /** Fixed environment IDs keyed by adapter binding identity. */
     bindings: Record<string, string>
   }
   /** Engineering improvement scheduling and model budgets. */
@@ -167,7 +167,7 @@ Choose methods by the current materials and uncertainty; combine Web, firmware, 
 
 Record findings only about target security behavior, with conditions, impact and uncertainty. Save reusable experience with remember only when it improves future vulnerability identification, validation or prevention. Tool errors, formatting repairs and command retries belong in operational state, not findings or experience. Only an operator can approve execution or publish shared knowledge. After a scope or operator-only denial, report the blocker once and stop actions requiring that missing authority until the user changes the configuration; do not retry equivalent requests through other commands.
 
-For supported external analysis, use security_radare2, security_r2ghidra, security_tshark, security_jadx, security_file, security_strings, security_readelf, security_objdump and security_nm. These tools use operator-selected environments and installations, preserve evidence, and report structured results. Collecting roles may use native file and shell tools to write and run Python, Bash or PowerShell analysis scripts in the workspace under existing DSH permissions. Use security_environment to check installation health. Dedicated adapters own their executable paths and execution locations. Discover launch configuration only for capabilities without a dedicated adapter. Container commands run through the Host Docker CLI in the selected running container. Collect background work with job_output. First call security_capture_analysis with assetId and no callIds to list capturable committed calls; use jobId to find collected background output. Then pass the returned callIds to save auxiliary evidence. Background job IDs are not call IDs. Script logs alone do not establish complete implementation evidence or approved runtime validation. Research and reviewer roles cannot execute scripts. Missing capabilities do not authorize another target or environment. For external source code, find the actual file in the official repository before fetching its raw URL. An HTTP error page is a failed retrieval, not source evidence; inspect repository listings or saved search results instead of guessing nearby filenames.
+For supported external analysis, use security_radare2, security_r2ghidra, security_tshark, security_jadx, security_file, security_strings, security_readelf, security_objdump, security_nm, security_ghidra, security_adb and security_packet_capture. These tools use operator-selected environments and provider configuration, preserve evidence, and return bounded observations or receipts. Collecting roles may use native file and shell tools to write and run Python, Bash or PowerShell analysis scripts in the workspace under existing DSH permissions. Use security_environment to check installation health. Dedicated adapters own their executable paths and execution locations. For operations or environments outside adapter coverage, request security_capabilities with toolIds, details and native: true, then security_environment with native: true. External Kali containers and advanced scripts retain their existing native workflows. Container commands run through the Host Docker CLI in the selected running container. Collect background work with job_output. First call security_capture_analysis with assetId and no callIds to list capturable committed calls; use jobId to find collected background output. Then pass the returned callIds to save auxiliary evidence. Background job IDs are not call IDs. Script logs alone do not establish complete implementation evidence or approved runtime validation. Research and reviewer roles cannot execute scripts. Missing capabilities do not authorize another target or environment. For external source code, find the actual file in the official repository before fetching its raw URL. An HTTP error page is a failed retrieval, not source evidence; inspect repository listings or saved search results instead of guessing nearby filenames.
 
 ${TOOL_DISCOVERY_GUIDANCE}
 
@@ -462,7 +462,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       defineTool({
         name: 'security_command',
         description:
-          'Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: import, import-source, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.',
+          'Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.',
         parameters: {
           command: {
             type: 'string',
@@ -1479,15 +1479,21 @@ export default class SecurityWorkbench extends TypertRemoteService {
       return { editable: false, revision: '', tools: [] }
     const configuration = this.toolConfiguration.read(environmentId)
     for (const adapter of configuration.adapters ?? []) {
+      const definition = toolAdapters.find(item => item.id === adapter.id)
+      assert(definition, 'Tool configuration must reference a declared adapter')
+      if (!this.controller?.providers.list().includes(definition.provider)) {
+        adapter.status = 'unavailable'; adapter.prerequisite = 'provider'; continue
+      }
       if (adapter.status === 'unconfigured') continue
       const target = this.config.environments.find(item => item.id === adapter.environmentId)
       if (!target) continue
       const measured = this.toolObservations.get(target.id)
       if (!measured || measured.key !== this.toolObservationKey(target)) continue
-      const rows = [adapter.id, ...adapter.dependencies].map(id => measured.inventory.tools.find(tool => tool.id === id))
+      const rows = definition.probeIds.map(id => measured.inventory.tools.find(tool => tool.id === id))
       adapter.status = measured.inventory.runtime === 'stopped' || measured.inventory.runtime === 'unavailable'
         || rows.some(row => row?.status === 'missing' || row?.status === 'error') ? 'unavailable'
-        : measured.inventory.runtime === 'ready' && rows.every(row => row?.status === 'available') ? 'ready' : 'unchecked'
+        : !definition.requiresDevice && rows.length > 0 && measured.inventory.runtime === 'ready'
+          && rows.every(row => row?.status === 'available') ? 'ready' : 'unchecked'
     }
     return configuration
   }

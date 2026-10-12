@@ -44,15 +44,15 @@ kind: "package-reference"
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
-专用静态工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义各工具操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色检查、项目环境授权、执行租约和不可变证据。模型无需填写可执行文件路径、环境 ID 或命令程序。security_r2ghidra 跟随 radare2 的安装和环境绑定。Shell 和 security_static 继续支持既有流程。
+专用只读工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色、项目范围、租约和证据。模型不提供可执行文件或环境 ID。security_r2ghidra 跟随 radare2。Ghidra 查询、ADB 设备与包查询、Wi-Fi/BLE 离线分析使用各自既有 provider。配置与环境支持见 [Provider 设计](#provider-design)；Shell 和 security_static 继续可用。
 
 对于已适配工具，security_capabilities 提供专用接口及操作。指定 toolIds、details 和 native: true，可加载未覆盖操作或不支持环境的既有高级流程。security_environment 默认省略已适配工具的启动配置；native: true 返回实测启动配置，外部容器库存始终保留该信息。操作员库存保留完整安装信息。导入定义不能替换默认语义接口。既有 Provider 和 Shell 流程继续可用，不会静默切换执行环境。
 
-在工具箱配置安装和固定的默认执行环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将独立工具 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属的本机环境；读取兼容旧文件，首次保存写入带版本的格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。保存比较整个文档的修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。工具缺失、环境未授权或绑定无效时明确失败，不切换环境。
+在工具箱配置安装和可选的固定环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将适配器绑定 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属本机环境；首次保存写入带版本格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。未绑定适配器继承任务唯一的兼容环境。保存比较修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。
 
-部署安装与绑定无需 toolConfiguration 即可运行；可选文件用于保存操作员修改。bind 与 reset-binding 只更新路由，不探测可执行文件或启动容器。专用适配器要求显式安装配置，不通过 PATH 寻找替代安装。操作员扫描可搜索 PATH 或明确指定的目录；工具专用环境变量及依赖环境变量的 searchPaths 不作为配置来源。旧配置中的空 searchPaths 数组仍可读取。
+部署安装与绑定无需 toolConfiguration 即可运行；可选文件保存操作员修改。bind 与 reset-binding 只更新路由。CLI 适配器要求显式安装，不通过 PATH 选择替代程序；服务适配器要求对应 provider 配置。操作员扫描可搜索 PATH 或指定目录。工具专用环境变量及非空 searchPaths 不作为配置来源；旧的空 searchPaths 仍可读取。
 
-托管 Docker 的检测和适配调用在环境租约内启动已配置的本地镜像，不拉取镜像。Docker 安装项填写容器内可执行文件，docker 安装项填写 Host 启动程序。输入和生成文件使用挂载到 /dsh-inputs 的私有运行目录，执行后清理。该适配层不支持外部容器、Android 设备或 SSH。配置和检测不安装或更新软件。
+托管 Docker 检测和静态适配调用在环境租约内启动已配置的本地镜像，不拉取镜像。Docker 安装项填写容器内可执行文件，docker 填写 Host 启动程序。输入和生成文件使用挂载到 /dsh-inputs 的私有运行目录，执行后清理。这些静态适配器不支持外部容器、Android 设备或 SSH；ADB 使用自己的设备路由。配置和检测不安装或更新软件。
 
 toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分别为 1000、200、1000 和 3000。采集还受 maxDurationMs 和 maxOutputBytes 限制，modelResultBytes 限制每次完整响应。输出保留语义条目、地址或源码位置、有界原始输出、诊断和完整性。security_evidence(evidenceId, itemOffset, itemLimit) 读取已保存条目，不重新执行工具；字节分页可读取保留的原始诊断。达到数据包上限或使用显示过滤器时保守标记不完整。成功的空结果、解析失败、部分反编译、截断、超时和取消分别保留。
 
@@ -175,7 +175,49 @@ Cookie、Bearer、Basic 和表单/JSON 登录身份保存在 Host credentials �
 <details>
 <summary>实现细节</summary>
 
-模型工具与生成的 Remote 方法共用[领域控制器](src/workbench/controller.ts)。provider 注册返回 disposer，并通过现有 Loader 组合。服务增加指引和执行守卫，不修改 `agent-loop`。明确的 Session 绑定决定协调者、侦察者、逆向分析员、研究员和复核者权限。新的委派 Session 返回证据 ID 和不确定性；普通 job 结果保留其 Session 链接。
+<a id="provider-design"></a>
+### Provider 设计
+
+适配器接收任务请求，在采集前解析部署选择。[操作目录](src/tool-adapter-catalog.ts)声明实际 provider、语义参数、依赖、支持环境及角色准入。工具注册、发现、调用归属和工具卡片使用同一份声明。可执行文件已安装，不代表服务、设备或目标可以访问。
+
+```mermaid
+flowchart LR
+  M[Model: asset ID and operation] --> A[Semantic adapter]
+  C[Operator installations and bindings] --> A
+  T[Task environments] --> A
+  A --> R[Controller: scope and execution lease]
+  R --> P[AnalysisProvider.resolve / run]
+  P --> B[Configured subprocess or service]
+  B --> E[Immutable evidence and diagnostics]
+  E --> O[Bounded receipt and retained pages]
+  Q[Plan request] --> V[AnalysisProvider.prepare]
+  V --> H[Operator approval]
+  H --> X[security_execute]
+  X --> R
+```
+
+与原生 Grep 一样，模型提供问题和查询范围，实现选择后端并组织参数。例如，`security_ghidra` 接收 `assetId`、`operation: functions` 和 `limit`；Ghidra provider 解析与样本哈希绑定的程序并提供认证。`security_adb` 接收包查询，由环境选择设备。`security_packet_capture` 接收已导入抓包及 Wi-Fi/BLE 参数，由配置选择 Python 和 TShark。服务凭据、可执行文件路径、启动前缀和容器设置不是模型参数。
+
+适配器负责发现与配置解析。Provider 负责参数校验、分析语义和证据内容。环境 provider 负责执行位置及既有生命周期规则；控制器负责项目范围、角色、租约和审批。只读适配器使用 `observe`。数据库修改、插桩及其他计划操作继续经过既有计划准备、审批和 `security_execute`；只读工具不接受这些操作。已批准计划保留解析后的身份，执行时不重新选择默认值。
+
+安装按环境配置一次。显式适配绑定优先；未绑定时，请求继承任务唯一的兼容环境。存在多个兼容环境时要求显式绑定。解析不会因为依赖缺失而选择其他环境，首次请求一次列出全部缺失的安装配置。修改绑定不编辑安装、不探测软件、不启动容器。Ghidra 使用 provider 程序绑定，无需虚构可执行文件安装；ADB 要求环境设备 ID；离线抓包分析同时依赖 Python 和 TShark。依赖分别检测，缺少可选插件不会禁用其运行时的其他操作。
+
+目录导入保留源树快照，并自动将其中二进制成员注册为文件资产，保留父资产身份。旧任务可调用 `security_command` 的 `import-member` 操作，指定源树资产 ID 和精确清单路径。这直接读取校验后的已保存字节，无需复制文件或扩大 `importRoots`；被排除成员和其他项目仍不可访问。返回的文件资产可用于 binary 和专用 provider。源代码文本继续支持按行读取和搜索。模型不得重复重试配置未变的失败，也不能将身份检测成功视为分析完成。
+
+| 环境 | 语义接口 | 准备与诊断 |
+|---|---|---|
+| 本机 | 静态适配器、Ghidra 查询、ADB 查询、Wi-Fi/BLE 离线分析 | 配置 CLI 安装；按需绑定 Ghidra 程序或 Android 设备。 |
+| 托管 Docker | 静态适配器 | 容器可执行文件属于配置镜像；Host Docker 启动程序单独配置。 |
+| 外部 Kali | 原生工具与脚本流程 | 保留 Docker context、容器名、工作目录、网络和安装；检测成功不会自动开放语义执行。 |
+| Android | 通过选定 Host 环境执行 ADB 设备与包查询 | 配置 `deviceId` 和 ADB；调用时检查设备连接。 |
+
+失败区分配置、依赖、目标和执行阶段。采集保留可用原始输出与不完整状态；证据读取和幂等恢复不重复分析。Ghidra 与 ADB 保留原始文本，抓包分析保留 JSON，既有静态适配器保留结构化条目。版本探测不增加分析调用次数。服务或设备访问未经观测时保持未检测状态；安装检测通过不授予权限。
+
+集中配置减少重复拼装命令及误选设备或容器。复用 provider 执行让模型工具和操作员 API 保持相同的取消、租约及证据归属。固定接口仍仅覆盖声明操作，并依赖真实软件和目标。高级脚本或不支持环境可先用指定 `toolIds`、`details`、`native: true` 的 `security_capabilities`，再用 `native: true` 的 `security_environment` 加载指引。Shell 继续遵循既有权限。适配失败不会静默转为 Shell 调用，迁移不会拉取、重建、替换或停止外部容器。取消外部客户端不能证明远端已完成；不确定的完成状态保持未知。
+
+[路线图](../../../docs/roadmaps/security-analysis.zh.md#provider-adaptation)分别记录交付和真实环境验收。Loader 测试使用模拟服务与子进程夹具，不能证明真实 Ghidra 安装、Android 设备或外部 Kali 执行已验证。
+
+模型工具与生成的 Remote 方法共用[领域控制器](src/workbench/controller.ts)。[命令 schema](src/workbench/commands.ts)为浏览器提供类型，不引入 Host controller 及其 Session 服务声明。provider 注册返回 disposer，并通过现有 Loader 组合。服务增加指引和执行守卫，不修改 `agent-loop`。明确的 Session 绑定决定协调者、侦察者、逆向分析员、研究员和复核者权限。新的委派 Session 返回证据 ID 和不确定性；普通 job 结果保留其 Session 链接。
 
 [领域日志](src/workbench/journal.ts) 保存检查及尝试的权威状态，jobs、goal、todo 负责运行中的协调。制品存储按哈希发布完整内容，可重建检索索引不会删除日志中的证据。损坏的派生索引会被隔离，并从已提交记录重建；权限及 I/O 错误会明确报出。不发布 invariant companion：日志投影只有一个写入者，并在重开时校验；provider 在执行入口核对当前身份及权限。
 
