@@ -73,7 +73,7 @@ export interface DeepSeekModelsValidationFailure {
   index: number
   /** Message key owned by the Models settings section. */
   key: 'modelIdRequired' | 'modelIdDuplicate' | 'modelNameInvalid' | 'modelContextInvalid'
-  | 'modelMaxTokensInvalid'
+  | 'modelMaxTokensInvalid' | 'reasoningMappingInvalid'
 }
 
 /** Convert a schema-validated catalog value into records without dropping hidden fields. */
@@ -116,6 +116,18 @@ export function validateDeepSeekModels(value: unknown): DeepSeekModelsValidation
     if (maxTokens !== undefined
       && (typeof maxTokens !== 'number' || !Number.isInteger(maxTokens) || maxTokens <= 0)) {
       return { index, key: 'modelMaxTokensInvalid' }
+    }
+    const efforts = model['reasoningEfforts']
+    if (efforts !== undefined && efforts !== false) {
+      if (typeof efforts !== 'object' || efforts === null || Array.isArray(efforts)) {
+        return { index, key: 'reasoningMappingInvalid' }
+      }
+      const entries = Object.entries(efforts)
+      if (!entries.some(([level]) => level !== 'off') || entries.some(([level, value]) =>
+        !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(level)
+        || !(level === 'off' && value === null) && (typeof value !== 'string' || !value.length))) {
+        return { index, key: 'reasoningMappingInvalid' }
+      }
     }
   }
   return undefined

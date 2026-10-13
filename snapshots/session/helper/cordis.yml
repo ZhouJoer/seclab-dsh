@@ -1,0 +1,14 @@
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+
+- insert:
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: true
+        backend: api
+        provider: deepseek-official
+        model: deepseek-v4-pro
+        reasoningEffort: high

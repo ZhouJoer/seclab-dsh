@@ -294,6 +294,14 @@ type SubagentDescendantListEntry = SubagentListEntry & {
  * The terminal outcome of a subagent run, resolved by {@link SubagentRun.result}.
  */
 interface SubagentResult {
+  /** Actual model reported by the provider, when available. */
+  readonly model?: string
+  /** Actual model provider reported by an external runtime. */
+  readonly modelProvider?: string
+  /** Actual reasoning effort reported by the provider. */
+  readonly reasoningEffort?: string
+  /** Provider-reported cumulative usage for this run, including failed runs. */
+  readonly usage?: TokenUsage
   /**
    * The child's final assistant output is the content of its last non-empty
    * assistant message. Empty-content messages, including usage-only messages,
@@ -474,6 +482,40 @@ spawn 和 fork 后端通过 `parent.ctx` 创建一个普通的单次 agent，将
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxcodexconsultation--codexconsultation"></a>
+
+### `ctx.codexConsultation` — `CodexConsultation`
+
+Safe native metadata; authentication secrets remain owned by Codex.
+
+```ts cordis-catalog
+/**
+ * Read current ChatGPT account state.
+ * @returns Public account fields.
+ */
+async account(): Promise<{ loggedIn: boolean email?: string planType?: string login?: { loginId: string; status: 'pending' | 'completed' | 'failed'; error?: string } }>
+
+/**
+ * Read model choices from this installed Codex version.
+ * @returns Model ids and supported efforts.
+ */
+async models(): Promise<Array<{ id: string; name: string; efforts: string[] }>>
+
+/**
+ * Begin official browser authentication.
+ * @returns Login URL and cancellation identity.
+ */
+async login(): Promise<{ authUrl: string; loginId: string }>
+
+/**
+ * Cancel pending authentication.
+ * @param loginId Identity returned by login.
+ */
+async cancelLogin(loginId: string): Promise<void>
+```
+
+Source: [`packages/subagent/subagent-codex/src/consultation.ts`](../../packages/subagent/subagent-codex/src/consultation.ts)
 
 <a id="ctxsubagentmodelselection--subagentmodelselectionconfig"></a>
 

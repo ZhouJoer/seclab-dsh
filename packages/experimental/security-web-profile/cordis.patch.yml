@@ -16,3 +16,14 @@
       name: '@deepseek-ai/dsh-experimental-security-profile'
     - id: ui-security-workbench
       name: '@deepseek-ai/dsh-experimental-client-ui-security-analysis'
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: false
+    - id: helper-codex
+      name: '@deepseek-ai/dsh-subagent-codex'
+      config:
+        providerName: codex
+        consultation: true
+    - id: ui-helper
+      name: '@deepseek-ai/dsh-client-ui-helper'

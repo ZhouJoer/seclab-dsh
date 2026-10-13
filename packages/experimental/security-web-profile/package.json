@@ -37,6 +37,9 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh-helper": "workspace:*",
+    "@deepseek-ai/dsh-subagent-codex": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-helper": "workspace:*",
     "@deepseek-ai/dsh-experimental-client-ui-security-analysis": "workspace:*",
     "@deepseek-ai/dsh-experimental-security-profile": "workspace:*"
   },

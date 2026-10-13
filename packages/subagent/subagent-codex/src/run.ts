@@ -54,12 +54,14 @@ const CODEX_PACKAGE_BIN = resolve(
 
 /** Profile-selectable non-interactive Codex permission mode. */
 export type CodexPermissionMode =
+  | 'read-only'
   | 'never'
   | 'approve-for-me'
   | 'dangerously-bypass-approvals-and-sandbox'
 
 /** Native non-interactive Codex modes mapped to official `thread/start` fields. */
 export const CODEX_PERMISSION_MODES = [
+  'read-only',
   'never',
   'approve-for-me',
   'dangerously-bypass-approvals-and-sandbox',
@@ -130,10 +132,16 @@ export function codexStartupFailure(cause: unknown): Error {
 
 /**
  * Fixed package-local app-server command, independent of the host `PATH`.
+ * @param readOnly Disable external execution integrations for consultations.
  * @returns Node, the official wrapper, and the fixed app-server arguments.
  */
-export function codexAppServerArgv(): string[] {
-  return [process.execPath, CODEX_PACKAGE_BIN, 'app-server', '--stdio']
+export function codexAppServerArgv(readOnly = false): string[] {
+  const restrictions = readOnly
+    ? ['apps', 'plugins', 'hooks', 'multi_agent', 'multi_agent_v2', 'computer_use', 'browser_use', 'code_mode']
+      .flatMap(feature => ['-c', `features.${feature}=false`])
+    : []
+  return [process.execPath, CODEX_PACKAGE_BIN, ...restrictions,
+    ...(readOnly ? ['-c', 'notify=[]', '-c', 'web_search="disabled"'] : []), 'app-server', '--stdio']
 }
 
 /** Fully resolved inputs for one Codex app-server run. */
@@ -142,6 +150,8 @@ export interface CodexRunSpec {
   readonly cwd: string
   /** Profile-selected native model; omitted to preserve Codex settings. */
   readonly model?: string
+  /** Explicit reasoning effort; omission preserves the native default. */
+  readonly reasoningEffort?: string
   /** Profile-selected native non-interactive permission mode. */
   readonly permissionMode: CodexPermissionMode
   /** Explicit deployment/test environment layered after the shared scrub. */
@@ -234,7 +244,7 @@ export async function startCodexRun(
   let child: SubprocessHandle
   try {
     child = spec.spawn({
-      argv: codexAppServerArgv(),
+      argv: codexAppServerArgv(spec.permissionMode === 'read-only'),
       cwd: spec.cwd,
       stdio: { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
       graceMs: spec.disposeGraceMs,
@@ -252,6 +262,7 @@ export async function startCodexRun(
     child.stdin as NonNullable<SubprocessHandle['stdin']>,
     spec.permissionMode,
     spec.model,
+    spec.reasoningEffort,
   )
   const onStderr = (chunk: Buffer | string): void => {
     const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
@@ -426,7 +437,7 @@ export async function startCodexRun(
     onError: spec.onError,
     signal: request.signal,
     onAbort,
-  })
+  }).then(value => ({ ...value, ...wire.collectMetrics() }))
 
   return subprocessRunHandle({
     id: brandString<SessionId>(randomUUID()),

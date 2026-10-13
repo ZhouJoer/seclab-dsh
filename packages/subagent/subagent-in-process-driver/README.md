@@ -33,7 +33,7 @@ One call starts and drives one one-shot child. Fulfillment means the child is al
 
 ### The one input
 
-`InProcessRunOptions` is `{ seed?: SessionEvent[] }` — a fork seed of balanced parent events. Spawn omits it; fork supplies the completed-turn prefix and records its length so the result reader never mistakes seeded parent messages for child output.
+`InProcessRunOptions` accepts an optional `seed` of balanced parent events and an optional provider `setup(ctx, agent)` callback. Spawn omits the seed; fork supplies the completed-turn prefix. Setup runs after child composition and before publication; rejection rolls back the creation and scoped effects.
 
 ### What the child gets
 

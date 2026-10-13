@@ -121,6 +121,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   storageDomain: 'storage.md',
   subagentModelSelection: 'subagent.md',
   subagents: 'subagent.md',
+  codexConsultation: 'subagent.md',
   subprocess: 'subprocess.md',
   systemPrompt: 'system-prompt.md',
   jobs: 'jobs.md',

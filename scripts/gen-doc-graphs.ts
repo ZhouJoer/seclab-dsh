@@ -108,6 +108,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'codexConsultation',
+    pkg: 'subagent-codex',
+    title: 'Native Codex account and consultation access',
+    mode: 'core',
+    consumers: ['helper'],
+    note: 'Owns native account/model discovery and registers the read-only Helper provider without changing ordinary Codex preferences.',
+  },
+  {
     key: 'hmr',
     pkg: 'hmr',
     title: 'Serialized module and configuration reloads',

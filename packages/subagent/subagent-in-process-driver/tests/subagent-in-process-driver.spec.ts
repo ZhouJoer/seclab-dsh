@@ -61,6 +61,28 @@ function text(blocks: readonly { type: string; text?: string }[]): string {
 }
 
 describe('startInProcessRun', () => {
+  it('rolls back provider setup effects before publishing a rejected child', async () => {
+    const { ctx, parent } = await setup([])
+    let active = false
+    let published = false
+    const off = ctx.on('agent/created', ({ agent }) => { if (agent !== parent) published = true })
+    try {
+      await expect(startInProcessRun(request(parent), { setup: (childCtx) => {
+        childCtx.effect(() => {
+          active = true
+          return () => { active = false }
+        })
+        throw new Error('provider setup rejected')
+      } })).rejects.toThrow('provider setup rejected')
+      expect(active).toBe(false)
+      expect(published).toBe(false)
+      expect(ctx.agents.list()).toEqual([parent])
+    } finally {
+      off()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('returns only after publication, drives a fresh child, and disposes it', async () => {
     const { ctx, parent } = await setup([textResponse('driver answer')])
     const run = await startInProcessRun(request(parent), {})

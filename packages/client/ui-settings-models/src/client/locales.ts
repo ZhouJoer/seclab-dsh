@@ -2,6 +2,14 @@
 
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
+  reasoningConfig: 'Reasoning capabilities',
+  reasoningMappingInvalid: 'Choose at least one thinking level and provide its API value. Only off may omit the value.',
+  reasoningInherit: 'Inherit catalog',
+  reasoningNone: 'No reasoning',
+  reasoningCustom: 'Custom levels',
+  reasoningMappingHint: 'Enable supported levels and enter the parameter value sent to the API. Keep at least one reasoning level. An empty off value omits the parameter.',
+  reasoningWireValue: 'API parameter value',
+  reasoningOmit: 'Omit parameter',
   nav: 'Models',
   deepSeekAccount: 'DeepSeek Account',
   title: 'Models',
@@ -122,6 +130,14 @@ export type ModelsKey = keyof typeof en
 
 /** Chinese strings (same keys as {@link en}). */
 export const zh: { [Key in keyof typeof en]: string } = {
+  reasoningConfig: '思考能力',
+  reasoningMappingInvalid: '至少选择一个思考档位并填写 API 参数值。仅 off 可不填写参数值。',
+  reasoningInherit: '继承目录',
+  reasoningNone: '无推理',
+  reasoningCustom: '自定义档位',
+  reasoningMappingHint: '勾选支持的档位，并填写实际发送给 API 的参数值。至少保留一个思考档位；off 留空表示不发送参数。',
+  reasoningWireValue: 'API 参数值',
+  reasoningOmit: '不发送参数',
   nav: '模型',
   deepSeekAccount: 'DeepSeek 账号',
   title: '模型',

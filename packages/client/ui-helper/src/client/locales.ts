@@ -1,0 +1,46 @@
+/** Helper settings, consultation and usage copy. */
+export const en = {
+  loginFailed: 'ChatGPT login failed.',
+  title: 'Helper', description: 'Let the main model consult a read-only expert when it gets stuck.',
+  settingsTitle: 'Helper · Advanced model / Codex', configure: 'Configure advanced model / Codex',
+  seconds: 's',
+  testWorkspace: 'Choose test workspace',
+  enabled: 'Enable for new chats', backend: 'Backend', api: 'Configured API model', codex: 'Codex · ChatGPT login',
+  model: 'Model', effort: 'Reasoning effort', choose: 'Choose a model', chooseEffort: 'Choose a supported effort',
+  providerDefault: 'Provider default', invalid: 'The selected model or effort is unavailable. Refresh the directory and choose a supported value.',
+  save: 'Save', saving: 'Saving…', saveFailed: 'Could not save settings.', unavailable: 'Helper is unavailable.', readOnly: 'Settings are read-only.',
+  refresh: 'Refresh account and models', login: 'Sign in with ChatGPT', cancelLogin: 'Cancel login', openLogin: 'Open official login page',
+  loggedOut: 'Not signed in', loggedIn: 'Signed in', loading: 'Loading…', test: 'New test chat',
+  testHint: 'Save first. This creates a separate chat and makes a real consultation using the saved selection. Usage is billed by the selected provider.',
+  apiHint: 'Configure API keys, endpoints, protocols and custom reasoning mappings on the Models page.',
+  sessionHint: 'New-chat default only. Use the Helper menu or /helper on|off in an existing chat.',
+  on: 'On', off: 'Off', calls: 'Calls', completed: 'Succeeded', error: 'Failed', aborted: 'Cancelled', interrupted: 'Interrupted', running: 'Running',
+  elapsed: 'Elapsed', input: 'Input tokens', output: 'Output tokens', cache: 'Cache read tokens', cacheWrite: 'Cache write tokens', reasoning: 'Reasoning tokens',
+  unreported: 'Not reported', materials: 'Submitted materials', answer: 'Expert advice', child: 'Open read-only agent log',
+  noWorkspace: 'Create a workspace before starting a test chat.', sessionMissing: 'The chat is no longer open.',
+  testPrompt: 'Helper verification: call helper exactly once to inspect README.md and report its first heading. Request read-only inspection without changing files; let the adviser choose its native inspection tools (Codex may use sandboxed read-only shell commands). Report only the helper result, without performing your own file inspection or implementation.',
+}
+/** Locale keys accepted by Helper views. */
+export type HelperKey = keyof typeof en
+/** Chinese Helper copy. */
+export const zh: Record<HelperKey, string> = {
+  loginFailed: 'ChatGPT 登录失败。',
+  title: 'Helper', description: '主模型遇到卡点时，可以向只读高级顾问求助。',
+  settingsTitle: 'Helper · 高级模型 / Codex', configure: '配置高级模型 / Codex',
+  seconds: '秒',
+  testWorkspace: '选择测试工作区',
+  enabled: '新会话默认开启', backend: '调用方式', api: '已配置的 API 模型', codex: 'Codex · ChatGPT 登录',
+  model: '模型', effort: '思考强度', choose: '选择模型', chooseEffort: '请选择支持的档位',
+  providerDefault: '提供方默认', invalid: '当前模型或档位不可用，请刷新目录并选择支持的值。',
+  save: '保存', saving: '正在保存…', saveFailed: '保存失败。', unavailable: 'Helper 当前不可用。', readOnly: '设置为只读。',
+  refresh: '刷新账号与模型', login: '使用 ChatGPT 登录', cancelLogin: '取消登录', openLogin: '打开官方登录页',
+  loggedOut: '未登录', loggedIn: '已登录', loading: '正在加载…', test: '新建测试会话',
+  testHint: '请先保存。此操作会新建独立会话，使用已保存配置进行真实求助，并产生所选提供方的用量。',
+  apiHint: 'API Key、地址、协议和自定义思考档位映射，请在“模型”页面配置。',
+  sessionHint: '默认开关仅影响新会话。已有会话请使用 Helper 菜单或 /helper on|off。',
+  on: '开启', off: '关闭', calls: '调用次数', completed: '成功', error: '失败', aborted: '已取消', interrupted: '已中断', running: '运行中',
+  elapsed: '耗时', input: '输入 token', output: '输出 token', cache: '缓存读取 token', cacheWrite: '缓存写入 token', reasoning: '推理 token',
+  unreported: '未报告', materials: '提交材料', answer: '高级模型建议', child: '打开只读子代理日志',
+  noWorkspace: '请先创建工作区，再新建测试会话。', sessionMissing: '当前会话已关闭。',
+  testPrompt: 'Helper 验证：请仅调用一次 helper，要求它只读检查 README.md 并报告第一个标题，不修改文件。让顾问选择其原生查阅工具（Codex 可使用只读沙箱内的文件读取命令），不要要求使用特定工具名。仅报告 Helper 的结果，不自行查阅文件、不进行实现。',
+}

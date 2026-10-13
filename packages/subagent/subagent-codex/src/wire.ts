@@ -8,7 +8,7 @@
  */
 
 import type { Readable, Writable } from 'node:stream'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
 import type { CodexPermissionMode } from './run.ts'
@@ -30,6 +30,7 @@ export interface CodexWireFailureFacts {
 }
 
 const THREAD_PERMISSION_PARAMS: Readonly<Record<CodexPermissionMode, JsonObject>> = {
+  'read-only': { approvalPolicy: 'never', sandbox: 'read-only' },
   never: { approvalPolicy: 'never' },
   'approve-for-me': {
     approvalPolicy: 'on-request',
@@ -52,6 +53,13 @@ function object(value: unknown, label: string): JsonObject {
 function string(value: unknown, label: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`subagent-codex: app-server returned invalid ${label}`)
+  }
+  return value
+}
+
+function tokenCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error('subagent-codex: invalid token count')
   }
   return value
 }
@@ -190,6 +198,8 @@ async function raceAbort<T>(pending: Promise<T>, signal: AbortSignal): Promise<T
  * another product method must first become part of the provider contract.
  */
 export class CodexAppServerWire {
+  private loginOutcome: { loginId: string; status: 'pending' | 'completed' | 'failed'; error?: string } | undefined
+  private metrics: Pick<SubagentResult, 'model' | 'modelProvider' | 'reasoningEffort' | 'usage'> = {}
   private readonly transport: JsonRpcLineTransport
   private readonly fatal = Promise.withResolvers<never>()
   private threadId: string | undefined
@@ -225,6 +235,7 @@ export class CodexAppServerWire {
     output: Writable,
     private readonly permissionMode: CodexPermissionMode,
     private readonly model?: string,
+    private readonly reasoningEffort?: string,
   ) {
     this.transport = new JsonRpcLineTransport(input, output)
     // Fatal protocol state can arrive after the current guarded operation has
@@ -286,11 +297,21 @@ export class CodexAppServerWire {
    * @param signal - unpublished-start cancellation.
    */
   async startThread(cwd: string, signal: AbortSignal): Promise<void> {
+    let restrictions: JsonObject | undefined
+    if (this.permissionMode === 'read-only') {
+      const read = object(await this.guarded(this.transport.request('config/read', {
+        cwd, includeLayers: false,
+      }, signal), signal), 'config/read response')
+      const config = object(read.config, 'effective config')
+      const servers = config.mcp_servers == null ? {} : object(config.mcp_servers, 'MCP servers')
+      restrictions = { mcp_servers: Object.fromEntries(Object.keys(servers).map(id => [id, { enabled: false }])) }
+    }
     const response = object(await this.guarded(this.transport.request('thread/start', {
       cwd,
       ephemeral: true,
       ...this.model === undefined ? {} : { model: this.model },
       ...THREAD_PERMISSION_PARAMS[this.permissionMode],
+      ...restrictions === undefined ? {} : { config: restrictions },
     }, signal), signal), 'thread/start response')
     const thread = object(response.thread, 'thread/start thread')
     const id = string(thread.id, 'thread/start thread id')
@@ -298,6 +319,89 @@ export class CodexAppServerWire {
       throw new Error('subagent-codex: app-server did not create an ephemeral thread')
     }
     this.threadId = id
+    this.metrics = {
+      ...typeof response.model === 'string' ? { model: response.model } : {},
+      ...typeof response.modelProvider === 'string' ? { modelProvider: response.modelProvider } : {},
+      ...this.reasoningEffort !== undefined ? { reasoningEffort: this.reasoningEffort }
+        : typeof response.reasoningEffort === 'string' ? { reasoningEffort: response.reasoningEffort } : {},
+    }
+  }
+
+  /**
+   * Read the last reported routing and cumulative usage for this run.
+   * @returns Available provider facts without protocol or account payloads.
+   */
+  collectMetrics(): Pick<SubagentResult, 'model' | 'modelProvider' | 'reasoningEffort' | 'usage'> {
+    return { ...this.metrics }
+  }
+
+  /**
+   * Read native authentication without returning credentials.
+   * @param signal Cancellation.
+   * @returns Public account fields.
+   */
+  async readAccount(signal: AbortSignal): Promise<{ loggedIn: boolean; email?: string; planType?: string; login?: { loginId: string; status: 'pending' | 'completed' | 'failed'; error?: string } }> {
+    const response = object(await this.guarded(this.transport.request('account/read', { refreshToken: false }, signal), signal), 'account')
+    const login = this.loginOutcome === undefined ? {} : { login: { ...this.loginOutcome } }
+    if (response.account == null) return { loggedIn: false, ...login }
+    const account = object(response.account, 'account detail')
+    return {
+      loggedIn: account.type === 'chatgpt',
+      ...login,
+      ...typeof account.email === 'string' ? { email: account.email } : {},
+      ...typeof account.planType === 'string' ? { planType: account.planType } : {},
+    }
+  }
+
+  /**
+   * Start official browser authentication.
+   * @param signal Cancellation.
+   * @returns The public login link and cancellation identity.
+   */
+  async login(signal: AbortSignal): Promise<{ authUrl: string; loginId: string }> {
+    const response = object(await this.guarded(this.transport.request('account/login/start', { type: 'chatgpt' }, signal), signal), 'login')
+    const authUrl = string(response.authUrl, 'login URL')
+    const url = new URL(authUrl)
+    if (url.protocol !== 'https:' || !['auth.openai.com', 'auth0.openai.com', 'chatgpt.com'].includes(url.hostname)) {
+      throw new Error('subagent-codex: unexpected authentication URL')
+    }
+    const loginId = string(response.loginId, 'login id')
+    if (this.loginOutcome?.loginId !== loginId) this.loginOutcome = { loginId, status: 'pending' }
+    return { authUrl, loginId }
+  }
+
+  /**
+   * Cancel an outstanding login.
+   * @param loginId Identity returned by login.
+   * @param signal Cancellation.
+   */
+  async cancelLogin(loginId: string, signal: AbortSignal): Promise<void> {
+    await this.guarded(this.transport.request('account/login/cancel', { loginId }, signal), signal)
+    if (this.loginOutcome?.loginId === loginId) this.loginOutcome = undefined
+  }
+
+  /**
+   * Read all native model choices.
+   * @param signal Cancellation.
+   * @returns Models and their supported efforts.
+   */
+  async models(signal: AbortSignal): Promise<Array<{ id: string; name: string; efforts: string[] }>> {
+    const models: Array<{ id: string; name: string; efforts: string[] }> = []
+    let cursor: string | undefined
+    do {
+      const response = object(await this.guarded(this.transport.request('model/list', {
+        includeHidden: false, ...cursor === undefined ? {} : { cursor },
+      }, signal), signal), 'models')
+      if (!Array.isArray(response.data)) throw new Error('subagent-codex: invalid model list')
+      for (const item of response.data) {
+        const model = object(item, 'model')
+        if (!Array.isArray(model.supportedReasoningEfforts)) throw new Error('subagent-codex: invalid effort list')
+        models.push({ id: string(model.model, 'model id'), name: string(model.displayName, 'model name'),
+          efforts: model.supportedReasoningEfforts.map(value => string(object(value, 'effort').reasoningEffort, 'effort id')) })
+      }
+      cursor = response.nextCursor == null ? undefined : string(response.nextCursor, 'model cursor')
+    } while (cursor !== undefined)
+    return models
   }
 
   /**
@@ -320,6 +424,7 @@ export class CodexAppServerWire {
     try {
       const response = object(await this.guarded(this.transport.request('turn/start', {
         threadId,
+        ...this.reasoningEffort === undefined ? {} : { effort: this.reasoningEffort },
         input: texts.map(text => ({ type: 'text', text, text_elements: [] })),
       }, signal), signal), 'turn/start response')
       const turn = object(response.turn, 'turn/start turn')
@@ -634,6 +739,36 @@ export class CodexAppServerWire {
     params: JsonObject,
     order?: number,
   ): void {
+    if (method === 'account/login/completed') {
+      const loginId = string(params.loginId, 'completed login id')
+      if (typeof params.success !== 'boolean') throw new Error('subagent-codex: invalid login completion')
+      this.loginOutcome = { loginId, status: params.success ? 'completed' : 'failed',
+        ...typeof params.error === 'string' ? { error: params.error } : {} }
+      return
+    }
+    if (method === 'thread/tokenUsage/updated') {
+      if (params.threadId !== this.threadId || this.turnCompleted === undefined) return
+      const id = string(params.turnId, 'usage turn id')
+      if (this.turnId === undefined) {
+        this.observePendingTurnId(id)
+        this.earlyTurnNotifications.push({ method, params, order: this.nextObservationOrder() })
+        return
+      }
+      if (id !== this.turnId) return
+      const total = object(object(params.tokenUsage, 'usage').total, 'total usage')
+      const input = tokenCount(total.inputTokens)
+      const cached = tokenCount(total.cachedInputTokens ?? 0)
+      if (cached > input) throw new Error('subagent-codex: cached input exceeds total input')
+      const usage: TokenUsage = {
+        inputTokens: input - cached,
+        cacheReadTokens: cached,
+        outputTokens: tokenCount(total.outputTokens),
+        ...total.totalTokens === undefined ? {} : { totalTokens: tokenCount(total.totalTokens) },
+        ...total.reasoningOutputTokens === undefined ? {} : { reasoningTokens: tokenCount(total.reasoningOutputTokens) },
+      }
+      this.metrics = { ...this.metrics, usage }
+      return
+    }
     if (method === 'turn/started') {
       const threadId = string(params.threadId, 'turn/started thread id')
       if (threadId !== this.threadId) return

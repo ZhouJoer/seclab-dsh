@@ -1,0 +1,17 @@
+{
+  "final_response": "PARENT_DONE",
+  "consultations": [
+    {
+      "backend": "api",
+      "model": "deepseek-v4-pro",
+      "reasoningEffort": "high",
+      "status": "completed",
+      "usage": {
+        "inputTokens": 49,
+        "outputTokens": 22,
+        "cacheReadTokens": 2816,
+        "reasoningTokens": 17
+      }
+    }
+  ]
+}

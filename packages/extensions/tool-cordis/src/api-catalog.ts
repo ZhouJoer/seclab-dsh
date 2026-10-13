@@ -605,6 +605,36 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'codexConsultation',
+    summary: 'Safe native metadata; authentication secrets remain owned by Codex.',
+    description: 'Safe native metadata; authentication secrets remain owned by Codex.',
+    methods: [
+      {
+        signature: 'async account(): Promise<{ loggedIn: boolean email?: string planType?: string login?: { loginId: string; status: \'pending\' | \'completed\' | \'failed\'; error?: string } }>',
+        description: 'Read current ChatGPT account state.',
+        parameters: [],
+        returns: 'Public account fields.',
+      },
+      {
+        signature: 'async models(): Promise<Array<{ id: string; name: string; efforts: string[] }>>',
+        description: 'Read model choices from this installed Codex version.',
+        parameters: [],
+        returns: 'Model ids and supported efforts.',
+      },
+      {
+        signature: 'async login(): Promise<{ authUrl: string; loginId: string }>',
+        description: 'Begin official browser authentication.',
+        parameters: [],
+        returns: 'Login URL and cancellation identity.',
+      },
+      {
+        signature: 'async cancelLogin(loginId: string): Promise<void>',
+        description: 'Cancel pending authentication.',
+        parameters: [{ name: 'loginId', description: 'Identity returned by login.' }],
+      },
+    ],
+  },
+  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -7736,7 +7766,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentResult',
-    declaration: 'export interface SubagentResult {\n    readonly output: readonly ContentBlock[];\n    readonly structured?: unknown;\n    readonly diagnostic?: string;\n    readonly stopReason: SubagentStopReason;\n}',
+    declaration: 'export interface SubagentResult {\n    readonly model?: string;\n    readonly modelProvider?: string;\n    readonly reasoningEffort?: string;\n    readonly usage?: TokenUsage;\n    readonly output: readonly ContentBlock[];\n    readonly structured?: unknown;\n    readonly diagnostic?: string;\n    readonly stopReason: SubagentStopReason;\n}',
   },
   {
     name: 'SubagentRun',

@@ -26,6 +26,16 @@ const ctx: NormalizeContext = {
   cwd: '/tmp/acp-snap-cwd-abc123',
 }
 
+it('normalizes Helper clocks while retaining status and reported token counts', () => {
+  const raw = JSON.stringify({ type: 'helper/end', data: {
+    callId: 'helper-call', startedAt: 1700000000000, elapsedMs: 1200,
+    status: 'completed', usage: { inputTokens: 42, outputTokens: 7 },
+  } })
+  expect(JSON.parse(normalizeSessionLog(raw, ctx))).toMatchObject({ type: 'helper/end', data: {
+    startedAt: 0, elapsedMs: 0, status: 'completed', usage: { inputTokens: 42, outputTokens: 7 },
+  } })
+})
+
 describe('normalizeStdout', () => {
   it('rewrites JSON-RPC ids to a stable first-seen sequence', () => {
     const raw = [

@@ -788,12 +788,18 @@ async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly Se
 
   const childPrompts = new Map<number, string>()
   const childSchemas = new Map<number, unknown[][]>()
+  const childHeaders = new Map<number, unknown[]>()
+  const childFiles = sessionFixtureNames(await readdir(scenario.dir))
   for (const index of scenario.manifest.header.childSystemPrompts ?? []) {
     childPrompts.set(index, await readFile(join(scenario.dir, `system-prompt.${index}.expected.md`), 'utf8'))
   }
   for (const index of scenario.manifest.header.childToolSchemas ?? []) {
     const child = parseToolSchemasSnapshot(await readFile(join(scenario.dir, `tool-schemas.${index}.expected.json`), 'utf8'))
     childSchemas.set(index, [child.initial, ...child.changes])
+    const file = childFiles[index]
+    if (!file) throw new Error(`${scenario.name}: missing child fixture ${index}`)
+    const fixture = await readFile(join(scenario.dir, file), 'utf8')
+    childHeaders.set(index, normalizedHeaders(fixture, fixtureContext(fixture)))
   }
 
   for (const [logIndex, log] of actualLogs.entries()) {
@@ -806,7 +812,7 @@ async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly Se
     }
     for (const [index, header] of headers.entries()) {
       const selectedSchemas = childSchemas.get(logIndex)?.[index]
-      const base = reconstructed[index] ?? reconstructed[0]
+      const base = childHeaders.get(logIndex)?.[index] ?? reconstructed[index] ?? reconstructed[0]
       const expected = selectedSchemas === undefined ? base : { ...base as JsonObject, tools: selectedSchemas }
       expect(headerForChildSchemaComparison(header, selectedSchemas), `${scenario.name}: request header ${index + 1}`).toEqual(expected)
     }

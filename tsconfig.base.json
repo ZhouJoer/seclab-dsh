@@ -28,6 +28,8 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-helper": ["./packages/subagent/helper/src/index.ts"],
+      "@deepseek-ai/dsh-helper/types": ["./packages/subagent/helper/src/types.ts"],
       "@deepseek-ai/dsh-client-product-analytics": ["./packages/client/product-analytics/src/index.ts"],
       "@deepseek-ai/dsh-client-product-analytics/types": ["./packages/client/product-analytics/src/events.ts"],
       "@deepseek-ai/dsh-client-product-analytics/client": ["./packages/client/product-analytics/src/client/index.ts"],
@@ -303,6 +305,8 @@
       "@deepseek-ai/dsh-client-ui-settings-agent-loop": ["./packages/client/ui-settings-agent-loop/src"],
       "@deepseek-ai/dsh-client-ui-settings-session-log": ["./packages/client/ui-settings-session-log/src"],
       "@deepseek-ai/dsh-client-ui-settings-subagent": ["./packages/client/ui-settings-subagent/src"],
+      "@deepseek-ai/dsh-client-ui-helper": ["./packages/client/ui-helper/src"],
+      "@deepseek-ai/dsh-client-ui-helper/client": ["./packages/client/ui-helper/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-settings-web-search": ["./packages/client/ui-settings-web-search/src"],
       "@deepseek-ai/dsh-client-ui-jobs": ["./packages/client/ui-jobs/src"],
       "@deepseek-ai/dsh-client-ui-jobs/client": ["./packages/client/ui-jobs/src/client/index.ts"],

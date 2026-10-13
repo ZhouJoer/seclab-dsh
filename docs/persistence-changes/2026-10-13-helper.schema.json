@@ -1,0 +1,468 @@
+{
+  "formatVersion": 2,
+  "roots": [
+    {
+      "key": "event:helper/end",
+      "kind": "event",
+      "event": "helper/end",
+      "surface": false,
+      "digest": "981edc915b5cff1dd70b832d6fea868aac2663de19d687d4aa1706d96eace38a",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 14,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 15,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "backend",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "callId",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "childSessionId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "elapsedMs",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "model",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "reasoningEffort",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "rootCallId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "startedAt",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "status",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "usage",
+                "type": 13,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "union",
+            "types": [
+              3,
+              4
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "api"
+          },
+          {
+            "kind": "literal",
+            "value": "codex"
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "union",
+            "types": [
+              8,
+              9,
+              10,
+              11,
+              12
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "aborted"
+          },
+          {
+            "kind": "literal",
+            "value": "error"
+          },
+          {
+            "kind": "literal",
+            "value": "interrupted"
+          },
+          {
+            "kind": "literal",
+            "value": "running"
+          },
+          {
+            "kind": "literal",
+            "value": "completed"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "cacheReadTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "cacheWriteTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "inputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "outputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "reasoningTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "totalTokens",
+                "type": 6,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "helper/end"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:helper/policy",
+      "kind": "event",
+      "event": "helper/policy",
+      "surface": false,
+      "digest": "54f811629d36091650540d79bfbaa97368b7c992760ac0d7eb77fcc097f4c67b",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 3,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "enabled",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "boolean"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "helper/policy"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:helper/start",
+      "kind": "event",
+      "event": "helper/start",
+      "surface": false,
+      "digest": "9e1743f5f9e6caebffafb5012ad8d5b843a9c4fafade8ec79e56675bf56f4d68",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 14,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 15,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "backend",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "callId",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "childSessionId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "elapsedMs",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "model",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "reasoningEffort",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "rootCallId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "startedAt",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "status",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "usage",
+                "type": 13,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "union",
+            "types": [
+              3,
+              4
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "api"
+          },
+          {
+            "kind": "literal",
+            "value": "codex"
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "union",
+            "types": [
+              8,
+              9,
+              10,
+              11,
+              12
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "aborted"
+          },
+          {
+            "kind": "literal",
+            "value": "error"
+          },
+          {
+            "kind": "literal",
+            "value": "interrupted"
+          },
+          {
+            "kind": "literal",
+            "value": "running"
+          },
+          {
+            "kind": "literal",
+            "value": "completed"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "cacheReadTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "cacheWriteTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "inputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "outputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "reasoningTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "totalTokens",
+                "type": 6,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "helper/start"
+          }
+        ]
+      }
+    }
+  ],
+  "types": []
+}

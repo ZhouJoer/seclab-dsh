@@ -28,6 +28,8 @@ kind: "package-bundle"
 
 安全 Web profile 默认监听 `127.0.0.1:3081`，普通 Web profile 使用 `3080`。显式 `--port` 覆盖安全默认值，包括使用 `--port 0` 分配端口。端口被占用时绑定失败，不会静默切换端口。
 
+此组合包含可选的 [Helper 控件](../../client/ui-helper/README.zh.md)。Helper 初始关闭；在“插件 → Helper”选择 API 专家或 ChatGPT Codex，并按会话启用。启用后协调者可以求助。源码启动器将这些组合层放在用户设置之下，保存的模型选择在重启后仍保留。
+
 -----
 
 <a id="understand-the-implementation"></a>

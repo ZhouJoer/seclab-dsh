@@ -1515,6 +1515,36 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-headless -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-helper -->
+<a id="deepseek-aidsh-helper"></a>
+
+## `@deepseek-ai/dsh-helper`
+
+- `inject`: `agents` · `tools` · `subagents` · `llm` · `systemPrompt` · `sessionProjections`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/subagent/helper/src/index.ts:26`](../packages/subagent/helper/src/index.ts)
+
+```ts config-catalog
+/** Live settings; each consultation captures one complete selection. */
+export interface Config {
+  /** Initial availability for newly created top-level sessions. */
+  enabled: Volatile<boolean>
+  /** Consultation runtime sampled at the start of each call. */
+  backend: Volatile<'api' | 'codex'>
+  /** Existing DSH API provider id; credentials remain with that provider. */
+  provider: Volatile<string>
+  /** API adviser model id. */
+  model: Volatile<string>
+  /** API effort id, or empty for the provider default. */
+  reasoningEffort: Volatile<string>
+  /** Model advertised by the native Codex directory. */
+  codexModel: Volatile<string>
+  /** Codex effort id, or empty for the native default. */
+  codexReasoningEffort: Volatile<string>
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-helper -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-hmr -->
 <a id="deepseek-aidsh-hmr"></a>
 
@@ -3412,15 +3442,19 @@ export type ClaudeCodePermissionMode = typeof CLAUDE_CODE_PERMISSION_MODES[numbe
 ## `@deepseek-ai/dsh-subagent-codex`
 
 - `inject`: `subagents` · `subprocess`
-- `source`: [`packages/subagent/subagent-codex/src/index.ts:36`](../packages/subagent/subagent-codex/src/index.ts)
+- `source`: [`packages/subagent/subagent-codex/src/index.ts:38`](../packages/subagent/subagent-codex/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-owned model, permission, environment, and process-release settings. */
 export interface Config {
+  /** Expose native account/model controls and the read-only helper-codex provider. */
+  consultation?: boolean
   /** Provider name on `ctx.subagents` (default `codex`). */
   providerName?: string
   /** Native Codex model fixed for this instance; omitted to inherit Codex settings. */
   model?: string
+  /** Native reasoning effort fixed for this instance. */
+  reasoningEffort?: string
   /**
    * Explicit environment entries layered over the subprocess seam's
    * credential-scrubbed parent environment.
@@ -3434,6 +3468,7 @@ export interface Config {
 
 /** Profile-selectable non-interactive Codex permission mode. */
 export type CodexPermissionMode =
+  | 'read-only'
   | 'never'
   | 'approve-for-me'
   | 'dangerously-bypass-approvals-and-sandbox'
@@ -4569,6 +4604,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-directory-picker-browse` | — | [`packages/client/ui-directory-picker-browse/src/index.ts`](../packages/client/ui-directory-picker-browse/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-directory-picker-native` | — | [`packages/client/ui-directory-picker-native/src/index.ts`](../packages/client/ui-directory-picker-native/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-helper` | — | [`packages/client/ui-helper/src/index.ts`](../packages/client/ui-helper/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-input-trigger` | — | [`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-jobs` | — | [`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-layout` | — | [`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts) |

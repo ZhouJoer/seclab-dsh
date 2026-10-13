@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { canObserve, delegationPrompt, resolveTask, toolsForRole } from '../src/workbench/roles.ts'
 
 describe('security role assignments', () => {
+  it('allows optional expert consultation only for the coordinator', () => {
+    expect(toolsForRole('coordinator')).toContain('helper')
+    for (const role of ['reconnaissance', 'reverse-analyst', 'web-analyst', 'researcher', 'reviewer'] as const)
+      expect(toolsForRole(role)).not.toContain('helper')
+  })
   it('directs binary collectors to installed reverse tools before custom parsing', () => {
     for (const role of ['reconnaissance', 'reverse-analyst'] as const) {
       const prompt = delegationPrompt({ role, task: resolveTask(role), assetId: 'sample', question: 'Inspect ELF functions',

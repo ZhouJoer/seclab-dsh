@@ -356,6 +356,75 @@ function expectedFailureDiagnostic(
 }
 
 describe('task admission and package contracts', () => {
+  it('disables every configured MCP server and sends high effort in read-only consultations', async () => {
+    const child = fakeChild()
+    const wire = new CodexAppServerWire(child.handle.stdout!, child.handle.stdin!, 'read-only', 'expert', 'high')
+    wire.start()
+    try {
+      const starting = wire.startThread(process.cwd(), new AbortController().signal)
+      const config = await child.peer.nextMethod('config/read')
+      child.peer.respond(config, { config: { mcp_servers: { first: { command: 'unsafe' }, second: { url: 'https://example.com' } } } })
+      const thread = await child.peer.nextMethod('thread/start')
+      expect(thread.params).toMatchObject({ approvalPolicy: 'never', sandbox: 'read-only', ephemeral: true,
+        config: { mcp_servers: { first: { enabled: false }, second: { enabled: false } } } })
+      child.peer.respond(thread, { thread: { id: 'thread-1', ephemeral: true }, model: 'expert', modelProvider: 'openai', reasoningEffort: 'medium' })
+      await starting
+      const running = wire.runTurn(['inspect README'], new AbortController().signal)
+      const turn = await child.peer.nextMethod('turn/start')
+      expect(turn.params).toMatchObject({ effort: 'high' })
+      child.peer.respond(turn, { turn: { id: 'turn-1' } })
+      const usage = { method: 'thread/tokenUsage/updated', params: { threadId: 'thread-1', turnId: 'turn-1', tokenUsage: {
+        total: { inputTokens: 100, cachedInputTokens: 60, outputTokens: 20, reasoningOutputTokens: 12, totalTokens: 120 },
+      } } }
+      child.peer.send(usage, usage, agentMessage('advice', 'final_answer'), turnCompleted('completed'))
+      await expect(running).resolves.toMatchObject({ stopReason: 'completed' })
+      expect(wire.collectMetrics()).toEqual({ model: 'expert', modelProvider: 'openai', reasoningEffort: 'high',
+        usage: { inputTokens: 40, cacheReadTokens: 60, outputTokens: 20, reasoningTokens: 12, totalTokens: 120 } })
+      expect(codexAppServerArgv(true)).toContain('features.apps=false')
+      expect(codexAppServerArgv(true)).toContain('features.hooks=false')
+      expect(codexAppServerArgv(true)).toContain('features.multi_agent=false')
+    } finally { await disposeCodexChild(wire, child.handle) }
+  })
+
+  it('projects account metadata, paginated efforts, official login and cancellation without credentials', async () => {
+    const child = fakeChild()
+    const wire = defaultWire(child)
+    wire.start()
+    const signal = new AbortController().signal
+    try {
+      const account = wire.readAccount(signal)
+      child.peer.respond(await child.peer.nextMethod('account/read'), { account: { type: 'chatgpt', email: 'test@example.com', planType: 'pro', token: 'private' } })
+      await expect(account).resolves.toEqual({ loggedIn: true, email: 'test@example.com', planType: 'pro' })
+      const models = wire.models(signal)
+      child.peer.respond(await child.peer.nextMethod('model/list'), { data: [{ model: 'expert', displayName: 'Expert', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] }], nextCursor: 'next' })
+      const next = await child.peer.nextMethod('model/list')
+      expect(next.params).toMatchObject({ cursor: 'next' })
+      child.peer.respond(next, { data: [], nextCursor: null })
+      await expect(models).resolves.toEqual([{ id: 'expert', name: 'Expert', efforts: ['high'] }])
+      const login = wire.login(signal)
+      child.peer.respond(await child.peer.nextMethod('account/login/start'), { authUrl: 'https://auth.openai.com/authorize', loginId: 'login' })
+      await expect(login).resolves.toEqual({ authUrl: 'https://auth.openai.com/authorize', loginId: 'login' })
+      const pending = wire.readAccount(signal)
+      child.peer.respond(await child.peer.nextMethod('account/read'), { account: { type: 'chatgpt' } })
+      await expect(pending).resolves.toEqual({ loggedIn: true, login: { loginId: 'login', status: 'pending' } })
+      child.peer.send({ method: 'account/login/completed', params: { loginId: 'login', success: false, error: 'Login expired' } })
+      const failed = wire.readAccount(signal)
+      child.peer.respond(await child.peer.nextMethod('account/read'), { account: null })
+      await expect(failed).resolves.toEqual({ loggedIn: false, login: { loginId: 'login', status: 'failed', error: 'Login expired' } })
+      child.peer.send({ method: 'account/login/completed', params: { loginId: 'login', success: true, error: null } })
+      const completed = wire.readAccount(signal)
+      child.peer.respond(await child.peer.nextMethod('account/read'), { account: { type: 'chatgpt' } })
+      await expect(completed).resolves.toEqual({ loggedIn: true, login: { loginId: 'login', status: 'completed' } })
+      const cancel = wire.cancelLogin('login', signal)
+      const cancelRequest = await child.peer.nextMethod('account/login/cancel')
+      expect(cancelRequest.params).toEqual({ loginId: 'login' })
+      child.peer.respond(cancelRequest, { status: 'canceled' })
+      await cancel
+      const loggedOut = wire.readAccount(signal)
+      child.peer.respond(await child.peer.nextMethod('account/read'), { account: null })
+      await expect(loggedOut).resolves.toEqual({ loggedIn: false })
+    } finally { await disposeCodexChild(wire, child.handle) }
+  })
   it('ships one independently installable provider-only Bundle patch', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {

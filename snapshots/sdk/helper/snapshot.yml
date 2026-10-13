@@ -1,0 +1,9 @@
+version: 1
+scenario: helper
+profile: sdk
+composition: helper
+recording: authored
+header:
+  class: helper
+  childSystemPrompts: [1]
+  childToolSchemas: [1]

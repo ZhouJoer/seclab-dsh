@@ -1,0 +1,5 @@
+- insert:
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: false

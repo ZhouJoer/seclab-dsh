@@ -33,7 +33,7 @@ kind: "package-library"
 
 ### 唯一输入
 
-`InProcessRunOptions` 的形态为 `{ seed?: SessionEvent[] }`——fork 的已配平父级事件初始内容。spawn 省略该值；fork 提供已完成轮次前缀并记录其长度，使结果读取器不会把作为初始内容的父级消息误认为子 agent 输出。
+`InProcessRunOptions` 接受由平衡父事件组成的可选 `seed`，以及可选的提供方 `setup(ctx, agent)` 回调。Spawn 省略种子，fork 提供已完成轮次的前缀。Setup 在子代理组合之后、发布之前运行；拒绝会回滚创建及作用域效果。
 
 ### 子 agent 获得什么
 

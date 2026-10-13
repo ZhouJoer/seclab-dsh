@@ -385,6 +385,7 @@ export function normalizeSessionLog(
       if ('durationMs' in data) data.durationMs = 0
     }
     normalizeFeedbackClocks(record)
+    normalizeHelperClocks(record)
     if (record.type === 'goal/change' && record.data !== null && typeof record.data === 'object') {
       const data = record.data as Record<string, unknown>
       if ('createdAt' in data) data.createdAt = 0
@@ -571,6 +572,7 @@ export function scrubSessionSnapshot(rawLog: string): string {
       record.sourceEventSeqs = decodeSeqRanges(record.sourceEventSeqs)
     }
     normalizeFeedbackClocks(record)
+    normalizeHelperClocks(record)
     return JSON.stringify(record)
   }).join('\n')
 }
@@ -583,6 +585,15 @@ function normalizeFeedbackClocks(record: Record<string, unknown>): void {
   const clocks = item as Record<string, unknown>
   if ('createdAt' in clocks) clocks.createdAt = 0
   if ('updatedAt' in clocks) clocks.updatedAt = 0
+}
+
+/** Preserve consultation outcomes while removing Host wall-clock measurements. */
+function normalizeHelperClocks(record: Record<string, unknown>): void {
+  if (record.type !== 'helper/start' && record.type !== 'helper/end') return
+  if (record.data === null || typeof record.data !== 'object') return
+  const data = record.data as Record<string, unknown>
+  if ('startedAt' in data) data.startedAt = 0
+  if ('elapsedMs' in data) data.elapsedMs = 0
 }
 
 /** Which independent model-request payloads a scrubber replaces. */

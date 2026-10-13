@@ -1,0 +1,83 @@
+---
+description: "配置可选的只读高级模型求助、会话开关、模型选择和持久化用量。"
+kind: "package-bundle"
+---
+
+# @deepseek-ai/dsh-helper
+
+[English](README.md) | 中文
+
+## 概述
+
+当快速主模型需要独立的高级模型意见时，启用 `helper`。每次调用向全新顾问发送明确问题、证据和已尝试的方法，然后把建议返回主模型。可以选择已有 API 模型或可选的本机 Codex 后端。求助会消耗提供方额度；保存设置不会调用模型。
+
+## 目录
+
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [模型体验](#model-experience)
+- [已知限制与后续工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## 使用本包
+
+此组合挂载默认关闭的 Helper 服务。security Web 组合还挂载[浏览器控件](../../client/ui-helper/README.zh.md)，并启用 [Codex 求助提供方](../subagent-codex/README.zh.md)。其他配置可以使用 `dsh plugin --profile <name> add @deepseek-ai/dsh-helper` 安装，再显式组合可选 UI 和 Codex 插件。
+
+在“模型”页面配置 API 地址、密钥、协议和模型。Helper 只保存已有的提供方／模型引用和思考强度。Codex 使用包内固定版本及原生 ChatGPT 凭据；在 `dsh-subagent-codex` 设置 `consultation: true` 即可提供账号与模型接口。初始 Codex 候选是 `gpt-6-astra` 和 `high`；模型必须出现在当前账号目录中。基础组合不会新增 Codex 依赖。
+
+全局 `enabled` 偏好只用于新建顶层会话。`/helper on` 和 `/helper off` 持久化当前会话覆盖项。关闭后，下一次模型请求移除工具，并拒绝后续调用；已运行的求助使用常规停止按钮取消。模型偏好每次调用只采样一次。不支持的已保存档位会报错，不自动降级。空档位表示明确使用提供方默认；Web 选择模型时优先预选可用的 `high`。
+
+每次调用记录后端、所选／实际模型、档位、终态、耗时和已报告的 token 数。缺失用量保持缺失。Codex 累计通知替换此前总量，缓存输入从 DSH 未缓存输入计数中扣除。API 调用链接到完整子会话。统计来自完整投影，不依赖聊天分页；分支继承的调用不计入，恢复时未结束的调用标记为中断。
+
+-----
+
+<a id="understand-the-implementation"></a>
+## 理解实现
+
+<details>
+<summary>实现细节——点击展开</summary>
+
+插件组合现有子代理生命周期，不修改主循环。API 提供方在子代理创建事务内强制 native 工具呈现，过滤到当前可用的 `read`、`glob`、`grep`、`read_image`，并使用相同白名单守卫执行。沿用读取权限，不将读取限制在工作区。Codex 使用临时只读线程，禁用网络和提权，并关闭 Apps、插件、hooks、递归代理以及全部有效 MCP 服务。
+
+会话投影只从已记录的策略、开始和结束事件推导。工具调用 ID 将参数与回答关联到指标，包括 PTC 子调用。不发布独立运行时不变量伴随模块：生命周期归子代理服务所有，投影值从唯一事件来源推导。
+
+</details>
+
+-----
+
+<a id="model-experience"></a>
+## 模型体验
+
+### 高级模型求助
+
+#### 模型看到什么
+
+启用后，`helper` 要求提供原因、独立完整的问题、已尝试的方法和必要上下文。它提示主模型在卡住时求助，然后继续自己的工作。顾问只收到这些材料与只读指令，不复制主对话。
+
+#### Token 影响
+
+工具返回高级模型的最终文本或明确失败。API 顾问可用允许的工具查阅文件。Codex 顾问可在强制只读沙箱中使用原生文件读取命令。两种顾问均不得递归求助或执行实现修改。
+
+#### KV Cache 影响
+
+每个顾问拥有独立的请求前缀。修改模型、档位或可用工具会改变该前缀；主对话仅追加提交的调用和返回的建议。
+
+## 已知限制与后续工作
+<a id="known-limitations-and-deferred-work"></a>
+
+- 每次求助前台等待；不自动重试或切换后端。
+- Codex 中间工具活动不形成 DSH 子日志；保留最终建议和已报告用量。
+- 调用方提供相关证据。缺少凭据、账号模型不可用和提供方失败会显示为错误。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者工作上下文——点击展开</summary>
+
+无。
+
+</details>

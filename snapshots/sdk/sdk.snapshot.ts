@@ -352,7 +352,7 @@ async function hydrateReplayFixtures(scenario: CorpusScenario, cwd: string): Pro
   await mkdir(root, { recursive: true })
   return Promise.all((await fixtureFiles(scenario)).map(async (source) => {
     const destination = join(root, basename(source))
-    await writeFile(destination, (await readFile(source, 'utf8')).replaceAll('{{cwd}}', cwd))
+    await writeFile(destination, (await readFile(source, 'utf8')).replaceAll('{{cwd}}', cwd.replaceAll('\\', '/')))
     return destination
   }))
 }
@@ -766,12 +766,16 @@ async function verifyHeaders(
 
   const childPrompts = new Map<number, string>()
   const childSchemas = new Map<number, unknown[][]>()
+  const childHeaders = new Map<number, unknown[]>()
+  const scenarioFixtures = await fixtureFiles(scenario)
   for (const index of scenario.manifest.header.childSystemPrompts ?? []) {
     childPrompts.set(index, await readFile(join(scenario.dir, `system-prompt.${index}.expected.md`), 'utf8'))
   }
   for (const index of scenario.manifest.header.childToolSchemas ?? []) {
     const child = parseToolSchemasSnapshot(await readFile(join(scenario.dir, `tool-schemas.${index}.expected.json`), 'utf8'))
     childSchemas.set(index, [child.initial, ...child.changes])
+    const fixture = await readFile(scenarioFixtures[index] as string, 'utf8')
+    childHeaders.set(index, normalizedHeaders(fixture, contextOfContents([fixture])))
   }
 
   for (const [logIndex, log] of ordered.entries()) {
@@ -784,7 +788,7 @@ async function verifyHeaders(
     }
     for (const [index, header] of headers.entries()) {
       const selectedSchemas = childSchemas.get(logIndex)?.[index]
-      const base = reconstructed[index] ?? reconstructed[0]
+      const base = childHeaders.get(logIndex)?.[index] ?? reconstructed[index] ?? reconstructed[0]
       const configured = logIndex === 1 && dshSdkChildConfig !== undefined
         ? { ...base as JsonObject, config: dshSdkChildConfig }
         : base

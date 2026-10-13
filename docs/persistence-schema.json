@@ -10045,6 +10045,468 @@
       }
     },
     {
+      "key": "event:helper/end",
+      "kind": "event",
+      "event": "helper/end",
+      "surface": false,
+      "digest": "981edc915b5cff1dd70b832d6fea868aac2663de19d687d4aa1706d96eace38a",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 14,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 15,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "backend",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "callId",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "childSessionId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "elapsedMs",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "model",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "reasoningEffort",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "rootCallId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "startedAt",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "status",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "usage",
+                "type": 13,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "union",
+            "types": [
+              3,
+              4
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "api"
+          },
+          {
+            "kind": "literal",
+            "value": "codex"
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "union",
+            "types": [
+              8,
+              9,
+              10,
+              11,
+              12
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "aborted"
+          },
+          {
+            "kind": "literal",
+            "value": "error"
+          },
+          {
+            "kind": "literal",
+            "value": "interrupted"
+          },
+          {
+            "kind": "literal",
+            "value": "running"
+          },
+          {
+            "kind": "literal",
+            "value": "completed"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "cacheReadTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "cacheWriteTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "inputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "outputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "reasoningTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "totalTokens",
+                "type": 6,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "helper/end"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:helper/policy",
+      "kind": "event",
+      "event": "helper/policy",
+      "surface": false,
+      "digest": "54f811629d36091650540d79bfbaa97368b7c992760ac0d7eb77fcc097f4c67b",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 3,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "enabled",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "boolean"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "helper/policy"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:helper/start",
+      "kind": "event",
+      "event": "helper/start",
+      "surface": false,
+      "digest": "9e1743f5f9e6caebffafb5012ad8d5b843a9c4fafade8ec79e56675bf56f4d68",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 14,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 15,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "backend",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "callId",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "childSessionId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "elapsedMs",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "model",
+                "type": 5,
+                "optional": false
+              },
+              {
+                "name": "reasoningEffort",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "rootCallId",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "startedAt",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "status",
+                "type": 7,
+                "optional": false
+              },
+              {
+                "name": "usage",
+                "type": 13,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "union",
+            "types": [
+              3,
+              4
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "api"
+          },
+          {
+            "kind": "literal",
+            "value": "codex"
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "union",
+            "types": [
+              8,
+              9,
+              10,
+              11,
+              12
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "aborted"
+          },
+          {
+            "kind": "literal",
+            "value": "error"
+          },
+          {
+            "kind": "literal",
+            "value": "interrupted"
+          },
+          {
+            "kind": "literal",
+            "value": "running"
+          },
+          {
+            "kind": "literal",
+            "value": "completed"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "cacheReadTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "cacheWriteTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "inputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "outputTokens",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "reasoningTokens",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "totalTokens",
+                "type": 6,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "helper/start"
+          }
+        ]
+      }
+    },
+    {
       "key": "event:hook/invoked",
       "kind": "event",
       "event": "hook/invoked",
@@ -21886,6 +22348,11 @@
       ]
     },
     {
+      "digest": "025224fc6c57eac5fa74645286c8387c97829812f9741701841582ba4ea2068a",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "02b2c23f2d94b028c9588a8faace3fce1217405db346da3389368b495457bf79",
       "names": [],
       "sources": [
@@ -22138,6 +22605,11 @@
       "sources": []
     },
     {
+      "digest": "14e50cc6d4ac060280bb81311e05164035d4a9bcadc0f61b9be17eadf88c74e0",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff",
       "names": [],
       "sources": []
@@ -22338,6 +22810,11 @@
     },
     {
       "digest": "1ebc6f9ff3aa9e3a38f8695f49bacdab1f8b7a3832741853ca46f40af56ccd01",
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "1ec7c2e6eb27364b39abd46776a35d1af8aa7de302b91a8933129047b8fb46fb",
       "names": [],
       "sources": []
     },
@@ -23132,6 +23609,11 @@
     },
     {
       "digest": "53cf1704ae0709c7678bcf070c83c619fc48ca1b5c173b74cfa8702f22a8e492",
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "54f811629d36091650540d79bfbaa97368b7c992760ac0d7eb77fcc097f4c67b",
       "names": [],
       "sources": []
     },
@@ -24073,6 +24555,11 @@
       ]
     },
     {
+      "digest": "981edc915b5cff1dd70b832d6fea868aac2663de19d687d4aa1706d96eace38a",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "9890113e97dd3541787bfe6704f2b223d3a890b5325ca0acae2b0398909b413e",
       "names": [],
       "sources": [
@@ -24145,6 +24632,15 @@
       "sources": []
     },
     {
+      "digest": "9ce0186442220e528049c61150a415049934f58651ec0ba0b1260478fa5ea3f0",
+      "names": [
+        "packages/subagent/helper/src/types.ts#HelperCall"
+      ],
+      "sources": [
+        "packages/subagent/helper/src/types.ts:18"
+      ]
+    },
+    {
       "digest": "9d4907944c18134191e6136ae38e47be110125529e28ab29dfeaeed2c7458c7a",
       "names": [],
       "sources": []
@@ -24156,6 +24652,11 @@
     },
     {
       "digest": "9e07693fd7cd9babe0688c22c986e4d519ae1c0e40eeea13b2dc583bed2abc86",
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "9e1743f5f9e6caebffafb5012ad8d5b843a9c4fafade8ec79e56675bf56f4d68",
       "names": [],
       "sources": []
     },
@@ -24718,6 +25219,11 @@
       "sources": []
     },
     {
+      "digest": "bbec563a5af2bb0d333109b66f21c8b98e47ce1354ce305d1aa3c1dabc32ccc6",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825",
       "names": [],
       "sources": [
@@ -24781,6 +25287,13 @@
       "sources": []
     },
     {
+      "digest": "c2a13242efc3bea4b36a843ddf1524ff4d33c765a71b582fa1fdbfa4fa148434",
+      "names": [],
+      "sources": [
+        "packages/subagent/helper/src/types.ts:40"
+      ]
+    },
+    {
       "digest": "c2deb7c9183735d4e0fffddf5c623f4e34daa1c8e96b111982e957dfcbbcf896",
       "names": [
         "packages/workflow/workflow/src/types.ts#WorkflowAgentOutcome"
@@ -24788,6 +25301,11 @@
       "sources": [
         "packages/workflow/workflow/src/types.ts:110"
       ]
+    },
+    {
+      "digest": "c3cc6033dc2c396f0598fd55e95ee45eabfaf805c33050f5cb4a23bae343b8c3",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "c43b119ce579b3e9983a0d3adc4ba402ebb9ba773d89738a2dab01ecf5813943",
@@ -24824,6 +25342,11 @@
       "sources": [
         "packages/util/values/src/index.ts:4"
       ]
+    },
+    {
+      "digest": "c6e4fa548c431804f6adebfaed3e343205c813699d2a191f990a7b1133e8c5ba",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "c748fb42c80a120038a8c587af80ec39924803c401364db11c8974d5bf6d0262",
@@ -25346,6 +25869,11 @@
       "sources": [
         "packages/context/session-reference/src/types.ts:13"
       ]
+    },
+    {
+      "digest": "f5f61a585ec8432a791608ca645c5af421087040f16dc05f54756044e3fdfcab",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "f6329fb30c7ea8013e8975ca5e78284fb7685cc6bd620e8aa4e9a99bc81d45eb",
