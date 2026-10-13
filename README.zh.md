@@ -1,47 +1,64 @@
 ---
-description: "以 DSH 为底座的安全分析工作台，介绍逆向、Web 与 IoT 研究中的证据、复核和受控验证。"
+description: "AI 辅助的安全研究工作台，面向逆向、Web、Android 与 IoT，提供可追溯证据与受控验证。"
 ---
 
-# 智能化安全分析工作台
+# 安全研究工作台
 
 [English](README.md) | 中文
 
-**以 DeepSeek Harness（DSH）为底座的智能化安全分析工作台。**
+**围绕安全问题展开调查，让证据可追溯、结论可复核。**
 
-本项目将源码、二进制、固件、Android 应用和抓包材料纳入统一的调查工作区。agent（智能体）围绕研究问题选择方法、收集证据、委派专门任务，形成可复核的发现和报告。工作台连接材料、问题、观察与结论，让分析者能够查看结果依据，并随时引导下一步调查。
+面向逆向、Web、Android 与 IoT 安全研究的 AI 辅助工作台。导入源码、二进制、固件或抓包材料，描述研究问题，与 agent（智能体）协作收集证据、检验假设，并形成可以查看依据的发现。分析者控制调查范围、复核结论，并审批专用的运行时验证计划。
 
-本仓库基于 DeepSeek AI 开发的开源 agent harness（智能体框架）[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 构建。DSH 与 Cordis 提供插件组合、模型接入、Session、工具和任务执行；本项目在其上实现安全领域模型、调查方法、执行控制与工作台界面。
+本项目是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 独立开发的 fork。DSH 与 Cordis 提供 agent 运行时和插件框架；本项目聚焦安全调查、证据管理和分析者的使用体验。
 
-[安全架构](docs/security-architecture.zh.md) · [使用指南](docs/user/guide/security-analysis.zh.md) · [能力与限制](packages/experimental/security-analysis/README.zh.md) · [路线图](docs/roadmaps/security-analysis.zh.md)
+[开始使用](#run) · [高层架构](docs/security-architecture.zh.md) · [使用指南](docs/user/guide/security-analysis.zh.md) · [能力与限制](packages/experimental/security-analysis/README.zh.md) · [路线图](docs/roadmaps/security-analysis.zh.md)
 
 > [!IMPORTANT]
 >
 > 安全扩展目前处于实验阶段，工具可用性与验证覆盖取决于具体环境。工具调用成功或生成报告不代表漏洞成立；发现必须保留证据、复核依据和不确定性。
 
-## 界面预览
+## 你可以做什么
 
-以下为开发环境中的工作台截图，使用演示数据展示界面，不代表已完成的漏洞评估；截图中的界面语言为英文。
+- **跨材料调查。** 围绕同一个研究问题，组合源码检查、逆向分析、抓包观察和特定环境中的工具。
+- **从结论追溯证据。** 查看材料、检查项、观察、委派任务和独立复核，导出绑定项目修订版本的报告。
+- **委派明确的问题。** 让专门的 agent 负责侦察、逆向、Web 分析、公开资料研究和复核，并限定可用资产与工具。
+- **控制验证执行。** 审批专用执行计划的具体版本前，检查目标、脚本、预期观察、限制和清理方式。原生分析脚本通过另一条执行路径遵循现有 DSH 权限。
+- **复用方法和知识。** 管理工具与环境，使用分析技能和脚本，并在发布可复用知识前进行人工审核。
 
-### 分析工具箱
+## 研究案例
 
-按逆向、Web 和 IoT 浏览分析能力，选择环境并检查已配置工具。
+### 固件：test1 前端资源恢复
 
-![分析工具箱中的领域筛选与环境选择](docs/images/security-workbench/analysis-toolbox.png)
+`test1` 围绕 ARM HTTP 服务程序和加密资源包，完成脱壳、实现分析与前端资源恢复。记录中的成果为 **190/190 个前端资源已恢复**，包括 63 个 ASP 页面、27 个 JavaScript 文件和 3 个样式表。本地输出目录包含附带产物，共 192 个文件。
 
-### 验证计划审批
+以下截图来自真实的 `test1` 中文工作台。此处的成功范围是资源恢复；完整 HTTP 服务运行与逐资源 GCM 认证标签校验仍是后续工作。历史观察保留“证据不完整”标记，恢复成功不等于漏洞已确认。
 
-批准具体计划版本前，查看执行位置、预期观察、影响和清理方式。
+#### 分析助手
 
-![验证计划面板中的执行详情与操作者审批控制](docs/images/security-workbench/validation-approval.png)
+查看恢复结果、检查交付产物，并在同一任务中继续研究。
 
-## 项目特色
+![test1 分析助手展示恢复产物与待完成的验证](docs/images/security-workbench/test1-analysis-assistant.jpg)
 
-- **围绕问题与证据推进分析。** 根据材料和待解决的不确定性组合逆向、Web 与 IoT 方法。侦察、攻击面分析、评估和验证用于描述单项检查，不要求每次调查按固定顺序执行。
-- **按需协作，独立复核。** 协调者在有收益时，将范围明确的问题委派给侦察、逆向、Web、研究或复核角色。子 Session 返回证据引用、结论和不确定性；发现被确认前，需要针对其确切内容进行独立复核。
-- **可查看依据的调查链路。** 在工作台关联材料、检查、子任务、观察、发现、验证计划与复核。不可变产物和目标身份支持证据核查；对应项目修订的报告与证据导出保留交付依据。
-- **受控的运行时验证。** 专用验证 provider 执行操作者批准的不可变计划，固定目标、脚本、预期观察、限制与清理方式。原生分析脚本使用已有 DSH 权限，属于独立执行路径。停止项目会取消其跟踪的工作，中断的验证不会自动重放。
-- **统一管理工具与环境。** 在本机、Docker 和 Android 环境中发现已配置能力、检测安装并管理工具定义。复用方法 skill（技能）和分析脚本，同时区分工具安装、目标就绪与执行授权。
-- **从实际分析中沉淀经验与改进。** 保存可复用知识，供操作者审核和发布。将实际遇到的流程问题转为改进建议和可导出的实施任务，由人工确认验证结果；工作台不会自动启动编码 agent。
+#### 工作进展
+
+查看已完成的资源恢复方向、阶段结论与明确的后续检查。
+
+![test1 工作进展展示前端资源恢复完成阶段](docs/images/security-workbench/test1-work-progress.jpg)
+
+#### 调查链路
+
+通过关联的研究方向与观察，追溯样本识别、脱壳、清单恢复和资源还原的过程。
+
+![test1 调查链路关联材料、研究方向与观察](docs/images/security-workbench/test1-investigation-chain.jpg)
+
+### Android
+
+案例待补充。此处预留具有输入材料、证据和结果记录的 Android 分析案例。
+
+### Web
+
+案例待补充。此处预留具有范围、验证和发现记录的 Web 分析案例。
 
 ## 分析场景
 
@@ -52,10 +69,11 @@ description: "以 DSH 为底座的安全分析工作台，介绍逆向、Web 与
 | 逆向与 Android | 二进制身份、字符串和字节检查；通过已配置的 Ghidra、JADX、Frida 集成进行静态分析或经批准的运行时观察。 |
 | Web 安全 | 源码检查、已采集的 HTTP 证据与显式登记的目标；对发现进行复核，并开展受控 HTTP 或离线验证。 |
 | 固件与 IoT | 固件组件、嵌入式 Web 源码和离线抓包；根据证据组合二进制、源码、MQTT、Wi-Fi 与 BLE 分析。离线观察不能证明设备行为。 |
+| 漏洞研究 | 实验性的 CVE 重新发现，结合源码分析、经批准的 sanitizer 构建与复现运行；盲测基准仍有待真实模型的端到端验收。 |
 
-## 架构：DSH 底座、安全领域、分析工作台
+## 架构概览
 
-安全能力通过插件与 profile 组合到现有 DSH agent loop（智能体循环）上。[安全架构](docs/security-architecture.zh.md)解释数据流与扩展位置，包级参考维护具体行为。
+工作台通过安全插件与 profile 扩展现有 DSH agent loop（智能体循环）。[高层设计](docs/security-architecture.zh.md)解释系统分层、调查流程、证据生命周期和执行权限。
 
 | 层次 | 职责 |
 |---|---|
@@ -88,6 +106,8 @@ pnpm security --no-open
 外部工具支持取决于具体环境：Ghidra 需要准备相应集成，Android 运行时观察需要就绪设备，工具箱中列出的工具可能只支持发现而没有专用执行 provider。静态、模拟与运行时观察具有不同的证据效力。[已知限制](packages/experimental/security-analysis/README.zh.md#known-limitations-and-deferred-work)与[路线图](docs/roadmaps/security-analysis.zh.md)维护具体缺口和待完成的验收。
 
 ## 文档与开发
+
+文档基线：`rc0.0.2`（2026-10-13）。[架构文档基线](docs/security-architecture.zh.md#documentation-baseline)说明后续更新的对比方式。
 
 - [安全使用指南](docs/user/guide/security-analysis.zh.md)：任务创建、工具、证据、报告与环境。
 - [安全架构](docs/security-architecture.zh.md)与[领域参考](docs/subsystems/security-workbench.zh.md)：插件组合、权限与持久化项目记录。

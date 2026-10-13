@@ -3,32 +3,50 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/security-architecture.md
 /:
-  en: 10402aaa71b09ddd
-  zh: 51ad1f77e460dbb9
-/security-agent-architecture:
-  en: 2bac9b533aadb5d4
-  zh: 06d81940c2077599
-/security-agent-architecture/contents:
-  en: 972309812066b8e2
-  zh: 8567579361f89b3d
-/security-agent-architecture/composition:
-  en: 02ee3290d9584343
-  zh: 53264e1f9a19744f
-/security-agent-architecture/checks-and-evidence:
-  en: 45727c1129c22591
-  zh: 3d7bcccdc290135f
-/security-agent-architecture/roles-and-authority:
-  en: fc32f34468cdda39
-  zh: b1ed5e5849e0635e
-/security-agent-architecture/execution-and-recovery:
-  en: 569b30653d7f43ee
-  zh: f084a003d739eee9
-/security-agent-architecture/extension-points:
-  en: c4c87b56f760330e
-  zh: 83da88de5d83c5a6
-/security-agent-architecture/web-targets-reviews-and-laboratories:
-  en: 94497702977d6671
-  zh: 1298cc10923b80a9
-/security-agent-architecture/source-analysis-and-isolated-simulation:
-  en: 7ec5b476377b997f
-  zh: c28e2f8224213546
+  en: b75e15d8b868affc
+  zh: bffd9d0e26762ef4
+/security-research-workbench-high-level-design:
+  en: 21435ff572f5fb83
+  zh: c520c1f4f94b06d0
+/security-research-workbench-high-level-design/summary:
+  en: 3b0942d2cb14f1be
+  zh: e1478aa39ffd77b0
+/security-research-workbench-high-level-design/table-of-contents:
+  en: c66ecccfc4a3e46d
+  zh: a5002f73ca392cc9
+/security-research-workbench-high-level-design/design-principles:
+  en: 107045378f093548
+  zh: 787c898f58d9ba59
+/security-research-workbench-high-level-design/system-composition:
+  en: d1237cbfa1420fe3
+  zh: 7ff89c637fffdcd6
+/security-research-workbench-high-level-design/investigation-and-evidence-flow:
+  en: 94c9fa86bf588176
+  zh: 8c44113c7264b7e1
+/security-research-workbench-high-level-design/roles-and-authority:
+  en: 968152ccc1fb6775
+  zh: 1ca125cd681db653
+/security-research-workbench-high-level-design/data-ownership:
+  en: 0c2ebd18325c35f2
+  zh: aaca75134b4cf915
+/security-research-workbench-high-level-design/execution-and-recovery:
+  en: b1a6f22f31e772d0
+  zh: a849f1f6483c0e36
+/security-research-workbench-high-level-design/execution-and-recovery/web-targets-and-laboratories:
+  en: d02b9b71711da8e8
+  zh: e3afcfa6e527ca9b
+/security-research-workbench-high-level-design/execution-and-recovery/source-analysis-simulation-and-vulnerability-research:
+  en: 19ed61d36b5d0471
+  zh: 6403331e5448ee8d
+/security-research-workbench-high-level-design/extension-points:
+  en: b150ec6a183c6c0b
+  zh: 43962adac93010fc
+/security-research-workbench-high-level-design/documentation-baseline:
+  en: 377591c416071538
+  zh: 3dc02cfaa7b91d49
+/security-research-workbench-high-level-design/further-exploration:
+  en: 8f13ec10b7e22957
+  zh: 3af453ee351e1734
+/security-research-workbench-high-level-design/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

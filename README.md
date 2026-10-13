@@ -1,47 +1,64 @@
 ---
-description: "A DSH-based security analysis workbench for reverse engineering, Web and IoT research, with evidence, review and controlled validation."
+description: "An AI-assisted security research workbench for reverse engineering, Web, Android and IoT, with traceable evidence and controlled validation."
 ---
 
-# Intelligent Security Analysis Workbench
+# Security Research Workbench
 
 English | [中文](README.zh.md)
 
-**An intelligent security analysis workbench built on DeepSeek Harness (DSH).**
+**Investigate security questions. Trace the evidence. Review the conclusions.**
 
-This project brings source code, binaries, firmware, Android applications and packet captures into a shared investigation workspace. Agents select methods around the research question, collect evidence, delegate focused tasks and produce reviewable findings and reports. The workbench connects materials, questions, observations and conclusions so analysts can inspect the basis of a result and direct the next step.
+An AI-assisted workbench for reverse engineering, Web, Android and IoT security research. Bring source code, binaries, firmware or packet captures, describe the question, and work with agents to collect evidence, test hypotheses and produce findings you can inspect. Analysts control the scope, review conclusions and approve dedicated runtime validation plans.
 
-This repository builds on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), the open-source agent harness developed by DeepSeek AI. DSH and Cordis provide plugin composition, model access, Sessions, tools and task execution; this project adds the security domain, investigation methods, execution controls and workbench interface.
+This is an independently developed fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). DSH and Cordis supply the agent runtime and plugin framework; this project focuses on security investigation, evidence management and the analyst experience.
 
-[Security architecture](docs/security-architecture.md) · [User guide](docs/user/guide/security-analysis.md) · [Capabilities and limitations](packages/experimental/security-analysis/README.md) · [Roadmap](docs/roadmaps/security-analysis.md)
+[Get started](#run) · [High-level architecture](docs/security-architecture.md) · [User guide](docs/user/guide/security-analysis.md) · [Capabilities and limitations](packages/experimental/security-analysis/README.md) · [Roadmap](docs/roadmaps/security-analysis.md)
 
 > [!IMPORTANT]
 >
 > The security extension is experimental. Tool availability and validation coverage vary by environment. A successful tool call or a generated report does not establish a vulnerability; findings must retain their evidence, review basis and uncertainty.
 
-## Interface preview
+## What you can do
 
-These screenshots show the workbench in a development environment with demonstration data. They illustrate the interface, not a completed vulnerability assessment; the captured interface is in English.
+- **Investigate across materials.** Combine source inspection, reverse engineering, captured traffic and environment-specific tools around one research question.
+- **Follow each conclusion back to evidence.** Inspect materials, checks, observations, delegated work and independent reviews; export a report tied to a project revision.
+- **Delegate focused questions.** Use specialist agents for reconnaissance, reverse analysis, Web analysis, public research and review, with scoped assets and tools.
+- **Control validation.** Inspect a dedicated execution plan's target, script, expected observation, limits and cleanup before approving its version. Native analysis scripts follow existing DSH permissions through a separate path.
+- **Reuse methods and knowledge.** Manage tools and environments, use analysis skills and scripts, and review reusable knowledge before publication.
 
-### Analysis toolbox
+## Research examples
 
-Browse reverse engineering, Web and IoT capabilities, select an environment and inspect configured tools.
+### Firmware: restoring front-end resources from test1
 
-![Analysis toolbox with domain filters and environment selection](docs/images/security-workbench/analysis-toolbox.png)
+The `test1` investigation follows an ARM HTTP service binary and its encrypted resource bundle through unpacking, implementation analysis and front-end recovery. The recorded result is **190/190 front-end resources recovered**, including 63 ASP pages, 27 JavaScript files and 3 stylesheets. The local output directory contains 192 files including supporting artifacts.
 
-### Validation plan approval
+These screenshots come from the actual `test1` workbench in Chinese. The success shown is resource recovery: running the complete HTTP service and checking every resource's GCM authentication tag remain follow-up work. Historical observations retain their incomplete-evidence labels; recovery does not establish a confirmed vulnerability.
 
-Inspect the execution location, expected observation, impact and cleanup before approving a specific plan version.
+#### Analysis assistant
 
-![Validation plan panel with execution details and operator approval controls](docs/images/security-workbench/validation-approval.png)
+Read the restoration result, inspect deliverables and continue from the same task.
 
-## What makes this workbench different
+![test1 analysis assistant showing recovered resources and remaining verification](docs/images/security-workbench/test1-analysis-assistant.jpg)
 
-- **Analysis driven by questions and evidence.** Combine reverse engineering, Web and IoT methods according to the material and the uncertainty to resolve. Reconnaissance, attack-surface analysis, assessment and validation describe individual checks; they do not impose a fixed sequence on every investigation.
-- **Focused collaboration with independent review.** A coordinator delegates bounded questions to reconnaissance, reverse-analysis, Web-analysis, research or review roles when useful. Child Sessions return evidence references, conclusions and uncertainty; an independent review checks the exact finding before it can be confirmed.
-- **An inspectable investigation chain.** Connect materials, checks, delegated tasks, observations, findings, validation plans and reviews in the workbench. Immutable artifacts and target identities support evidence inspection; revision-specific reports and evidence exports preserve the basis of a delivery.
-- **Controlled runtime validation.** Dedicated validation providers execute immutable plans approved by the operator, with a fixed target, script, expected observation, limits and cleanup. Native analysis scripts use existing DSH permissions; they are a separate execution path. Stopping a project cancels its tracked work, and interrupted validation is not automatically replayed.
-- **Tools and environments in one workspace.** Discover configured capabilities, inspect installations and manage tool definitions for local, Docker and Android environments. Reuse method skills and analysis scripts while keeping tool installation, target readiness and execution authorization distinct.
-- **Experience and improvement grounded in actual work.** Retain reusable knowledge for operator review and publication. Turn observed workflow problems into improvement proposals and exportable implementation tasks, with human confirmation of verification; the workbench does not automatically launch a coding agent.
+#### Work progress
+
+Inspect the completed recovery direction, its conclusion and explicit follow-up checks.
+
+![test1 work progress showing the completed front-end recovery stage](docs/images/security-workbench/test1-work-progress.jpg)
+
+#### Investigation chain
+
+Trace sample identification, unpacking, manifest recovery and resource restoration through linked research directions and observations.
+
+![test1 investigation chain connecting materials, research directions and observations](docs/images/security-workbench/test1-investigation-chain.jpg)
+
+### Android
+
+Case study coming soon. This space is reserved for an Android example with recorded inputs, evidence and results.
+
+### Web
+
+Case study coming soon. This space is reserved for a Web example with recorded scope, validation and findings.
 
 ## Analysis scenarios
 
@@ -52,10 +69,11 @@ The workbench combines methods across materials. Each scenario depends on the co
 | Reverse engineering and Android | Binary identity, strings and byte inspection; configured Ghidra, JADX and Frida integrations for static analysis or approved runtime observation. |
 | Web security | Source inspection, captured HTTP evidence and explicitly registered targets; reviewed findings and controlled HTTP or offline validation. |
 | Firmware and IoT | Firmware components, embedded Web code and offline packet captures; combine binary, source, MQTT, Wi-Fi and BLE analysis as the evidence permits. Offline observations do not establish device behavior. |
+| Vulnerability research | Experimental CVE rediscovery with source analysis, approved sanitizer builds and reproducer runs; the blind benchmark's real-model end-to-end acceptance remains pending. |
 
-## Architecture: DSH foundation, security domain, workbench
+## Architecture at a glance
 
-Security capabilities are composed as plugins and profiles around the existing DSH agent loop. The [security architecture](docs/security-architecture.md) explains the data flow and extension points; package references own the detailed behavior.
+The workbench composes security plugins and profiles around the existing DSH agent loop. The [high-level design](docs/security-architecture.md) explains the system layers, investigation flow, evidence lifecycle and execution authority.
 
 | Layer | Responsibility |
 |---|---|
@@ -88,6 +106,8 @@ The project and its DSH foundation are in developer preview, with compatibility-
 External tool support is environment-specific: Ghidra needs a prepared integration, Android runtime observation needs a ready device, and a tool listed in the toolbox may offer discovery without a dedicated execution provider. Static, simulated and runtime observations have different evidentiary value. The [known limitations](packages/experimental/security-analysis/README.md#known-limitations-and-deferred-work) and [roadmap](docs/roadmaps/security-analysis.md) record detailed gaps and remaining acceptance work.
 
 ## Documentation and development
+
+Documentation baseline: `rc0.0.2` (2026-10-13). The [architecture baseline](docs/security-architecture.md#documentation-baseline) records how to compare subsequent updates.
 
 - [Security user guide](docs/user/guide/security-analysis.md): task intake, tools, evidence, reports and environments.
 - [Security architecture](docs/security-architecture.md) and [domain reference](docs/subsystems/security-workbench.md): composition, permissions and persistent project records.

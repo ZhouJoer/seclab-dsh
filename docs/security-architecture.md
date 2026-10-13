@@ -1,111 +1,176 @@
 ---
-description: "Security Agent composition, authority, evidence flow and extension points."
+description: "High-level design of the security research workbench: system layers, investigation flow, evidence, execution authority and extension points."
 ---
 
-# Security Agent architecture
+# Security research workbench: high-level design
 
 English | [中文](security-architecture.zh.md)
 
-> [!IMPORTANT]
->
-> This is an experimental extension. The [feature TODO](roadmaps/security-analysis.md) tracks incomplete work. A successful tool call or a generated report does not establish a verified vulnerability.
+## Summary
 
-## Contents
+The workbench helps analysts investigate security questions across source code, binaries, firmware, Android applications and captured traffic. It combines agent collaboration with persistent evidence, independent review and operator-controlled validation. This reference describes the current design; the [capability reference](../packages/experimental/security-analysis/README.md) owns operational details and limitations, and the [roadmap](roadmaps/security-analysis.md) owns planned work.
 
-- [Composition](#composition)
-- [Checks and evidence](#checks-and-evidence)
+The project builds a security research product on the general-purpose [DSH architecture](architecture.md). DSH and Cordis provide the runtime; security plugins own investigation semantics and the workbench. The security composition extends the existing agent loop.
+
+## Table of Contents
+
+- [Design principles](#design-principles)
+- [System composition](#composition)
+- [Investigation and evidence flow](#checks-and-evidence)
 - [Roles and authority](#roles-and-authority)
+- [Data ownership](#data-ownership)
 - [Execution and recovery](#execution-and-recovery)
 - [Extension points](#extension-points)
+- [Documentation baseline](#documentation-baseline)
+- [Further exploration](#further-exploration)
+
+<a id="design-principles"></a>
+## Design principles
+
+The analyst needs to understand what was examined, what supports a conclusion and what remains unknown. Four principles organize the system:
+
+- **Questions drive the work.** Select the next useful observation from the objective, materials and available tools. Reconnaissance, surface analysis, assessment and validation classify checks; they do not impose a mandatory sequence.
+- **Claims retain their evidence.** Observations, hypotheses, findings and reviews are distinct records. Tool success, a version match or agreement between agents does not establish a vulnerability.
+- **Authority is explicit.** Roles limit assets and tools; the operator controls dedicated validation approval and environment administration. A method skill guides analysis without granting execution permission.
+- **Domain state survives conversation changes.** Project records, evidence artifacts and Session logs have separate owners. Reports describe a specific project revision and its unresolved scope.
 
 <a id="composition"></a>
-## Composition
+## System composition
 
-The security profile adds plugins to the existing DSH Host, Session and Web application. `pnpm security` selects that profile and defaults to port 3081; the ordinary Web profile defaults to 3080. The [user guide](user/guide/security-analysis.md) owns setup and environment configuration. The agent loop remains unchanged.
+The security Host and Web profiles compose the product from existing runtime services and security plugins. The operator uses the workbench; agents use role-scoped tools. Both reach the same security domain controller for domain operations.
 
 ```mermaid
-flowchart TD
-  Profile[Security profile and presets] --> UI[Web workbench and chat]
-  Profile --> Roles[Coordinator and fresh child Sessions]
-  UI --> Remote[Generated Remote methods]
-  Roles --> Tools[Role-scoped domain tools]
+flowchart TB
+  Analyst[Analyst] --> UI[Web workbench]
+  UI --> Remote[Authenticated Host Remote API]
+  UI --> Coordinator[Coordinator Session]
+  Coordinator --> Specialists[Scoped specialist Sessions]
+  Coordinator --> Tools[Security domain tools]
+  Specialists --> Tools
   Remote --> Domain[Security domain controller]
-  Tools --> Guard[Execution guard]
-  Guard --> Domain
-  Domain --> Registry[Provider registry and leases]
-  Registry --> Static[Binary / Ghidra / Android]
-  Registry --> Dynamic[Frida helper]
-  Registry --> Mining[Sanitizer builds and reproducers]
-  Registry --> Environment[Local / Docker / Android environments]
-  Domain --> Journal[SQLite append-only domain journal]
-  Domain --> Artifacts[Immutable evidence and script artifacts]
-  Journal --> Index[Rebuildable FTS index]
-  Roles --> Sessions[DSH Session log and jobs]
+  Tools --> Domain
+  Domain --> Providers[Analysis and validation providers]
+  Providers --> Environments[Local / Docker / Android / bound services]
+  Domain --> Journal[Project journal and derived search]
+  Domain --> Artifacts[Immutable materials and evidence]
+  Coordinator --> Native[Native analysis tools]
+  Specialists --> Native
+  Native --> Runtime[DSH permissions and execution services]
+  Runtime --> Capture[Explicit analysis evidence capture]
+  Capture --> Domain
+  Foundation[DSH and Cordis: model access, Sessions, jobs, storage, Remote] -.-> Domain
+  Foundation -.-> Coordinator
 ```
 
-| Module | Responsibility | Implementation |
+| Layer | Responsibility | Owning implementation |
 |---|---|---|
-| Security domain | Projects, identities, checks, permissions, evidence, plans and knowledge | [security-analysis](../packages/experimental/security-analysis/README.md) |
-| Providers | Tool capability discovery, environment checks, bounded execution and cleanup | Separate exports of the security-analysis package; they are not separate packages |
-| Host profile and presets | Plugin composition, role prompts and restricted tools | [security-profile](../packages/experimental/security-profile/README.md) |
-| Web composition | Security preset, workbench registration and distinct default port | [security-web-profile](../packages/experimental/security-web-profile/README.md) |
-| Workbench | Project selection, evidence search and operator approval | [client-ui-security-analysis](../packages/experimental/client-ui-security-analysis/README.md) |
+| Workbench | Task intake, conversation, investigation chain, evidence, approvals and reports | [Client UI](../packages/experimental/client-ui-security-analysis/README.md) |
+| Agent coordination | Role prompts, scoped child Sessions, method selection and result integration | [Security profile](../packages/experimental/security-profile/README.md) and [role policies](../packages/experimental/security-analysis/src/workbench/roles.ts) |
+| Security domain | Project scope, asset identities, checks, findings, reviews, plans and knowledge | [Security analysis](../packages/experimental/security-analysis/README.md) |
+| Execution integrations | Tool adaptation, environment readiness, observations, approved validation and cleanup | Providers exported by the security-analysis package |
+| Runtime foundation | Plugin lifecycle, model access, Session logs, jobs, subprocesses, storage and Host/Client communication | [DSH architecture](architecture.md) |
+
+The [Web profile](../packages/experimental/security-web-profile/README.md) connects Host capabilities to the client. Provider exports belong to the security-analysis package rather than a separate package for each external tool. Native analysis remains a separate execution path governed by DSH permissions; its captured results enter the project evidence model.
 
 <a id="checks-and-evidence"></a>
-## Checks and evidence
+## Investigation and evidence flow
 
-Research directions use reconnaissance, surface analysis, assessment and controlled validation to describe the current question. The coordinator chooses the next useful observation from the evidence and available resources, combines methods for mixed targets, and revisits earlier questions when needed. A reviewed static conclusion does not require an unnecessary runtime experiment. Check dependencies, attempts, completion evidence and interruption status are domain records. Project completion cannot be inferred from one successful observation. Reopening a check records a reason.
+The analyst supplies an objective, materials and selected resources. A project binds this scope to the coordinating Session. The coordinator chooses methods, examines existing evidence and collects observations needed to resolve the current question; it delegates when an independent question or review benefits from a separate Session.
 
-Raw artifacts are persisted before their evidence references. Evidence links observations to the sample identity, tool invocation and completeness state; hypotheses and knowledge remain distinct records. SQLite stores append-only commands with operation IDs and expected revisions. The FTS index is derived and rebuildable. The [domain API reference](subsystems/security-workbench.md) owns record and Remote details.
+```mermaid
+flowchart LR
+  Scope[Objective and materials] --> Question[Check or hypothesis]
+  Question --> Observe[Collect observations]
+  Observe --> Evidence[Persist evidence]
+  Evidence --> Assess[Assess candidate finding]
+  Assess --> Review[Independent review]
+  Review --> Report[Revision report]
+  Review -->|Missing evidence| Question
+  Assess -->|Runtime proof needed| Plan[Immutable validation plan]
+  Plan --> Approval[Operator approval]
+  Approval --> Execute[Bounded execution and cleanup]
+  Execute --> Evidence
+```
 
-The Session log stores model interaction and tool results. The domain journal stores project state; jobs represent live work. They have different recovery responsibilities. Knowledge proposals remain local until an operator publishes them. Shared experience is reference material, not evidence collected from the current sample.
+Collection saves artifacts before publishing evidence references. Evidence identifies the material or target, tool invocation and completeness; bounded model responses point back to retained project data. Child Sessions return summaries, evidence references, uncertainty and next steps, while detailed interaction stays in their Session logs.
+
+A reviewer assesses the exact finding content, including supporting and opposing evidence. Static conclusions require complete implementation evidence; runtime conclusions require completed approved validation. Editing a finding invalidates its prior review. Reports distinguish checked, unchecked and uncheckable scope and retain uncertainty. A successful check does not imply complete project coverage.
 
 <a id="roles-and-authority"></a>
 ## Roles and authority
 
-| Role | Assigned work | Tool authority |
+Expertise and permission are related but distinct. A role can investigate only its assigned project and assets, using its allowed tools. Domain checks enforce authority independently of what the UI displays.
+
+| Actor | Responsibility | Authority |
 |---|---|---|
-| Coordinator | Decompose checks, delegate and assemble conclusions | Domain commands, observations, jobs and execution of approved plans |
-| Reconnaissance | Inventory one assigned asset | Binary observations and restricted Ghidra/Android inventory |
-| Reverse analyst | Examine entry points and weakness hypotheses | Static queries, including decompilation, and focused public research |
-| Web analyst | Analyze assigned source, HTTP evidence and entry points | Source and evidence reads, native scripts and focused public research; approved validation stays with the coordinator |
-| Researcher | Retrieve project evidence and public references | Evidence retrieval and Web research; no provider execution |
-| Reviewer | Check supporting and opposing evidence | Read existing evidence and return a structured assessment |
+| Operator | Define scope, choose environments, inspect evidence and control validation | Approve or revoke plans, administer environments, stop projects and publish reviewed knowledge |
+| Coordinator | Choose checks, delegate questions and assemble conclusions | Collect observations and execute approved plans; cannot approve its own plans |
+| Reconnaissance, reverse and Web analysts | Resolve assigned material-specific questions | Scoped collection and permitted native analysis tools; no further delegation, approval or environment changes |
+| Researcher | Resolve public technical questions and retrieve existing evidence | Research and evidence reads; no provider or script execution |
+| Reviewer | Independently assess an exact finding and its uncertainty | Read evidence and record a structured review; no collection or approval |
 
-Roles are bound to a project, Session and allowed assets. The coordinator delegates independent questions when parallel work, context isolation or independent scrutiny justifies the handoff. Children use fresh Sessions and return a summary, evidence references, uncertainty and next steps. Detailed interaction remains in the child Session. Materials do not determine a fixed team: Web, firmware and Android investigations combine the [method skills](../packages/experimental/security-analysis/README.md#use-this-package) as needed. [Role/tool assignments and task prompts](../packages/experimental/security-analysis/src/workbench/roles.ts) define the current roles.
+The security profile disables generic subagent delegation and PTC routes. Security-domain delegation creates fresh child Sessions with explicit bindings. Collecting roles retain native Shell and file tools under existing DSH permissions; the workbench's plan approval mechanism does not authorize or contain every native command.
 
-Tool restrictions and `tools.guard()` complement checks at the domain execution entry. Children cannot approve plans, change environments or delegate again. The security composition disables general shell and PTC entry points; hidden tool cards alone are not authorization. Driver-owned `structured_output` is admitted in the child scope without adding it to the inherited-tool restriction list.
+<a id="data-ownership"></a>
+## Data ownership
+
+The system keeps the model's interaction history separate from the investigation's durable records. Each store answers a different question:
+
+| Record | What it preserves | Ownership and recovery |
+|---|---|---|
+| Session log | What the model saw, requested and received | Existing DSH Session services |
+| Project journal | Scope, checks, findings, plans, reviews and knowledge | SQLite-backed domain command journal with operation IDs and expected revisions |
+| Immutable artifacts | Imported bytes, source manifests, scripts and collected outputs | Security artifact storage with measured identities and evidence references |
+| Search index | Searchable projections of project data | Derived FTS data, rebuildable from domain records |
+| Jobs and resource leases | Live execution and conflicting resource use | Runtime coordination; unfinished work needs reconciliation |
+| Report | Findings and evidence at a particular revision | A project delivery snapshot, independent of the currently selected Session |
+
+Knowledge extracted from previous work remains reference material, not evidence about the current target. The operator reviews publication of shared knowledge. Improvement proposals can become exported implementation tasks; they do not automatically launch a coding agent.
 
 <a id="execution-and-recovery"></a>
 ## Execution and recovery
 
-Validation requires an immutable plan describing target, operation, script, expected observation, impact, duration and cleanup. The operator approves its version through the workbench. Execution checks approval freshness and target identity; changed scripts or scope require another plan. Revocation and project stop prevent new work and cancel active execution.
+Dedicated validation follows a versioned plan: target identity, operation, script, expected observation, impact, limits and cleanup are fixed before operator approval. Execution checks current authority and target identity again. Changing the script or scope requires a new plan. Revocation and project stop block new tracked execution and cancel active work.
 
-Ghidra queries require an explicitly bound program and managed authentication patch. Frida uses an independent Python helper with identity checks, structured events and cleanup. Arbitrary script text cannot establish read-only behavior. Tool presence does not establish environment readiness; the package reference maintains the actual compatibility limits.
+Providers execute only in compatible configured environments. Tool discovery, installation, target readiness and authorization are separate checks. Leases serialize conflicting shared resources; source reads can run concurrently. Environment lifecycle changes reject admission while that environment has active runs.
 
-After restart, unfinished execution requires reconciliation rather than automatic replay of injection or process creation. Leases serialize conflicting resources. Per-operation time/output limits and child concurrency bounds exist; a project-wide cumulative delegation/token budget remains a TODO. Complete crash recovery and raw-output retention under all failure paths still require acceptance testing.
+Restart revokes approvals and marks unfinished execution for reconciliation. It does not automatically replay injection or process creation. Recorded operation IDs prevent exact command retries from executing twice. Complete crash recovery and raw-output retention across all failure paths still require acceptance work; per-operation limits do not imply a cumulative project token or cost budget.
+
+<a id="web-targets-reviews-and-laboratories"></a>
+### Web targets and laboratories
+
+Registered Web targets bind an origin and path scope to a selected environment. Managed laboratories track owned resources and instance identities; reset changes the target instance on its next start. HTTP execution rechecks the target and does not follow redirects. Operator-owned laboratory lifecycle and provider validation remain distinct from analysis of imported HTTP evidence. The [provider reference](../packages/experimental/security-analysis/README.md#configure-analysis-providers) owns environment-specific restrictions.
+
+<a id="source-analysis-and-isolated-simulation"></a>
+### Source analysis, simulation and vulnerability research
+
+Source snapshots retain member paths and hashes under one asset identity. Offline Python and browser validation pin scripts, source manifests, images and limits in approved plans; disposable simulation containers have no network or device access. Reports distinguish simulated behavior from observations of real devices.
+
+Experimental CVE mining applies the same approval and evidence model to sanitizer builds and reproducer runs in managed Docker environments. The blind benchmark supports vulnerable/fixed source comparisons, but real-model end-to-end acceptance remains pending. The [capability roadmap](roadmaps/security-analysis.md) records the remaining research and acceptance work.
 
 <a id="extension-points"></a>
 ## Extension points
 
-Future Web and IoT projects should add asset/check definitions, provider operations, environment requirements, role policies, prompts and evidence consumers together. An execution adapter alone is insufficient. Keep Host credentials and environment management outside the analyzed target. Reuse DSH Session, jobs, subprocess, storage and Remote services instead of changing the loop.
+An additional security method needs a coherent path from a question to interpretable evidence. Extend asset and check definitions, provider operations, environment requirements, role policies, method guidance and evidence consumers together as applicable. An executable adapter alone does not provide a complete investigation workflow.
 
-Start with the [feature TODO](roadmaps/security-analysis.md). ELF/PE structured parsing, real Ghidra binding and reliable review are the next priorities; Web/IoT expansion follows a working reverse-analysis baseline. CVE mining (the `mining` provider, `security-cve-mining` method and the `mining` task kind) is a worked example of this pattern: provider operations, environment requirements, role task policy, method prompt and evidence consumers shipped together with a blind benchmark harness.
+Keep security behavior in security plugins and reuse DSH model, Session, jobs, subprocess, storage and Remote services. Client views consume persisted domain records and authenticated Host APIs. Keep Host credentials and environment administration outside analyzed targets. Preserve the distinction between operator authority, model tool access and provider execution.
 
-## Web targets, reviews and laboratories
+<a id="documentation-baseline"></a>
+## Documentation baseline
 
-Web targets record the operator-selected lab instance, origin and path prefix. The HTTP provider resolves method, path, tool image and instance before approval. Execution checks current Docker ownership, image identities, the two-container internal isolated network and the target address. Requests connect to that measured address and never follow redirects. File providers reject Web assets; existing file records remain readable without a journal version bump.
+This document and the root README use repository tag `rc0.0.2` as their code and documentation baseline, reviewed on 2026-10-13. The tag identifies a repository snapshot; it does not assert that all experimental capabilities have completed acceptance or change the DSH package versions.
 
-The web-analyst role reads assigned evidence and proposes entry-point analysis. A separate reviewer Session records supporting/opposing evidence and uncertainty against the finding content hash. Conclusive status requires complete same-target evidence from a completed validation plan; revisions reset the finding and reject stale reviews. Reports snapshot one project revision and remain accessible through operator-level Remote reads independent of Session selection.
+For a documentation update, compare the baseline tag with the target revision, review changes to profiles, role policies, providers, domain records and the workbench, then update both languages and their pairing records. Record the next baseline tag and review date with that update. Keep existing baseline tags fixed so earlier documentation remains reproducible.
 
-Laboratory ownership is saved before resource creation. Restart marks unsettled generations interrupted; cleanup verifies each resource label before removal. Reset removes owned containers and networks; the next start changes instance identity. Build and lifecycle commands are operator-only. The roadmap distinguishes implemented controls from real container/model acceptance and deferred scanning providers.
+<a id="further-exploration"></a>
+## Further exploration
 
-## Source analysis and isolated simulation
+- [User guide](user/guide/security-analysis.md): setup and the analyst workflow.
+- [Security-analysis package](../packages/experimental/security-analysis/README.md): configuration, provider behavior and known limitations.
+- [Domain reference](subsystems/security-workbench.md): persistent records and Remote APIs.
+- [DSH architecture](architecture.md): runtime composition and extension mechanisms.
+- [Implementation plan](roadmaps/security-harness-simplification.md) and [capability roadmap](roadmaps/security-analysis.md): planned changes and acceptance work.
 
-A source directory is one immutable asset. Its manifest owns member paths and hashes, so cross-file observations share one asset identity. Source tools read only artifact bytes and return bounded line-addressed evidence. File, Web and source providers reject incompatible asset kinds.
+## Dev Note
 
-Offline Python and browser validation reuse plan approval, subprocess supervision, execution records and cleanup. Each plan pins its script, source manifest, image ID and resource limits. A disposable container has no network or device access; its browser runner serves snapshot files through request interception. Reports identify these observations as simulations and preserve failures rather than treating them as hardware results.
-
-CVE mining extends source analysis with approved sanitizer builds and reproducer runs inside a managed Docker environment. `build` steps select registered container tools with `{sourceDir}`/`{buildRoot}` tokens; each build tag isolates one source variant under the exchange mount. `run` executes a pinned program from that build root with bounded argv and stdin, recording sanitizer crashes as observations while timeouts remain failures. The blind benchmark (`pnpm security:cve-bench`) pins vulnerable and fixed commits per case, generates the task prompt and grades exported reports against patched files and crash patterns.
-
-Source reads can run concurrently. External providers name actual shared instances for leases, while environment lifecycle actions reject admission while that environment has active runs. Model-facing project pages and mutation receipts are bounded independently from the durable project. Child summaries are persisted on existing Session bindings after evidence scope checks.
+None.
