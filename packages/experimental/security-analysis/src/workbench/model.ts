@@ -33,6 +33,7 @@ export const phaseSchema = z.enum(['recon', 'surface', 'assessment', 'validation
 export const checkpointSchema = z.object({
   id: z.string().min(1).transform(brandString<SecurityCheckpointId>), engagementId: z.string().min(1),
   previousCheckpointId: z.string().min(1).transform(brandString<SecurityCheckpointId>).optional(),
+  activityCursor: z.number().int().nonnegative().optional(),
   phase: phaseSchema, title: z.string().trim().min(1).max(100),
   reason: z.string().max(300), summary: z.string().max(300), next: z.string().max(300),
   evidenceIds: z.array(z.string()),

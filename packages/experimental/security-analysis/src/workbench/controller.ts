@@ -723,6 +723,7 @@ export class SecurityController {
             const { kind: _kind, findingIds: _findingIds, ...fields } = action
             return [{ kind: 'checkpoint', value: checkpointSchema.parse({ ...fields,
               id: action.id ?? sameDirection?.id ?? randomUUID(), engagementId: project.id, findings,
+              activityCursor: this.activity?.progress(project.id, sessionId).cursor,
               previousCheckpointId: sameDirection
                 ? sameDirection.previousCheckpointId ?? checkpoints.at(-2)?.id
                 : current?.id,

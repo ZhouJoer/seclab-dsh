@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import { z } from 'zod'
-import type { WorkbenchView } from './model.ts'
+import type { SecurityCheckpoint, WorkbenchView } from './model.ts'
 import type { ProjectCoverage } from './coverage.ts'
 
 /** Identifies an observed invocation rather than an analyst claim. */
@@ -147,6 +147,22 @@ export class SecurityActivityStore {
    * @returns whether an invocation is already persisted.
    */
   has(sessionId: string, callId: string): boolean { return this.records.has(JSON.stringify([sessionId, callId])) }
+
+  /** Count coordinator calls not covered by its latest saved progress, including after restart.
+   * @param projectId - selected project.
+   * @param sessionId - coordinator Session; delegated calls keep their own reporting lifecycle.
+   * @param checkpoint - latest direction; legacy checkpoints use their saved update time.
+   * @returns current cursor and invocation count, independent of tool aliases and late settlements.
+   */
+  progress(projectId: string, sessionId: string, checkpoint?: SecurityCheckpoint): { cursor: number; pending: number } {
+    let pending = 0
+    for (const row of this.records.values()) {
+      if (row.projectId !== projectId || row.sessionId !== sessionId) continue
+      if (!checkpoint || (checkpoint.activityCursor === undefined
+        ? row.startedAt > checkpoint.updatedAt : row.startCursor > checkpoint.activityCursor)) pending++
+    }
+    return { cursor: this.cursor, pending }
+  }
 
   /** Read the original invocation for idempotent result recovery.
    * @param sessionId - originating Session identity.

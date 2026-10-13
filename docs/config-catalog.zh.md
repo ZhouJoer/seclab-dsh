@@ -1108,7 +1108,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:81`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:82`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
@@ -1161,6 +1161,8 @@ export interface WorkbenchConfig {
   analysisTurnTokens: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
+  /** Recorded coordinator calls between required research-progress updates. */
+  analysisProgressCalls: number
   /** Maximum target findings in the main report body. */
   reportMaxFindings: number
   /** Maximum reusable lessons in the main report body. */

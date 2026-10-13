@@ -36,6 +36,7 @@ import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { analysisCallPage, analysisLog } from './analysis-log.ts'
 import { installAnalysisBudget } from './analysis-budget.ts'
+import { installAnalysisProgress } from './analysis-progress.ts'
 import { closingBrief } from './turn-brief.ts'
 import { installNativeAnalysis } from './native-analysis.ts'
 import { installActivityObserver } from './activity-observer.ts'
@@ -127,6 +128,8 @@ export interface WorkbenchConfig {
   analysisTurnTokens: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
+  /** Recorded coordinator calls between required research-progress updates. */
+  analysisProgressCalls: number
   /** Maximum target findings in the main report body. */
   reportMaxFindings: number
   /** Maximum reusable lessons in the main report body. */
@@ -205,6 +208,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     reportOutputTokens: Schema.number().step(1).min(1).default(4096),
     analysisTurnTokens: Schema.number().step(1).min(1000).default(120000),
     analysisCountCacheReads: Schema.boolean().default(false),
+    analysisProgressCalls: Schema.number().step(1).min(1).default(12),
     reportMaxFindings: Schema.number().step(1).min(1).default(5),
     reportMaxLessons: Schema.number().step(1).min(0).default(3),
     knowledgeProvider: Schema.string().pattern(/\S/u),
@@ -823,6 +827,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           + JSON.stringify({ ...preferences, unavailableReferences: missing })
       },
     })
+    installAnalysisProgress(ctx, config.analysisProgressCalls, () => this.controller)
     ctx.systemPrompt.context({ name: 'security:delegations', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'),
       text: ({ agent }) => {
         if (!agent || this.controller?.binding(agent.id)?.role !== 'coordinator') return ''

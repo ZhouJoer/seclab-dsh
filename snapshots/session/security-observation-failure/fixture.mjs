@@ -72,6 +72,21 @@ export function apply(ctx) {
         assert.equal(result.value.incomplete, true)
         assert.equal(result.value.text, 'Offset exceeds sample size')
       }
+      if (exec.callId === 'save-research-progress') {
+        assert.notEqual(result.isError, true)
+        const controller = await service.ready
+        const view = await service.view(exec.agent)
+        const checkpoint = view.records.find(record => record.kind === 'checkpoint')
+        assert(checkpoint)
+        assert.equal(controller.activity.has(exec.agent.id, 'progress-overdue'), false)
+        assert.equal(controller.activity.progress(checkpoint.value.engagementId, exec.agent.id, checkpoint.value).pending, 0)
+        assert.equal(controller.activity.page(checkpoint.value.engagementId, checkpoint.value.id, 0, 10).items.length, 5)
+      }
+      if (exec.callId === 'resume-after-progress') {
+        assert.notEqual(result.isError, true)
+        const controller = await service.ready
+        assert(controller.activity.invocation(exec.agent.id, exec.callId).checkpointId)
+      }
       return result
     })
   })

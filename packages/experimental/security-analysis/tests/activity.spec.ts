@@ -13,6 +13,7 @@ import { parseToolPack } from '../src/tool-definitions.ts'
 import { analysisJobOutcome, analysisToolCandidates } from '../src/activity-observer.ts'
 import { openSecurityJournal } from '../src/workbench/journal.ts'
 import { closingBrief } from '../src/turn-brief.ts'
+import { checkpointSchema } from '../src/workbench/model.ts'
 
 async function harness() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-activity-'))
@@ -34,6 +35,24 @@ async function harness() {
 }
 const invocation = (callId: string, projectId = 'project', checkpointId = 'recon') => ({
   projectId, sessionId: 'session', callId, checkpointId, tools: ['ghidra'], verified: true, parameters: '{}',
+})
+it('retains progress coverage across restart, retries, aliases and late results', async () => {
+  const { activity, reopen } = await harness()
+  const first = await activity.start({ ...invocation('first'), tools: ['radare2', 'unicorn'] })
+  await activity.start(invocation('foreign', 'other-project'))
+  await activity.start({ ...invocation('child'), sessionId: 'child' })
+  expect(activity.progress('project', 'session').pending).toBe(1)
+  const checkpoint = checkpointSchema.parse({ id: 'recon', engagementId: 'project', phase: 'recon',
+    title: 'Inspect headers', reason: '', summary: '', next: '', evidenceIds: [], findings: [],
+    createdAt: 0, updatedAt: 0, activityCursor: activity.progress('project', 'session').cursor })
+  await activity.start(invocation('second'))
+  await activity.start(invocation('second'))
+  await activity.finish(first.id, { status: 'completed', incomplete: false, detail: 'Late result' })
+  const recovered = await reopen()
+  expect(recovered.progress('project', 'session', checkpoint).pending).toBe(1)
+  const { activityCursor: _cursor, ...legacy } = checkpoint
+  expect(recovered.progress('project', 'session', { ...legacy, updatedAt: first.startedAt - 1 }).pending).toBe(2)
+  expect(recovered.progress('project', 'session', { ...legacy, updatedAt: Number.MAX_SAFE_INTEGER }).pending).toBe(0)
 })
 it('removes deleted task calls and briefs durably without removing another task', async () => {
   const { activity, reopen } = await harness()

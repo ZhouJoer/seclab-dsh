@@ -17,6 +17,8 @@ description: "安全原型入口被移除，配置 Remote 返回对象，失败�
 
 工具发现仅在候选程序不存在时尝试下一个程序。选定程序的版本查询失败、超时或响应格式错误会报告错误。失败或取消的观测及已批准执行在保存可用证据后拒绝；重复相同操作会报告已保存的失败，不再次执行。没有失败的不完整观测仍可读取。Frida 成功响应必须包含非空版本。
 
+协调者累计 `analysisProgressCalls` 次已记录调用（默认 12 次）而未更新检查点时，探索工具也会拒绝。这是在执行前要求保存进展，不新增失败活动记录。证据读取、原生调用保存、检查点命令和后台任务清理仍然可用。
+
 ## 迁移
 
 1. 从自定义组合中移除 `@deepseek-ai/dsh-experimental-security-analysis/legacy`，使用当前[安全 profile](../../../../packages/experimental/security-profile/README.zh.md)。保留已有原型 JSON 归档，通过工作台的 `import-legacy` 命令显式导入；另行导入原始样本以建立实测身份。
@@ -24,3 +26,4 @@ description: "安全原型入口被移除，配置 Remote 返回对象，失败�
 3. 修复失败的选定程序，或显式选择其他安装。保存配置前，确认工具检查显示预期的可执行文件和版本。
 4. 将被拒绝的采集与执行调用作为失败处理。查看其已保存证据和活动，不要因存在证据记录就推断成功。修复原因后再请求新操作；重试已有标识不会重新执行。
 5. 将源码级 `sourceManifest(context)` 调用改为 `sourceManifest(context.artifacts, context.asset)`。
+6. 工具要求保存研究进展时，通过 `security_command` 的 `checkpoint` 动作记录当前结论、下一步及已保存证据引用，然后重试分析。同一问题复用检查点 ID，问题或阶段改变时另建方向。在 security-workbench 插件上配置 `analysisProgressCalls` 可调整间隔。确认已保存方向出现在界面中，且下一次分析调用能够执行。

@@ -193,7 +193,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; analysisProgressCalls?: number; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -276,6 +276,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                     ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
                       ...(options.evolution ? { evolution: options.evolution } : {}),
                       ...(options.analysisTurnTokens === undefined ? {} : { analysisTurnTokens: options.analysisTurnTokens }),
+                      ...(options.analysisProgressCalls === undefined ? {} : { analysisProgressCalls: options.analysisProgressCalls }),
                       ...(options.maxConcurrentDelegations === undefined ? {}
                         : { maxConcurrentDelegations: options.maxConcurrentDelegations }),
                       ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
@@ -1606,6 +1607,84 @@ it('reports the model failure and does not publish a partial report', async () =
   model.reportFailure = true
   await expect(send({ kind: 'report' })).rejects.toThrow('Fixture model rejected report')
   expect(controller.view(agent.id).records.some(item => item.kind === 'report')).toBe(false)
+})
+
+it('requires saved research progress before more analysis and groups a changed question separately', async () => {
+  const { ctx, agent, controller, model } = await load(false, 0, { analysisProgressCalls: 2 })
+  const send = operator(controller, agent)
+  await send({ kind: 'create', title: 'Progress', objective: 'Inspect two questions', environmentIds: ['local'], maxAttempts: 1 })
+  const sample = join(roots[roots.length - 1]!, 'progress.bin')
+  await writeFile(sample, Buffer.from([0, 1, 2, 3]))
+  await send({ kind: 'import', path: sample, label: 'Sample' })
+  const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+  const projectId = controller.binding(agent.id)!.engagementId
+  const activity = controller.activity!
+  for (const callId of ['first', 'second']) await activity.start({ projectId, sessionId: agent.id, callId,
+    checkpointId: '', tools: ['script'], verified: false, parameters: '' })
+  const before = controller.view(agent.id).revision
+  const denied = await execute(ctx, agent, 'security_static', {}, 'progress-denied')
+  expect(denied.isError).toBe(true)
+  expect(JSON.stringify(denied)).toContain('Save research progress')
+  expect(activity.has(agent.id, 'progress-denied')).toBe(false)
+  expect(controller.view(agent.id).revision).toBe(before)
+  expect((await execute(ctx, agent, 'security_help', { action: 'checkpoint' })).isError).not.toBe(true)
+  model.nativeCalls = [{ name: 'security_command', args: () => ({ command: JSON.stringify({
+    operationId: 'save-progress', expectedRevision: controller.view(agent.id).revision,
+    action: { kind: 'checkpoint', phase: 'recon', title: 'Inspect headers', reason: 'Identify format',
+      summary: 'Headers read', next: 'Inspect resources', evidenceIds: [], findingIds: [] },
+  }) }) }]
+  agent.followup(webPrompt('Save the current progress.'))
+  await agent.whenIdle()
+  expect(JSON.stringify(agent.session.snapshotEvents())).toContain('callsSinceCheckpoint')
+  expect(JSON.stringify(model.requests[0]!.messages)).toContain('Save research progress')
+  const checkpoint = controller.view(agent.id).records.find(record => record.kind === 'checkpoint')
+  if (checkpoint?.kind !== 'checkpoint') throw new Error('Missing checkpoint')
+  expect(activity.progress(projectId, agent.id, checkpoint.value).pending).toBe(0)
+  expect(activity.page(projectId, checkpoint.value.id, 0, 10).items).toHaveLength(2)
+  const resumed = await execute(ctx, agent, 'security_static', { provider: 'binary', operation: 'hex',
+    assetId: asset.value.id, environmentId: 'local', parameters: JSON.stringify({ offset: 0, length: 1 }) }, 'after-progress')
+  expect(resumed.isError).toBe(false)
+  expect(activity.invocation(agent.id, 'after-progress')?.checkpointId).toBe(checkpoint.value.id)
+  await send({ kind: 'checkpoint', phase: 'surface', title: 'Inspect resources', reason: 'New question',
+    summary: '', next: 'Read resource table', evidenceIds: [], findingIds: [] })
+  const second = controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').at(-1)!
+  expect(second.value.previousCheckpointId).toBe(checkpoint.value.id)
+  await activity.start({ projectId, sessionId: agent.id, callId: 'third', checkpointId: second.value.id,
+    tools: ['script'], verified: false, parameters: '' })
+  expect(activity.usage(projectId).map(row => [row.checkpointId, row.total])).toEqual([
+    [checkpoint.value.id, 2], [checkpoint.value.id, 1], [second.value.id, 1],
+  ])
+  await activity.start({ projectId, sessionId: agent.id, callId: 'fourth', checkpointId: second.value.id,
+    tools: ['script'], verified: false, parameters: '' })
+  await expect(send({ kind: 'checkpoint', id: second.value.id, phase: 'surface', title: 'Different question',
+    reason: '', summary: '', next: '', evidenceIds: [], findingIds: [] })).rejects.toThrow('Create a new checkpoint')
+  expect(activity.progress(projectId, agent.id, second.value).pending).toBe(2)
+  const childId = SessionId('progress-child')
+  await bindDelegatedChild(controller, agent.id, childId, asset.value.id, 'reverse-analyst')
+  const { agent: child } = await ctx.agents.create({ sessionId: childId, parentAgent: agent,
+    meta: { parentSession: agent.id, origin: 'subagent', delegationDepth: 1 } })
+  expect((await execute(ctx, child, 'security_static', { provider: 'binary', operation: 'hex',
+    assetId: asset.value.id, environmentId: 'local', parameters: '{"offset":0,"length":1}' }, 'child-observation')).isError).toBe(false)
+  const update = { kind: 'checkpoint', id: second.value.id, phase: 'surface', title: 'Inspect resources',
+    reason: 'Same question', summary: 'Resource investigation continues', next: 'Compare entries', evidenceIds: [], findingIds: [] }
+  await send(update)
+  const current = controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').at(-1)!
+  expect(current.value.id).toBe(second.value.id)
+  expect(activity.progress(projectId, agent.id, current.value).pending).toBe(0)
+  await activity.start({ projectId, sessionId: agent.id, callId: 'fifth', checkpointId: current.value.id,
+    tools: ['script'], verified: false, parameters: '' })
+  await send(update)
+  expect(activity.progress(projectId, agent.id,
+    controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').at(-1)!.value).pending).toBe(1)
+  await activity.start({ projectId, sessionId: agent.id, callId: 'sixth', checkpointId: current.value.id,
+    tools: ['script'], verified: false, parameters: '' })
+  const search = vi.fn(async () => true)
+  independentTool(ctx, 'web_search', search)
+  expect((await execute(ctx, agent, 'web_search')).isError).toBe(true)
+  expect(search).not.toHaveBeenCalled()
+  await [...ctx.registry.get(Security)!.fibers][0]!.dispose()
+  expect((await execute(ctx, agent, 'web_search')).isError).toBe(false)
+  expect(search).toHaveBeenCalledOnce()
 })
 
 it.each([500, 1200])('summarizes once when another comparable step would reach the budget (usage=%s)', async (usage) => {

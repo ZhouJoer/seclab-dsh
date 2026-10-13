@@ -7,6 +7,7 @@ import type { ToolDefinition } from './tool-definitions.ts'
 import type { SecurityController } from './workbench/controller.ts'
 import type { SecurityActivity, SecurityActivityStore } from './workbench/activity.ts'
 import { adapterToolId } from './tool-adapter-catalog.ts'
+import { ANALYSIS_PROGRESS_REQUIRED } from './analysis-progress.ts'
 
 const foreground = z.object({ kind: z.literal('foreground'), exitCode: z.number().nullable(),
   signal: z.string().nullable(), timedOut: z.boolean(), aborted: z.boolean(),
@@ -63,6 +64,7 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
   })
   ctx.effect(() => async () => { await Promise.all(pending) })
   ctx.on('tools/post-execute', async (exec, result, next) => {
+    if (result.isError && result.error.message === ANALYSIS_PROGRESS_REQUIRED) return next()
     if (exec.agent && result.isError && (['security_static', 'security_execute'].includes(exec.name) || adapterToolId(exec.name))) {
       const controller = await ready
       const binding = controller.binding(exec.agent.id)

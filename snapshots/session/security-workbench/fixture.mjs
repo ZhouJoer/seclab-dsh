@@ -96,6 +96,7 @@ export async function apply(ctx) {
         ] }] : []],
     knowledgeIntervalMs: 0,
     analysisTurnTokens: 1000,
+    ...observationFailure ? { analysisProgressCalls: 5 } : {},
     evolution: { provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' },
   })
   const environmentEntry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/environment-local.js' : 'src/environment-local.ts'
