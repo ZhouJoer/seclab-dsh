@@ -20,7 +20,7 @@ This fork is the long-lived development home for independent work based on DeepS
 
 ## Development line
 
-The `origin` remote points to `ZhouJoer/deepseek-harness`, where `Joer/experimental-development` is the default branch. The `upstream` remote points to the original `deepseek-ai/deepseek-harness` repository and does not receive fork-specific commits.
+The `origin` remote points to [ZhouJoer/seclab-dsh](https://github.com/ZhouJoer/seclab-dsh), where `Joer/experimental-development` is the default branch. The `upstream` remote points to the original `deepseek-ai/deepseek-harness` repository and does not receive fork-specific commits. The CLI command remains `dsh`, and package names retain their existing scopes.
 
 -----
 

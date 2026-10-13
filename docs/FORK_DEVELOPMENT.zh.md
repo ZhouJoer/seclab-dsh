@@ -20,7 +20,7 @@
 
 ## 开发主线
 
-`origin` 远端指向 `ZhouJoer/deepseek-harness`，其中 `Joer/experimental-development` 是默认分支。`upstream` 远端指向原始 `deepseek-ai/deepseek-harness` 仓库，不接收本 fork 的专属提交。
+`origin` 远端指向 [ZhouJoer/seclab-dsh](https://github.com/ZhouJoer/seclab-dsh)，其中 `Joer/experimental-development` 是默认分支。`upstream` 远端指向原始 `deepseek-ai/deepseek-harness` 仓库，不接收本 fork 的专属提交。CLI 命令仍为 `dsh`，包名保留现有作用域。
 
 -----
 

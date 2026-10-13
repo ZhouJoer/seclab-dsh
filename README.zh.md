@@ -2,7 +2,7 @@
 description: "AI 辅助的安全研究工作台，面向逆向、Web、Android 与 IoT，提供可追溯证据与受控验证。"
 ---
 
-# 安全研究工作台
+# SecLab DSH · 安全研究工作台
 
 [English](README.md) | 中文
 

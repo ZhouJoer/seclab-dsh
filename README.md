@@ -2,7 +2,7 @@
 description: "An AI-assisted security research workbench for reverse engineering, Web, Android and IoT, with traceable evidence and controlled validation."
 ---
 
-# Security Research Workbench
+# SecLab DSH · Security Research Workbench
 
 English | [中文](README.zh.md)
 

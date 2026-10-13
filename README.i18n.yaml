@@ -5,54 +5,54 @@
 /:
   en: bba694b945308b50
   zh: 28cc3572b8eb0bf3
-/security-research-workbench:
-  en: bf7eca29a7e6c671
-  zh: 60645b914d312aa3
-/security-research-workbench/what-you-can-do:
+/seclab-dsh-security-research-workbench:
+  en: 219c57b1a8ec13f7
+  zh: 5d7edc11a9e0bb15
+/seclab-dsh-security-research-workbench/what-you-can-do:
   en: 13cf84b27b274639
   zh: e510aaa682b5c759
-/security-research-workbench/research-examples:
+/seclab-dsh-security-research-workbench/research-examples:
   en: 8d8cb6db1606d424
   zh: 6731e7d8f581bf9b
-/security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1:
+/seclab-dsh-security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1:
   en: 7b485bbabddbdd64
   zh: 5abc251af287d468
-/security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/analysis-assistant:
+/seclab-dsh-security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/analysis-assistant:
   en: 1b960420d15c14e5
   zh: 43d5e581c20bb664
-/security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/work-progress:
+/seclab-dsh-security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/work-progress:
   en: 7765d4beaab77440
   zh: e3cd9f339c7ba08f
-/security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/investigation-chain:
+/seclab-dsh-security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/investigation-chain:
   en: 70ae24224ccfba1a
   zh: b23f625a920de55f
-/security-research-workbench/research-examples/android:
+/seclab-dsh-security-research-workbench/research-examples/android:
   en: d43fd0f83b08f046
   zh: 9ef1601e92b403c4
-/security-research-workbench/research-examples/web:
+/seclab-dsh-security-research-workbench/research-examples/web:
   en: fae606efb7a2843b
   zh: 86fff39db03891c5
-/security-research-workbench/analysis-scenarios:
+/seclab-dsh-security-research-workbench/analysis-scenarios:
   en: b142915fdc75f4fc
   zh: 8a19c224457d242e
-/security-research-workbench/architecture-at-a-glance:
+/seclab-dsh-security-research-workbench/architecture-at-a-glance:
   en: 1599a28ce794c19a
   zh: bb09edbdd8626746
-/security-research-workbench/run:
+/seclab-dsh-security-research-workbench/run:
   en: 63b93bf060a5df7b
   zh: f1f7abd373558714
-/security-research-workbench/run/run-from-source:
+/seclab-dsh-security-research-workbench/run/run-from-source:
   en: cb7c974e8cd53105
   zh: 9626428ea43e658d
-/security-research-workbench/current-limits:
+/seclab-dsh-security-research-workbench/current-limits:
   en: 2f107c502f994b71
   zh: ac23230d970b0527
-/security-research-workbench/documentation-and-development:
+/seclab-dsh-security-research-workbench/documentation-and-development:
   en: 22284a07ddefea1c
   zh: 849c80eaae2f9df4
-/security-research-workbench/upstream-and-acknowledgements:
+/seclab-dsh-security-research-workbench/upstream-and-acknowledgements:
   en: aa02ff7912334115
   zh: 7ad44bf0322909c3
-/security-research-workbench/license:
+/seclab-dsh-security-research-workbench/license:
   en: 926995344fc1c72b
   zh: c92fab5abf85932f
