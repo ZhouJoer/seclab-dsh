@@ -25,6 +25,7 @@ export type {
   DshEnvironmentKey,
 } from './types.ts'
 export { parseExitStatus } from './render.ts'
+export { windowsStatusDiagnostic } from '@deepseek-ai/dsh-subprocess'
 export type { ParsedExitStatus } from './render.ts'
 
 declare module '@deepseek-ai/cordis' {

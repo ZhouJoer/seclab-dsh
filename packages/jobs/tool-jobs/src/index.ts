@@ -41,7 +41,7 @@ export type CompletionDelivery = 'quiet' | 'wakeup'
 export interface Config {
   /** Wait duration applied when `job_output` sets `wait` without `timeout_ms` (default 30s). */
   waitTimeoutMs?: number
-  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 10min). */
+  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 60s). */
   maxWaitTimeoutMs?: number
   /** Whether a completion opens a turn on an idle owner (default `wakeup`). */
   completionDelivery?: CompletionDelivery
@@ -58,7 +58,7 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   waitTimeoutMs: z.number().min(1).default(30_000),
-  maxWaitTimeoutMs: z.number().min(1).default(600_000),
+  maxWaitTimeoutMs: z.number().min(1).default(60_000),
   completionDelivery: z.union(['quiet', 'wakeup'] as const).default('wakeup'),
   maxConsecutiveWakes: z.number().min(1),
 })
@@ -190,7 +190,7 @@ function readBody(read: JobRead): { text: string; job: PublicJobSnapshot } {
 
 export function apply(ctx: Context, config: Config): void {
   const waitDefault = config.waitTimeoutMs ?? 30_000
-  const waitCap = config.maxWaitTimeoutMs ?? 600_000
+  const waitCap = config.maxWaitTimeoutMs ?? 60_000
   const delivery = config.completionDelivery ?? 'wakeup'
   const wakeBudget = config.maxConsecutiveWakes
 
@@ -314,7 +314,7 @@ export function apply(ctx: Context, config: Config): void {
     // this tool owns its deadline instead of using ToolDefinition.timeoutMs.
     parameters: {
       job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work.' },
-      wait: { type: 'boolean', description: 'Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false.' },
+      wait: { type: 'boolean', description: 'Return unread output immediately; otherwise wait for new output, progress, completion, or timeout. A timed-out wait leaves the job running. Defaults to false.' },
       timeout_ms: { type: 'number', description: 'Max wait in milliseconds with wait: true. Defaults to and is capped by configuration.' },
     },
     finalizeContent: finalizeJobContent,
@@ -336,14 +336,36 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       const id = validateJobId(args.job_id)
       const jobs = ctx.jobs
-      if (args.wait === true) {
-        // A settlement that releases this wait is reported `awaited`, so the
-        // notice listener above skips it: this result carries the terminal
-        // state. A timed-out or aborted wait has left the registry's waiter
-        // set before any later settlement, which then notifies as usual.
-        await jobs.wait(id, Math.min(args.timeout_ms ?? waitDefault, waitCap), exec.agent?.id, exec.signal)
+      const timeoutMs = Math.min(args.timeout_ms ?? waitDefault, waitCap)
+      if (args.wait === true && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) throw new Error('invalid wait timeout: expected a positive number of milliseconds')
+      const initial = readBody(jobs.read(id, exec.agent?.id))
+      if (args.wait !== true || initial.text.length > 0 || (initial.job.status !== 'running' && initial.job.status !== 'stopping')) return initial
+
+      const changed = new AbortController()
+      let offset = jobs.get(id, exec.agent?.id).output.total
+      const unsubscribe = jobs.events.subscribe(exec.agent ? { owner: exec.agent.id } : { owners: 'scope' }, (event) => {
+        if (event.type === 'output' && event.id === id) {
+          const output = jobs.readAt(id, offset, exec.agent?.id)
+          offset = output.next
+          if (output.chunks.some(chunk => chunk.channel !== 'log')) changed.abort()
+        } else if (event.type === 'progress' && event.job.id === id && event.job.progress !== initial.job.detail) {
+          changed.abort()
+        }
+      })
+      try {
+        // Output releases only this reader's wait claim. Settlement after that
+        // still notifies the owner; foreground shell waits remain settlement-only.
+        await jobs.wait(id, timeoutMs, exec.agent?.id, AbortSignal.any([exec.signal, changed.signal]))
+      } catch (error) {
+        if (!changed.signal.aborted || exec.signal.aborted) throw error
+      } finally {
+        unsubscribe()
       }
-      return readBody(jobs.read(id, exec.agent?.id))
+      const result = readBody(jobs.read(id, exec.agent?.id))
+      if (!changed.signal.aborted && (result.job.status === 'running' || result.job.status === 'stopping')) {
+        result.text += `${result.text.length > 0 ? '\n' : ''}Wait timed out; the background job is still running. Report its status instead of repeating an unchanged wait. A completion notification will arrive when it finishes.`
+      }
+      return result
     },
     presentCall: args => presentJobCall(`Read output from background job ${args.job_id}`, 'read', args.job_id),
   }))

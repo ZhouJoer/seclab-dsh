@@ -1,51 +1,6 @@
 {
   "initial": [
     {
-      "name": "bash",
-      "description": "Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of using `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "command": {
-            "type": "string",
-            "description": "The bash command to execute."
-          },
-          "description": {
-            "type": "string",
-            "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
-          },
-          "timeoutMs": {
-            "type": "number",
-            "description": "Timeout in milliseconds. The executor applies its configured default and cap; on expiry the command moves to the background as a job instead of being killed."
-          },
-          "workdir": {
-            "type": "string",
-            "description": "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
-          },
-          "run_in_background": {
-            "type": "boolean",
-            "description": "Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies."
-          },
-          "sandbox_permissions": {
-            "type": "string",
-            "description": "The narrowest wider sandbox mode for a one-shot retry of the exact command the sandbox just denied; the retry asks the user for approval.",
-            "enum": [
-              "workspace-write",
-              "danger-full-access"
-            ]
-          },
-          "justification": {
-            "type": "string",
-            "description": "Required with sandbox_permissions: one sentence for the user explaining why this exact command needs the wider access. Use the language of the user’s current request."
-          }
-        },
-        "required": [
-          "command",
-          "description"
-        ]
-      }
-    },
-    {
       "name": "create_goal",
       "description": "Create a persisted goal that keeps this session working across automatic continuation rounds. Use it when the direct human request is a long-running objective, even if the user did not say \"goal\"; not for single-turn work.",
       "parameters": {
@@ -231,7 +186,7 @@
           },
           "wait": {
             "type": "boolean",
-            "description": "Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false."
+            "description": "Return unread output immediately; otherwise wait for new output, progress, completion, or timeout. A timed-out wait leaves the job running. Defaults to false."
           },
           "timeout_ms": {
             "type": "number",

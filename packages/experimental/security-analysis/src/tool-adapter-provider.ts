@@ -70,7 +70,7 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
   switch (adapter.id) {
     case 'radare2':
     case 'r2ghidra': {
-      const queries: Record<string, string> = { identity: 'ij', functions: 'aflj', imports: 'iij', exports: 'iEj',
+      const queries: Record<string, string> = { identity: 'ij', functions: 'aflj', imports: 'iij', exports: 'iEj', symbols: 'isj',
         strings: 'izj', 'xrefs-to': 'axtj', 'xrefs-from': 'axfj', disassemble: 'pdj', decompile: 'pdgj' }
       const targeted = ['xrefs-to', 'xrefs-from', 'disassemble', 'decompile'].includes(action)
       if (targeted && !args.address) throw new Error('This operation requires a hexadecimal virtual address')
@@ -234,6 +234,7 @@ export class ToolAdapterProvider implements AnalysisProvider {
       } finally { await context.artifacts.release(path) }
     }
     if (items.length > this.limits.maxItems) { items = items.slice(0, this.limits.maxItems); incomplete = true }
+    if (failure) diagnostics = [diagnostics, failure].filter(Boolean).join('\n')
     const retained = retainAdapterResult({ format: 'security-tool-result-v1', tool: adapter.id, operation: request.operation,
       environmentId: environment.id, toolVersion: selected.version, inputSha256: asset.artifact.sha256,
       items, raw, diagnostics, incomplete: incomplete || failure !== undefined }, context.maxOutputBytes)

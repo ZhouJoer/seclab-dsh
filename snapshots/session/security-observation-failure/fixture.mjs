@@ -14,6 +14,7 @@ export function apply(ctx) {
         await service.importMaterials(exec.agent, JSON.stringify({ operationId: 'fixture-observation-material',
           expectedRevision: created.revision, title: '失败的二进制观察', objective: '读取已导入样本。',
           material: { kind: 'files', directory: false, files: [{ name: 'sample.bin', base64: 'AAECAw==' }] } }))
+        await service.toolPreferences(exec.agent, JSON.stringify({ toolIds: ['radare2'], collectionIds: [], tags: [] }))
       }
       const result = await next()
       if (exec.callId === 'identity-invalid-path') {

@@ -11,6 +11,7 @@
  */
 
 import type { ShellSandboxInfo, CollectedOutput } from '@deepseek-ai/dsh-shell'
+import { windowsStatusDiagnostic } from '@deepseek-ai/dsh-shell'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { escalationHintMarker, sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
 
@@ -61,6 +62,8 @@ export function renderPwshResult(
   if (body.length === 0) body = '(no output)'
 
   const markers: string[] = []
+  const diagnostic = windowsStatusDiagnostic(result.exitCode)
+  if (diagnostic) markers.push(`[${diagnostic}]`)
   // Keep the exit marker last because parseExitStatus anchors there.
   if (result.sandbox?.denied) {
     markers.push(sandboxDenialMarker(result.sandbox.mode))

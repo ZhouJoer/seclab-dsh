@@ -1081,6 +1081,13 @@ describe('renderPwshResult sandbox markers', () => {
     stderr: { text: '', truncated: false },
   }
 
+  it('explains a Windows loader failure even when both streams are empty', () => {
+    const rendered = renderPwshResult({ ...base, exitCode: -1073741515, stdout: { text: '', truncated: false } })
+    expect(rendered).toContain('0xC0000135')
+    expect(rendered).toContain('STATUS_DLL_NOT_FOUND')
+    expect(rendered).toContain('[exit code: -1073741515]')
+  })
+
   it('a denied run reports the denial marker before the exit marker', () => {
     expect(renderPwshResult({ ...base, exitCode: 2, sandbox: { mode: 'read-only', denied: true } }))
       .toBe('out\n[sandbox: file access denied under read-only mode]\n[exit code: 2]')
@@ -1172,6 +1179,13 @@ describe('processOutcome', () => {
   it('maps a completed process to its exit code', () => {
     expect(processOutcome(settled({ exitCode: 3 })))
       .toEqual({ status: 'completed', detail: 'exit code: 3' })
+  })
+
+  it('keeps Windows loader failures visible in background completion', () => {
+    const result = processOutcome(settled({ exitCode: -1073741515 }))
+    expect(result.status).toBe('completed')
+    expect(result.detail).toContain('exit code: -1073741515')
+    expect(result.detail).toContain('STATUS_DLL_NOT_FOUND')
   })
 
   it('defensively reads a null exit code as 0 (handle shapes from other executors)', () => {

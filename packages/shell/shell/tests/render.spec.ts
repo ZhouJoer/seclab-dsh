@@ -16,6 +16,7 @@ describe('parseExitStatus', () => {
   })
 
   it('recovers a non-zero exit and strips only its marker from the body', () => {
+    expect(parseExitStatus('failed\n[exit code: -1073741515]')).toEqual({ body: 'failed', exitCode: -1073741515 })
     expect(parseExitStatus('oops\n[exit code: 3]')).toEqual({ body: 'oops', exitCode: 3 })
     // The marker needs the leading newline and the end of the string, so a
     // clean result whose output merely ENDS in marker-like text is not read

@@ -266,7 +266,7 @@ function terminalSendCall(name: string, args: Record<string, unknown>): Terminal
 function parseExitStatus(text: string): { output: string; exitCode?: number; signal?: string } {
   const signal = /\n\[killed by signal: ([^\]\n]+)\]$/.exec(text)
   if (signal?.[1] !== undefined) return { output: text.slice(0, signal.index), signal: signal[1] }
-  const exit = /\n\[exit code: (\d+)\]$/.exec(text)
+  const exit = /\n\[exit code: (-?\d+)\]$/.exec(text)
   if (exit?.[1] !== undefined) return { output: text.slice(0, exit.index), exitCode: Number(exit[1]) }
   return { output: text, exitCode: 0 }
 }

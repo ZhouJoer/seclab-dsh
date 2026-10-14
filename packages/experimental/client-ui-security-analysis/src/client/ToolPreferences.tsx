@@ -1,4 +1,4 @@
-/** Soft tool selections scoped to the retained active session. @module */
+/** Checked adapter selections scoped to the retained active session. @module */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ToolCatalogSnapshot, ToolPreferences as Preferences } from '@deepseek-ai/dsh-experimental-security-analysis/client'
@@ -15,7 +15,7 @@ type Props = ToolPreferenceActions & PropsLocale<typeof NS> & {
   disabled?: boolean
   onReadyChange?: (ready: boolean) => void
 }
-/** Render optional tool and collection selections without restricting execution permissions.
+/** Apply checked selections, restoring automatic selection when adapter checks fail.
  * @param props - active session, actions and locale.
  * @returns preference editor with automatic-discovery reset.
  */
@@ -27,6 +27,7 @@ function PreferenceEditor(props: Props) {
   const { t, sessionId } = props
   const [catalog, setCatalog] = useState<ToolCatalogSnapshot>(), [selection, setSelection] = useState<Preferences>()
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false)
+  const [fallback, setFallback] = useState('')
   const [open, setOpen] = useState(false)
   const [dirty, setDirty] = useState(false), [retry, setRetry] = useState(0)
   const mounted = useRef(true)
@@ -35,8 +36,8 @@ function PreferenceEditor(props: Props) {
     return () => { mounted.current = false }
   }, [])
   useLayoutEffect(() => {
-    props.onReadyChange?.(!busy && !dirty && !error)
-  }, [busy, dirty, error, props.onReadyChange])
+    props.onReadyChange?.(!busy)
+  }, [busy, props.onReadyChange])
   useEffect(() => {
     let active = true
     if (open) {
@@ -48,10 +49,20 @@ function PreferenceEditor(props: Props) {
     return () => { active = false }
   }, [sessionId, open, retry, props.toolCatalog, props.toolPreferences])
   const apply = async (value: Preferences) => {
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setFallback('')
     try {
-      const next = await props.toolPreferences(sessionId, JSON.stringify(value))
-      if (mounted.current) { setSelection(next); setSaved(true); setDirty(false) }
+      let next: Preferences
+      let fallbackReason = ''
+      try { next = await props.toolPreferences(sessionId, JSON.stringify(value)) }
+      catch (error) {
+        if (!mounted.current) return
+        if (!value.toolIds.length && !value.collectionIds.length && !value.tags.length) throw error
+        next = await props.toolPreferences(sessionId, JSON.stringify({ toolIds: [], collectionIds: [], tags: [] }))
+        fallbackReason = String(error)
+      }
+      if (mounted.current) {
+        setSelection(next); setSaved(!fallbackReason); setDirty(false); setFallback(fallbackReason)
+      }
     } catch (error) { if (mounted.current) setError(String(error)) }
     finally { if (mounted.current) setBusy(false) }
   }
@@ -75,6 +86,7 @@ function PreferenceEditor(props: Props) {
       <button onClick={() => void apply({ toolIds: [], collectionIds: [], tags: [] })}>{t('toolPreferenceAuto')}</button>
     </fieldset>}
     {saved && <p role="status">{t('toolPreferenceSaved')}</p>}
+    {fallback && <p role="status">{t('toolPreferenceFallback')} {fallback}</p>}
     {dirty && props.onReadyChange && <p role="status">{t('toolPreferenceUnsaved')}</p>}
     {error && <p role="alert">{error}</p>}
     {error && !selection && <button disabled={busy || props.disabled}

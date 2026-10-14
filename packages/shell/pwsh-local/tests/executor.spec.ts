@@ -238,7 +238,7 @@ describe('spawn construction (pure, every platform)', () => {
     expect(subprocess.specs).toHaveLength(1)
     const { argv } = subprocess.specs[0]!
     expect(argv.slice(0, 5)).toEqual([expect.any(String), '-NoLogo', '-NoProfile', '-NonInteractive', '-Command'])
-    expect(argv[5]).toBe(`${ENCODING_PREAMBLE}Write-Output 你好`)
+    expect(argv[5]).toContain(`${ENCODING_PREAMBLE}Write-Output 你好\n`)
     expect(ENCODING_PREAMBLE).toContain('[Console]::OutputEncoding')
     expect(ENCODING_PREAMBLE).toContain('$OutputEncoding')
   })
@@ -435,6 +435,27 @@ describe('cancellation against a hanging backend (fake backend, every platform)'
 })
 
 describe.skipIf(!hasPwsh)('PwshLocalExecutor.run', () => {
+  it.each([
+    ['& $env:DSH_TEST_NODE -e "process.exit(23)"', 23],
+    ['& $env:DSH_TEST_NODE -e "process.exit(23)" # trailing comment', 23],
+    ['& $env:DSH_TEST_NODE -e "process.exit(23)"; Write-Output recovered', 0],
+    ['& $env:DSH_TEST_NODE -e "process.exit(0)"; Write-Error failed', 1],
+    ['throw "failed"', 1],
+    ['exit 17', 17],
+  ])('preserves command completion for %s', async (command, exitCode) => {
+    const { bash } = await setup()
+    const result = await run(bash, bash.resolve({ command, env: { DSH_TEST_NODE: process.execPath } }))
+    expect(result).toMatchObject({ exitCode, signal: null, timedOut: false, aborted: false })
+  })
+
+  it.skipIf(process.platform !== 'win32')('preserves Windows loader status from a native child', async () => {
+    const { bash } = await setup()
+    const result = await run(bash, bash.resolve({ command: '& $env:DSH_TEST_NODE -e "process.exit(0xC0000135)"',
+      env: { DSH_TEST_NODE: process.execPath } }))
+    expect(result).toMatchObject({ signal: null, timedOut: false, aborted: false })
+    expect(result.exitCode! >>> 0).toBe(0xC0000135)
+  })
+
   it('resolves with output and the effective timeout', { timeout: 15_000 }, async () => {
     const { bash } = await setup({ timeoutMs: 10_000 })
     const result = await run(bash, bash.resolve({ command: 'Write-Output hi' }))

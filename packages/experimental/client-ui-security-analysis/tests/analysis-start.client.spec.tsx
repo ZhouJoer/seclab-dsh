@@ -11,10 +11,11 @@ import { AnalysisStart, type AnalysisStartProps } from '../src/client/AnalysisSt
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
-it('waits for applied preferences and preserves the objective after a failed save', async () => {
+it('starts with automatic selection after failed checks while preserving the objective', async () => {
   const initial: Preferences = { toolIds: [], collectionIds: [], tags: [] }
   const pending = Promise.withResolvers<Preferences>()
-  const preferences = vi.fn(async (_id: SessionId, input?: string) => input ? pending.promise : initial)
+  const preferences = vi.fn(async (_id: SessionId, input?: string) =>
+    input && (JSON.parse(input) as Preferences).collectionIds.length ? pending.promise : initial)
   const prepare = vi.fn(async () => {}), send = vi.fn(async () => {})
   render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false}
     environments={[{ id: 'host', label: 'Host', kind: 'local' }]} limits={{ bytes: 1024, entries: 10 }}
@@ -28,18 +29,16 @@ it('waits for applied preferences and preserves the objective after a failed sav
   details.open = true; fireEvent(details, new Event('toggle'))
   fireEvent.click(await screen.findByRole('checkbox', { name: 'IoT / 物联网' }))
   const start = screen.getByRole<HTMLButtonElement>('button', { name: zh.startAnalysis })
-  expect(start.disabled).toBe(true)
+  expect(start.disabled).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceSave }))
+  expect(start.disabled).toBe(true)
   fireEvent.click(start)
   expect(send).not.toHaveBeenCalled()
   await act(async () => { pending.reject(new Error('Save unavailable')); await pending.promise.catch(() => {}) })
-  expect(screen.getByRole('alert').textContent).toContain('Save unavailable')
-  expect(start.disabled).toBe(true)
+  await screen.findByText(zh.toolPreferenceFallback, { exact: false })
+  expect(start.disabled).toBe(false)
   expect(screen.getByLabelText<HTMLTextAreaElement>(zh.analysisRequest).value).toBe('Compare firmware and traffic')
-  preferences.mockImplementation(async (_id, input) => input ? JSON.parse(input) as Preferences : initial)
-  fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceSave }))
-  await waitFor(() => { expect(start.disabled).toBe(false) })
-  expect(preferences).toHaveBeenLastCalledWith('session', JSON.stringify({ ...initial, collectionIds: ['iot'] }))
+  expect(preferences).toHaveBeenLastCalledWith('session', JSON.stringify(initial))
   fireEvent.click(start)
   await waitFor(() => { expect(send).toHaveBeenCalledWith('Compare firmware and traffic') })
   expect(prepare).toHaveBeenCalledOnce()

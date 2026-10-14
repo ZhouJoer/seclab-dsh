@@ -81,6 +81,8 @@ const output = handle.collected.stdout?.readFrom(0)
 
 ### 可能出错的地方
 
+导出的 `windowsStatusDiagnostic` 函数解释已知的有符号或无符号 Windows DLL 加载器状态，不改写原始退出码；未知状态不会推断诊断。
+
 无法解析可执行文件时，服务会明确报出稳定的错误。从未启动成功的 spawn 会让 `done` reject；从未运行过的进程没有任何缓冲输出。提供方无法证明所选范围为空时，`waitForExit()` 也会 reject；提供方 fallback 可能无法拥有逃离其进程组或已观察会话的后代。当传输拥有自己的 spawn（SDK 客户端、MCP）时，请绕开本服务并直接导入 `scrubbedParentEnv`，让环境策略保持单一来源。
 
 -----

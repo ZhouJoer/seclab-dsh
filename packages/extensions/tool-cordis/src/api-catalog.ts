@@ -2074,10 +2074,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'formatted versioned JSON.',
       },
       {
-        signature: '@Remote(\'toolPreferences\') toolPreferences(agent: Agent, input?: string): ToolPreferences',
-        description: 'Read or update soft preferences for the authenticated active session only.',
+        signature: '@Remote(\'toolPreferences\') async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences>',
+        description: 'Read or check and update adapter preferences for the authenticated active session only.',
         parameters: [{ name: 'agent', description: 'carrier-resolved session; caller cannot nominate another agent.' }, { name: 'input', description: 'optional JSON selection; empty arrays restore automatic discovery.' }],
-        returns: 'the current session selection.',
+        returns: 'the current selection after checking selected adapters and their installations; failures retain the previous selection.',
       },
       {
         signature: '@Remote(\'toolboxDirectory\') toolboxDirectory(environmentId?: string): ToolboxDirectory',

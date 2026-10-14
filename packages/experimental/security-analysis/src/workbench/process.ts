@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { isAbsolute, relative, sep, dirname, delimiter } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-subprocess'
+import { windowsStatusDiagnostic } from '@deepseek-ai/dsh-subprocess'
 import type { SecurityEnvironment, ToolInstallation } from './providers.ts'
 
 /** Settled process output; callers inspect every termination fact. */
@@ -149,6 +150,6 @@ export async function runProcess(
  */
 export function requireProcessSuccess(result: ProcessResult): void {
   if (result.exitCode !== 0 || result.signal !== null || result.timedOut || result.cancelled) {
-    throw new Error(JSON.stringify(result))
+    throw new Error(JSON.stringify({ ...result, diagnostic: windowsStatusDiagnostic(result.exitCode) }))
   }
 }

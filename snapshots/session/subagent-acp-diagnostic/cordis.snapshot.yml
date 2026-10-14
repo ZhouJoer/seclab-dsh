@@ -22,7 +22,9 @@
         providerName: acp-diagnostic
         command: !!js process.execPath
         args:
-          - !!js "decodeURIComponent(new URL('../../../packages/subagent/subagent-acp/tests/mock-acp-server.ts', 'file://' + process.env.DSH_SNAPSHOT_FILE).pathname)"
+          - --input-type=module
+          - --eval
+          - !!js "'await import(' + JSON.stringify(new URL('../../../packages/subagent/subagent-acp/tests/mock-acp-server.ts', 'file://' + process.env.DSH_SNAPSHOT_FILE).href) + ')'"
         permission: reject
         env:
           MOCK_PERMISSION: '1'
@@ -37,4 +39,10 @@
         maxDepth: provider-managed
 
 - id: plugin-package-inventory-deepseek
+  disabled: true
+
+- id: tool-bash
+  disabled: true
+
+- id: tool-pwsh
   disabled: true

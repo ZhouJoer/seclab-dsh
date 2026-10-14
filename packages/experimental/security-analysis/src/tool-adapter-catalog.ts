@@ -5,7 +5,7 @@ import type { SecurityEnvironment } from './workbench/providers.ts'
 
 /** Each adapter accepts task parameters, never an executable or command program. */
 export const staticToolAdapters = [
-  { id: 'radare2', operations: ['identity', 'functions', 'imports', 'exports', 'strings', 'xrefs-to', 'xrefs-from', 'disassemble'],
+  { id: 'radare2', operations: ['identity', 'functions', 'imports', 'exports', 'symbols', 'strings', 'xrefs-to', 'xrefs-from', 'disassemble'],
     description: 'Inspect binary metadata, functions, references and bounded disassembly.',
     parameters: { address: { type: 'string', description: 'Hexadecimal virtual address, for example 0x401000.' },
       count: { type: 'integer', description: 'Maximum instructions for disassembly.' } } },
@@ -89,9 +89,10 @@ export function adapterInstallation(id: string): string {
  * @param tool - Operator catalog definition.
  * @param details - Whether to include the invocation guide.
  * @param native - Include the existing advanced workflow instead of the dedicated interface.
+ * @param adapterOnly - Omit native fallback instructions for checked operator selections.
  * @returns model-facing definition, retaining legacy workflows for tools without an adapter.
  */
-export function modelToolDefinition(tool: ToolDefinition, details: boolean, native = false): object {
+export function modelToolDefinition(tool: ToolDefinition, details: boolean, native = false, adapterOnly = false): object {
   const adapter = toolAdapters.find(item => item.id === tool.id)
   const brief = { id: tool.id, label: tool.label, description: adapter?.description ?? tool.description,
     tags: tool.tags, dependency: tool.dependency, provider: tool.provider, skills: tool.skills }
@@ -101,7 +102,9 @@ export function modelToolDefinition(tool: ToolDefinition, details: boolean, nati
   return { ...brief, invocation: 'adapter', toolName: adapter.toolName, operations: [...adapter.operations],
     supportedEnvironments: [...adapter.environmentKinds], externalContainer: false,
     ...(details ? { guide: adapter.description + ' Call ' + adapter.toolName
-      + ' with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.' } : {}) }
+      + ' with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments.'
+      + (adapterOnly ? ' Report unsupported operations to the operator; checked preferences disable native workflows.'
+        : ' For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.') } : {}) }
 }
 
 /** Remove launch configuration from model inventory rows backed by dedicated adapters.
@@ -109,14 +112,19 @@ export function modelToolDefinition(tool: ToolDefinition, details: boolean, nati
  * @param options - Native workflow selection and external-container ownership.
  * @returns task-facing health without launch arguments for adapted tools.
  */
-export function modelToolInventory(inventory: ToolboxInventory, options: { native?: boolean; externalContainer?: boolean } = {}): object {
+export function modelToolInventory(inventory: ToolboxInventory,
+  options: { native?: boolean; externalContainer?: boolean; adapterOnly?: boolean } = {}): object {
   return { ...inventory, tools: inventory.tools.map((tool) => {
     const adapter = toolAdapters.find(adapter => adapter.id === tool.id
       && adapter.environmentKinds.some(kind => kind === inventory.kind))
     return !options.native && !options.externalContainer && adapter
       ? { id: tool.id, status: tool.status, version: tool.version, dependency: tool.dependency,
         toolName: adapter.toolName,
-        detail: tool.status === 'available' ? '' : 'Check this tool and its dependencies in operator tool settings.' }
+        detail: tool.status === 'available'
+          ? 'Available through ' + adapter.toolName + '; this does not establish a Shell command on PATH.'
+            + (options.adapterOnly ? ' Use the adapter directly and report unsupported operations to the operator.'
+              : ' For operations outside the adapter, request security_environment with native: true and use its exact command and prefixArgs. Do not search for another executable.')
+          : [tool.detail, 'Check this tool and its dependencies in operator tool settings.'].filter(Boolean).join('\n') }
       : tool
   }) }
 }

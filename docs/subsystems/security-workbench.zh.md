@@ -16,7 +16,7 @@
 
 [记录 schema](../../packages/experimental/security-analysis/src/workbench/model.ts)定义项目、资产、检查、证据、发现、计划、执行、委派和已审核经验。每个命令向 storage-domain 日志追加一个修订，制品字节先于引用发布。Session 日志保留模型可见的工具结果；领域日志负责检查和委派恢复。`SecurityDelegation` 记录分配的问题、固定的项目和资产范围、执行结果、子报告及协调者处理意见。Jobs 管理运行中的执行；采纳报告不代表确认发现。
 
-`ToolCatalogSnapshot` 保存解析后的工具定义、集合、工具包与导入修订版本。`ToolPackPreview` 在显式导入前列出冲突。`ToolPreferences` 包含活跃会话的软偏好，会记录到模型上下文，但不写入项目持久化记录。导入、检测和生命周期语义见[工具配置](../../packages/experimental/security-analysis/README.zh.md)。
+`ToolCatalogSnapshot` 保存解析后的工具定义、集合、工具包与导入修订版本。`ToolPackPreview` 在显式导入前列出冲突。`ToolPreferences` 包含活跃会话的已检查适配器选择，会记录到模型上下文，但不写入项目持久化记录。导入、检测和生命周期语义见[工具配置](../../packages/experimental/security-analysis/README.zh.md)。
 
 ## Cordis API 参考
 
@@ -168,12 +168,12 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('exportToolPack') exportToolPack(id: string): string
 
-/** Read or update soft preferences for the authenticated active session only.
+/** Read or check and update adapter preferences for the authenticated active session only.
  * @param agent - carrier-resolved session; caller cannot nominate another agent.
  * @param input - optional JSON selection; empty arrays restore automatic discovery.
- * @returns the current session selection.
+ * @returns the current selection after checking selected adapters and their installations; failures retain the previous selection.
  */
-@Remote('toolPreferences') toolPreferences(agent: Agent, input?: string): ToolPreferences
+@Remote('toolPreferences') async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences>
 
 /** Read cached or unchecked inventory rows for immediate operator display.
  * @param environmentId - selected environment, defaulting to the first local environment.

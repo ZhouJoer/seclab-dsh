@@ -69,7 +69,7 @@ describe('web e2e: Security workbench', () => {
     await browser?.close()
     await scaffold?.close()
   })
-  it('browses analysis domains and applies optional preferences before starting', async () => {
+  it('browses analysis domains and restores automatic selection after failed adapter checks', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-analysis-toolbox'))
     await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
@@ -93,11 +93,12 @@ describe('web e2e: Security workbench', () => {
     await dashboard.getByText('Active session tool preferences', { exact: true }).click()
     await dashboard.getByRole('checkbox', { name: 'IoT / 物联网', exact: true }).check()
     const start = dashboard.getByRole('button', { name: 'Start analysis', exact: true })
-    expect(await start.isDisabled()).toBe(true)
-    await dashboard.getByRole('button', { name: 'Apply to this session', exact: true }).click()
-    await expect.poll(() => start.isEnabled()).toBe(true)
-    await dashboard.getByRole('button', { name: 'Restore automatic selection', exact: true }).click()
+    expect(await start.isEnabled()).toBe(true)
+    await dashboard.getByRole('button', { name: 'Check and apply to this session', exact: true }).click()
+    await dashboard.getByText('Tool preference checks failed.', { exact: false }).waitFor()
+    expect(await dashboard.getByRole('alert').count()).toBe(0)
     await expect.poll(() => dashboard.getByRole('checkbox', { name: 'IoT / 物联网', exact: true }).isChecked()).toBe(false)
+    await expect.poll(() => start.isEnabled()).toBe(true)
     const chinese = await browser.newPage({ viewport: { width: 480, height: 900 }, locale: 'zh-CN', colorScheme: 'dark' })
     try {
       await chinese.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })

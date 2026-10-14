@@ -64,6 +64,8 @@ seam 本身不是执行器：每个组合只挂载一个提供方，工具即可
 
 ### 共享的退出状态约定
 
+Shell 渲染器保留有符号退出码。重新导出的 `windowsStatusDiagnostic` 让 Shell 工具在保留原始结果的同时添加 Windows 加载器说明。
+
 工具结果以机器可读的退出标记结尾——`[exit code: N]` 或 `[killed by signal: X]`——模型因此总能知道命令如何结束。seam 拥有该标记格式，以及把渲染结果拆回输出正文与结构化退出状态的 `parseExitStatus` 辅助函数，使 `bash` 与 `pwsh` 两个工具永远不会在此漂移。
 
 -----

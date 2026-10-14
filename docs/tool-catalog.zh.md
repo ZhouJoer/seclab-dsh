@@ -2208,7 +2208,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
     },
     "wait": {
       "type": "boolean",
-      "description": "Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false."
+      "description": "Return unread output immediately; otherwise wait for new output, progress, completion, or timeout. A timed-out wait leaves the job running. Defaults to false."
     },
     "timeout_ms": {
       "type": "number",

@@ -12,7 +12,7 @@
 
 import { existsSync, globSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve, sep } from 'node:path'
-import { gitIndexPaths, readGitIndexBlob } from './translation-pairing-git.ts'
+import { readGitIndex } from './translation-pairing-git.ts'
 import {
   computeTranslationPairingRecord,
   parseTranslationPairingRecord,
@@ -51,7 +51,12 @@ try {
 const listMode = request.mode === 'list'
 const writeMode = request.mode === 'write'
 const indexMode = request.input === 'index'
-const indexFiles = indexMode ? gitIndexPaths(root) : undefined
+const index = indexMode ? readGitIndex(root, ['scripts/translation-pairing.manifest.json',
+  ...request.anchors.flatMap((anchor) => {
+    const { source, zh, meta } = translationPairPaths(anchor)
+    return [source, zh, meta]
+  })]) : undefined
+const indexFiles = index?.paths
 
 const contentCache = new Map<string, Buffer | undefined>()
 
@@ -59,7 +64,7 @@ const contentCache = new Map<string, Buffer | undefined>()
 function readRepositoryFile(file: string): Buffer | undefined {
   if (contentCache.has(file)) return contentCache.get(file)
   const content = indexMode
-    ? indexFiles?.has(file) ? readGitIndexBlob(root, file) : undefined
+    ? index?.blobs.get(file)
     : existsSync(join(root, file)) && statSync(join(root, file)).isFile()
       ? readFileSync(join(root, file))
       : undefined

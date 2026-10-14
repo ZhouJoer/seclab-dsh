@@ -98,6 +98,15 @@ describe('terminalCardModel', () => {
     expect(terminalFailed(terminalCardModel(running())!)).toBe(false)
   })
 
+  it('retains signed Windows loader status and its diagnostic', () => {
+    const model = terminalCardModel(settled({
+      call: { name: 'pwsh', argsRaw: shellArgs() },
+      content: [{ type: 'text', text: '[Windows status 0xC0000135: STATUS_DLL_NOT_FOUND]\n[exit code: -1073741515]' }],
+    }))!
+    expect(model.card).toMatchObject({ exitCode: -1073741515, output: '[Windows status 0xC0000135: STATUS_DLL_NOT_FOUND]' })
+    expect(terminalFailed(model)).toBe(true)
+  })
+
   it('keeps status text that has no terminal pill and requires a leading newline', () => {
     expect(terminalCardModel(settled({
       content: [{ type: 'text', text: 'timed out\n[timed out after 1000ms]\n[exit code: 2]' }],

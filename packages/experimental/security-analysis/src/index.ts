@@ -396,6 +396,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const catalog = this.toolCatalog()
           if (args.details && !args.toolIds?.length && !args.providerId) throw new Error('Select toolIds before loading details')
           if (args.native && (!args.details || !args.toolIds?.length)) throw new Error('Select toolIds and details for native workflows')
+          if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (args.providerId && !controller.providers.list().includes(args.providerId)) throw new Error('Unknown provider: ' + args.providerId)
           const matches = args.providerId && !args.toolIds?.length ? [] : discoverTools(catalog.tools, catalog.collections, args)
           const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
@@ -404,6 +405,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const configurationEnvironment = config.environments.find(env => env.kind !== 'android' && !env.externalContainer)
           const adapters = configurationEnvironment ? this.toolboxConfiguration(configurationEnvironment.id).adapters : undefined
           const project = controller.view(exec.agent.id).records.find(item => item.kind === 'engagement')
+          const adapterOnly = this.adapterPreferences(exec.agent.id)
           return json({
             role: binding?.role ?? null,
             analysisDirectory: analysisDirectory(exec.agent.session.header.cwd, binding),
@@ -412,7 +414,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
               .map(({ id, kind }) => ({ id, kind })),
             catalogRevision: catalog.revision,
             total: matches.length, nextOffset: offset + page.length < matches.length ? offset + page.length : null,
-            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false, args.native ?? false),
+            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false, args.native ?? false, adapterOnly),
               ...(adapters?.some(adapter => adapter.id === tool.id)
                 ? { adapter: adapters.find(adapter => adapter.id === tool.id) } : {}) })),
             collections: catalog.collections.slice(offset, offset + limit).map(({ id, label }) => ({ id, label })),
@@ -423,7 +425,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
               operations: controller.providers.get(id).operations.map(operation => ({ operation,
                 observationAllowed: binding !== undefined && canObserve(binding.role, id, operation) })),
             })),
-            readiness: 'Use security_environment when allowed, otherwise ask the coordinator for health results, and use the exact provider request; configured installations do not establish readiness. Binary inspection needs no external executable. Other providers require operator configuration.',
+            readiness: this.adapterPreferences(exec.agent.id)
+              ? 'Selected adapters were checked at preference save. Call them directly; sample and device access are checked during the operation.'
+              : 'Use security_environment when allowed, otherwise ask the coordinator for health results, and use the exact provider request; configured installations do not establish readiness. Binary inspection needs no external executable. Other providers require operator configuration.',
           })
         },
       }),
@@ -440,6 +444,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           if (!exec.agent) throw new Error('Security tools require a session')
           const controller = await this.ready
           const project = controller.view(exec.agent.id).records.find(item => item.kind === 'engagement')
+          if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (project?.kind !== 'engagement' || project.value.stopped || !project.value.environmentIds.includes(args.environmentId))
             throw new Error('Environment is outside active project scope')
           const environment = config.environments.find(env => env.id === args.environmentId)
@@ -457,7 +462,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
           }
-          return json(modelToolInventory(inventory, { native: args.native ?? false,
+          return json(modelToolInventory(inventory, { native: args.native ?? false, adapterOnly: this.adapterPreferences(exec.agent.id),
             externalContainer: environment.externalContainer !== undefined }))
         },
       }),
@@ -727,6 +732,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
     ctx.tools.guard((exec) => {
       if (!exec.agent || !toolsForRole(this.controller?.binding(exec.agent.id)?.role).includes(exec.name))
         return 'Tool is outside the security role capability set'
+      if (this.adapterPreferences(exec.agent.id) && ['bash', 'pwsh'].includes(exec.name))
+        return 'Checked tool preferences require dedicated adapters. Shell execution is disabled; ask the operator to clear tool preferences for native workflows.'
       if (['bash', 'pwsh', 'write', 'edit', 'security_capture_analysis'].includes(exec.name)) {
         try { this.controller?.analysisProject(exec.agent.id) }
         catch (error) { return error instanceof Error ? error.message : String(error) }
@@ -823,8 +830,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
         const catalog = this.toolCatalog()
         const missing = [...preferences.toolIds.filter(id => !catalog.tools.some(tool => tool.id === id)),
           ...preferences.collectionIds.filter(id => !catalog.collections.some(group => group.id === id))]
-        return 'Operator tool preferences for this active session (soft preferences; discover additional tools as needed; no execution authority): '
-          + JSON.stringify({ ...preferences, unavailableReferences: missing })
+        const adapters = (missing.length ? [] : discoverTools(catalog.tools, catalog.collections, preferences)).flatMap((tool) => {
+          const adapter = toolAdapters.find(item => item.id === tool.id)
+          return adapter ? [{ id: tool.id, toolName: adapter.toolName, operations: adapter.operations }] : []
+        })
+        return 'Operator-selected adapters were checked when preferences were saved. Call these interfaces directly; do not locate executables, probe installations again, or use native Shell workflows. Shell execution is disabled while this selection is active. If an adapter fails or lacks an operation, report the limitation to the operator. Checks do not grant execution authority or establish sample/device readiness: '
+          + JSON.stringify({ adapters, unavailableReferences: missing })
       },
     })
     installAnalysisProgress(ctx, config.analysisProgressCalls, () => this.controller)
@@ -1359,17 +1370,55 @@ export default class SecurityWorkbench extends TypertRemoteService {
     if (!pack) throw new Error('Unknown tool pack: ' + id)
     return JSON.stringify(pack, null, 2) + '\n'
   }
-  /** Read or update soft preferences for the authenticated active session only.
+  private adapterPreferences(id: SessionId): boolean {
+    const preferences = this.preferences.get(id)
+    return !!preferences && !!(preferences.toolIds.length + preferences.tags.length + preferences.collectionIds.length)
+  }
+  /** Read or check and update adapter preferences for the authenticated active session only.
    * @param agent - carrier-resolved session; caller cannot nominate another agent.
    * @param input - optional JSON selection; empty arrays restore automatic discovery.
-   * @returns the current session selection.
+   * @returns the current selection after checking selected adapters and their installations; failures retain the previous selection.
    */
   @Remote('toolPreferences')
-  toolPreferences(agent: Agent, input?: string): ToolPreferences {
+  async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences> {
     if (input !== undefined) {
       const preferences = toolPreferencesSchema.parse(JSON.parse(input))
       const catalog = this.toolCatalog()
-      discoverTools(catalog.tools, catalog.collections, preferences)
+      const previous = this.preferences.get(agent.id)
+      const selected = discoverTools(catalog.tools, catalog.collections, preferences)
+      if (preferences.toolIds.length + preferences.tags.length + preferences.collectionIds.length) {
+        if (!selected.length) throw new Error('No tools match the selected preferences')
+        const controller = await this.ready
+        const project = controller.view(agent.id).records.find(item => item.kind === 'engagement')
+        const environments = project?.kind === 'engagement' ? project.value.environmentIds
+          : resolveTaskIntakeResources(this.config.taskIntake, agent.session.header.cwd)?.environmentIds ?? []
+        const revision = JSON.stringify([catalog.revision,
+          this.toolConfiguration.path === undefined ? null : this.toolConfiguration.read().revision])
+        const probes = new Map<string, Set<string>>()
+        for (const tool of selected) {
+          const adapter = toolAdapters.find(item => item.id === tool.id)
+          if (!adapter) throw new Error(tool.id + ': no dedicated adapter; cannot save checked tool preferences')
+          if (!controller.providers.list().includes(adapter.provider)) throw new Error(tool.id + ': adapter provider is unavailable')
+          const environmentId = this.toolConfiguration.route(tool.id, environments)
+          if (!adapter.probeIds.length) throw new Error(tool.id + ': adapter readiness requires an imported sample; cannot check it in tool preferences')
+          const ids = probes.get(environmentId) ?? new Set<string>()
+          for (const id of adapter.probeIds) ids.add(id)
+          probes.set(environmentId, ids)
+        }
+        for (const [environmentId, ids] of probes) {
+          const { inventory } = await this.toolboxInventory(environmentId, [...ids])
+          const failed = [...ids].filter(id => inventory.tools.find(tool => tool.id === id)?.status !== 'available')
+          if (inventory.runtime !== 'ready' || failed.length) throw new Error('Adapter check failed in ' + environmentId + ': '
+            + (failed.map(id => id + ': ' + (inventory.tools.find(tool => tool.id === id)?.detail ?? 'not checked')).join('\n') || inventory.detail))
+        }
+        this.toolConfiguration.refresh()
+        if (revision !== JSON.stringify([this.catalog.read().revision,
+          this.toolConfiguration.path === undefined ? null : this.toolConfiguration.read().revision]))
+          throw new Error('Tool configuration changed during checks; apply preferences again')
+      }
+      this.shutdown.signal.throwIfAborted()
+      if (this.ctx.agents.get(agent.id) !== agent) throw new Error('Session was disposed during adapter checks')
+      if (this.preferences.get(agent.id) !== previous) throw new Error('Tool preferences changed during checks; apply preferences again')
       this.preferences.set(agent.id, preferences)
     }
     return structuredClone(this.preferences.get(agent.id) ?? { toolIds: [], tags: [], collectionIds: [] })

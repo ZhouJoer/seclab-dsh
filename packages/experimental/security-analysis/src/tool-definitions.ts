@@ -71,7 +71,7 @@ export function orderTools(tools: readonly ToolDefinition[], ids: readonly strin
   for (const id of ids) visit(id)
   return result
 }
-/** User preferences affect discovery, never execution authority. */
+/** Operator selections require checked adapters without granting execution authority. */
 export const toolPreferencesSchema = z.object({ toolIds: z.array(id).max(100), tags: strings,
   collectionIds: z.array(id).max(100) }).strict()
 /** Transient preferences copied to a delegated session at creation. */

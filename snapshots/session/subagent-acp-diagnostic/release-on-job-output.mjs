@@ -1,5 +1,6 @@
 /** Hold the scripted ACP background response until job_output owns its wait. */
 import { rmSync, writeFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
 
 export const name = 'acp-diagnostic-release-on-job-output'
 export const inject = ['tools', 'jobs']
@@ -18,6 +19,7 @@ export function apply(ctx) {
     const jobs = ctx.jobs
     const wait = jobs.wait
     jobs.wait = function (...args) {
+      assert.equal(args[1], 60_000, 'job_output must cap the requested ten-minute wait at one minute')
       // The registry registers its waiter synchronously, unlike the tool middleware.
       const pending = wait.apply(this, args)
       rmSync(HOLD)

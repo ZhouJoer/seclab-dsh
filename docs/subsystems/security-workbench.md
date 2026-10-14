@@ -16,7 +16,7 @@ The experimental [security domain](../../packages/experimental/security-analysis
 
 [Record schemas](../../packages/experimental/security-analysis/src/workbench/model.ts) define project, asset, check, evidence, finding, plan, execution, delegation and reviewed knowledge values. Each command appends one revision to the storage-domain journal. Artifact bytes are published before references. Session logs retain model-visible tool results; the domain journal owns check and delegation recovery. `SecurityDelegation` records an assigned question, immutable project and asset scope, execution outcome, child report and coordinator disposition. Jobs own live execution; a report's acceptance does not confirm a finding.
 
-`ToolCatalogSnapshot` holds the resolved tool definitions, collections, packs and import revision. `ToolPackPreview` lists conflicts before an explicit import. `ToolPreferences` contains active-session soft selections, recorded in model context but excluded from project persistence. See [tool configuration](../../packages/experimental/security-analysis/README.md) for import, probing and lifecycle semantics.
+`ToolCatalogSnapshot` holds the resolved tool definitions, collections, packs and import revision. `ToolPackPreview` lists conflicts before an explicit import. `ToolPreferences` contains active-session checked adapter selections, recorded in model context but excluded from project persistence. See [tool configuration](../../packages/experimental/security-analysis/README.md) for import, probing and lifecycle semantics.
 
 ## Cordis API reference
 
@@ -168,12 +168,12 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('exportToolPack') exportToolPack(id: string): string
 
-/** Read or update soft preferences for the authenticated active session only.
+/** Read or check and update adapter preferences for the authenticated active session only.
  * @param agent - carrier-resolved session; caller cannot nominate another agent.
  * @param input - optional JSON selection; empty arrays restore automatic discovery.
- * @returns the current session selection.
+ * @returns the current selection after checking selected adapters and their installations; failures retain the previous selection.
  */
-@Remote('toolPreferences') toolPreferences(agent: Agent, input?: string): ToolPreferences
+@Remote('toolPreferences') async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences>
 
 /** Read cached or unchecked inventory rows for immediate operator display.
  * @param environmentId - selected environment, defaulting to the first local environment.

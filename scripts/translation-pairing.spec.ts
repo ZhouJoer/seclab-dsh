@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { gitIndexPaths, readGitIndexBlob } from './translation-pairing-git.ts'
+import { readGitIndex } from './translation-pairing-git.ts'
 import {
   computeTranslationPairingRecord,
   parseTranslationPairingRecord,
@@ -69,9 +69,18 @@ describe('translation pairing index reads', () => {
       writeFileSync(join(root, 'owner.md'), 'staged')
       execFileSync('git', ['-C', root, 'add', 'owner.md'])
       writeFileSync(join(root, 'owner.md'), 'unstaged')
+      const binary = Buffer.from('中文\n\0staged\n', 'utf8')
+      writeFileSync(join(root, 'two words.md'), binary)
+      writeFileSync(join(root, 'empty.md'), '')
+      execFileSync('git', ['-C', root, 'add', 'two words.md', 'empty.md'])
+      writeFileSync(join(root, 'two words.md'), 'unstaged')
 
-      expect(readGitIndexBlob(root, 'owner.md')?.toString('utf8')).toBe('staged')
-      expect(readGitIndexBlob(root, 'absent.md')).toBeUndefined()
+      const index = readGitIndex(root, ['owner.md', 'absent.md', 'two words.md', 'empty.md', 'owner.md'])
+      expect(index.blobs.get('owner.md')?.toString('utf8')).toBe('staged')
+      expect(index.blobs.get('absent.md')).toBeUndefined()
+      expect(index.blobs.get('two words.md')).toEqual(binary)
+      expect(index.blobs.get('empty.md')).toEqual(Buffer.alloc(0))
+      expect(index.blobs.size).toBe(3)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -88,10 +97,25 @@ describe('translation pairing index reads', () => {
       writeFileSync(join(root, 'docs/reference.zh.md'), '# 参考\n')
       execFileSync('git', ['-C', root, 'add', 'docs'])
 
-      expect(gitIndexPaths(root)).toEqual(new Set([
+      expect(readGitIndex(root, []).paths).toEqual(new Set([
         'docs/reference.md',
         'docs/reference.zh.md',
       ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects requested unmerged files while permitting unrelated conflict paths', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-translation-pairing-conflict-'))
+    try {
+      execFileSync('git', ['init', '--quiet', root], { env: { ...process.env, GIT_DEFAULT_HASH: 'sha1' } })
+      const oid = execFileSync('git', ['-C', root, 'hash-object', '-w', '--stdin'], { input: 'conflict', encoding: 'utf8' }).trim()
+      execFileSync('git', ['-C', root, 'update-index', '--index-info'], {
+        input: `100644 ${oid} 1\tconflict.md\n100644 ${oid} 2\tconflict.md\n`,
+      })
+      expect(() => readGitIndex(root, ['conflict.md'])).toThrow('conflict.md remains unmerged')
+      expect(readGitIndex(root, ['absent.md']).paths.size).toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

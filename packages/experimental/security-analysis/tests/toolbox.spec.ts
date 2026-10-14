@@ -35,6 +35,18 @@ beforeEach(() => {
       : ['r2pipe', 'frida', 'capstone', 'pefile'].includes(id) ? '{"version":"1.0","location":"site-packages"}' : '6.2'))
 })
 describe('tool inventory', () => {
+  it('reports a failed pinned loader without switching executable or probing dependent plugins', async () => {
+    run.mockResolvedValue({ ...ok(''), exitCode: -1073741515 })
+    const { inspect, resolveExecutable } = fixture(['selected-radare', 'radare2'])
+    const result = await inspect({ ...env, tools: [{ id: 'radare2', command: 'selected-radare', prefixArgs: [],
+      versionArgs: ['-v'], source: 'Operator' }] }, undefined, ['r2ghidra'])
+    expect(result.tools[0]).toMatchObject({ id: 'radare2', status: 'error', command: 'selected-radare' })
+    expect(result.tools[0]?.detail).toContain('STATUS_DLL_NOT_FOUND')
+    expect(result.tools[0]?.detail).toContain('-1073741515')
+    expect(result.tools[1]).toMatchObject({ id: 'r2ghidra', status: 'not-checked', detail: 'dependency-unavailable' })
+    expect(resolveExecutable.mock.calls.map(call => call[0])).toEqual(['selected-radare'])
+    expect(run).toHaveBeenCalledTimes(1)
+  })
   it.each(['capstone', 'pefile'])('probes %s only through the selected Python and preserves failure diagnostics', async (id) => {
     const environment: SecurityEnvironment = { ...env, tools: [
       { id: 'python', command: 'selected-python', prefixArgs: ['-I'], versionArgs: ['--version'], source: 'Configured' },

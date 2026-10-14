@@ -10,7 +10,7 @@ import { ToolPreferences } from '../src/client/ToolPreferences.tsx'
 import { builtinToolPack } from '../../security-analysis/src/builtin-tools.ts'
 import { zh } from '../src/client/locales.ts'
 afterEach(cleanup)
-it('opens without a probe, applies a soft collection preference and restores automatic discovery', async () => {
+it('opens without a probe, applies a checked collection preference and restores automatic discovery', async () => {
   const action = vi.fn(async (_id: SessionId, input?: string) => input
     ? JSON.parse(input) as Preferences : { toolIds: [], collectionIds: [], tags: [] })
   render(<ToolPreferences sessionId={SessionId('preference-session')} t={makeTranslate(zh, commonZh)} toolPreferences={action}
@@ -21,7 +21,7 @@ it('opens without a probe, applies a soft collection preference and restores aut
   fireEvent(details, new Event('toggle'))
   const firmware = await screen.findByRole('checkbox', { name: 'Firmware and native binaries' })
   fireEvent.click(firmware)
-  fireEvent.click(screen.getByRole('button', { name: '应用到本次会话' }))
+  fireEvent.click(screen.getByRole('button', { name: '检查并应用到本次会话' }))
   await screen.findByText('已应用，将在下一次模型请求中生效。')
   expect(action).toHaveBeenLastCalledWith('preference-session', JSON.stringify({ toolIds: [], collectionIds: ['firmware'], tags: [] }))
   fireEvent.click(screen.getByRole('button', { name: '恢复自动选择' }))
@@ -39,10 +39,11 @@ it('retains a failed save draft across collapse and ignores a disposed session s
   const details = screen.getByText(zh.toolPreferenceTitle).closest('details')!
   details.open = true; fireEvent(details, new Event('toggle'))
   fireEvent.click(await screen.findByRole('checkbox', { name: 'IoT / 物联网' }))
-  expect(ready).toHaveBeenLastCalledWith(false)
+  expect(ready).toHaveBeenLastCalledWith(true)
   fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceSave }))
   await act(async () => { pending.reject(new Error('Save unavailable')); await pending.promise.catch(() => {}) })
   expect(screen.getByRole('alert').textContent).toContain('Save unavailable')
+  await waitFor(() => { expect(ready).toHaveBeenLastCalledWith(true) })
   details.open = false; fireEvent(details, new Event('toggle'))
   details.open = true; fireEvent(details, new Event('toggle'))
   expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'IoT / 物联网' }).checked).toBe(true)
@@ -57,4 +58,27 @@ it('retains a failed save draft across collapse and ignores a disposed session s
   nextDetails.open = true; fireEvent(nextDetails, new Event('toggle'))
   expect((await screen.findByRole<HTMLInputElement>('checkbox', { name: 'IoT / 物联网' })).checked).toBe(false)
   expect(action).toHaveBeenLastCalledWith('second')
+})
+
+it('restores automatic selection after an unsupported adapter and permits analysis', async () => {
+  const initial = { toolIds: [], collectionIds: [], tags: [] }
+  const action = vi.fn(async (_id: SessionId, input?: string) => {
+    const selection = input ? JSON.parse(input) as Preferences : initial
+    if (selection.toolIds.length) throw new Error('r2pipe: no dedicated adapter')
+    return selection
+  })
+  const ready = vi.fn()
+  render(<ToolPreferences sessionId={SessionId('fallback')} t={makeTranslate(zh, commonZh)}
+    toolPreferences={action} onReadyChange={ready}
+    toolCatalog={async () => ({ editable: false, revision: '', packs: [builtinToolPack],
+      tools: builtinToolPack.tools, collections: builtinToolPack.collections })} />)
+  const details = screen.getByText(zh.toolPreferenceTitle).closest('details')!
+  details.open = true; fireEvent(details, new Event('toggle'))
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'r2pipe' }))
+  fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceSave }))
+  await screen.findByText(zh.toolPreferenceFallback, { exact: false })
+  expect(action).toHaveBeenLastCalledWith('fallback', JSON.stringify(initial))
+  expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'r2pipe' }).checked).toBe(false)
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(ready).toHaveBeenLastCalledWith(true)
 })

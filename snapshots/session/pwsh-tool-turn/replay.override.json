@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "tool-call" },
+      { "type": "block-end", "index": 0, "block": {
+        "type": "tool-call", "id": "native-exit-status", "name": "pwsh",
+        "arguments": "{\"command\":\"[Console]::Out.Write('PWSH_OK'); & (Get-Process -Id $PID).Path -NoLogo -NoProfile -NonInteractive -Command 'exit 23'\",\"description\":\"Write output and preserve a native process failure\"}"
+      } },
+      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
+      { "type": "finish", "reason": { "kind": "tool-calls" } }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "text" },
+      { "type": "block-end", "index": 0, "block": { "type": "text", "text": "DONE" } },
+      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
+      { "type": "finish", "reason": { "kind": "stop" } }
+    ]
+  }
+]

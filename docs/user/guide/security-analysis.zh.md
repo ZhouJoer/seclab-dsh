@@ -8,7 +8,7 @@ description: "启动支持逆向、Web 与 IoT 分析的安全工作台。"
 
 使用独立安全 profile 分析已授权的材料与目标。本文要求已有完成构建的源码目录、Node 和 pnpm，以及由操作者安装的所需外部分析工具。agent 工作需要 DeepSeek 模型密钥；配置模型前也可以设置项目和查看证据。完整的外部工具验收矩阵见[安全插件](../../../packages/experimental/security-analysis/README.zh.md#known-limitations-and-deferred-work)。
 
-添加程序、网站源码、固件或抓包，也可以登记 Web 目标，然后描述要研究的问题。助手根据内容与可用环境选择并组合逆向、Web 和 IoT 方法。打开**分析工具箱**可按领域浏览工具，浏览筛选不限制任务。开始前可在**更多选项 → 本次会话工具偏好**指定优先工具，应用偏好或选择**恢复自动选择**。偏好为可选建议，不排除其它合适工具。分析进展中的**选择依据**展示已保存的方法选择理由，实际执行情况以调用记录为准。
+添加程序、网站源码、固件或抓包，也可以登记 Web 目标，然后描述要研究的问题。助手根据内容与可用环境选择并组合逆向、Web 和 IoT 方法。打开**分析工具箱**可按领域浏览工具，浏览筛选不限制任务。开始前可在**更多选项 → 本次会话工具偏好**指定优先工具，按需应用偏好；未保存的修改不阻止开始分析。应用前检查适配器及依赖；应用后通过专用适配器调用工具。分析进展中的**选择依据**展示已保存的方法选择理由，实际执行情况以调用记录为准。
 
 ## 1. 准备 profile
 
@@ -29,7 +29,7 @@ pnpm security:doctor python unicorn radare2 tshark jadx --save
 
 工具包使用 `{"version":1,"id":"my-tools","label":"My tools","tools":[{"id":"my-cli","label":"My CLI","commands":["my-cli"],"tags":["firmware"],"guide":"Use bounded output."}],"collections":[]}` 格式。Python 模块使用 `dependency:"python"`、`invocation:"python"` 和 `probe:{kind:"python-module",module:"import_name",distribution:"package-name"}`。依赖可以引用其它已注册工具，导入时拒绝缺失引用和循环依赖。CLI 也支持 `pnpm security:tools import pack.json`（冲突时显式加 `--replace`）、`export PACK_ID output.json`、`doctor --tag firmware`、`doctor --collection web`，以及 `--catalog FILE` 指定定义文件。
 
-会话的高级工作台提供 **本次会话工具偏好**。默认由模型按任务发现工具，所选工具或集合只是优先建议，模型仍可查询其它工具。偏好只影响本次活跃会话，下次请求生效；关闭会话或重启后恢复自动发现。安全委派复制创建时的偏好，此后父子独立。项目、角色和执行授权保持原有约束。
+应用**本次会话工具偏好**时，会先检查所选适配器、环境绑定及已安装依赖；检查失败时自动恢复自动选择并显示原因，可直接开始分析。未保存的修改不影响已应用设置。选择生效期间模型使用专用适配器，通用 Shell 执行被禁用。需要原生工作流或没有可检查适配器的工具时，请选择**恢复自动选择**。偏好影响活跃会话及其委派子会话，在会话释放或 Host 重启时清除。
 
 自定义工具默认用 `--version` 查询版本；在 `set` 时重复传入 `--version-arg=参数` 可覆盖。解释器可通过重复的 `--arg=参数` 为每次调用添加固定启动参数；`set` 不带 `--arg` 时清除原有启动参数。例如，将 JADX 配置为 Java 可执行文件，并传入 `--arg=-cp --arg="路径/jadx.jar" --arg=jadx.cli.JadxCLI`。Windows 的 `.cmd`、`.bat` 和 `.ps1` 启动脚本需要改为配置解释器可执行文件。这些选项用于已有安装；登记名称不会安装软件或创建专用 provider。
 

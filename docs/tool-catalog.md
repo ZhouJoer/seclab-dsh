@@ -2198,7 +2198,7 @@ Read a background job: output since the previous read for stream jobs, or the re
     },
     "wait": {
       "type": "boolean",
-      "description": "Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false."
+      "description": "Return unread output immediately; otherwise wait for new output, progress, completion, or timeout. A timed-out wait leaves the job running. Defaults to false."
     },
     "timeout_ms": {
       "type": "number",

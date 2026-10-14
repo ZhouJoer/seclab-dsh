@@ -191,7 +191,9 @@ export class PwshLocalExecutor extends ShellExecutor {
    * `@deepseek-ai/dsh-pwsh-sandbox`).
    */
   protected argv(spec: ShellExecSpec): string[] {
-    return [this.pwshPath, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `${ENCODING_PREAMBLE}${spec.command}`]
+    // A final successful statement wins over an earlier native failure; explicit exit and terminating errors bypass the trailer.
+    const exit = '\nif ($?) { exit 0 }; if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; exit 1'
+    return [this.pwshPath, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `${ENCODING_PREAMBLE}${spec.command}${exit}`]
   }
 
   /** Map one resolved spec plus its argv onto a fully-specified subprocess spawn. */

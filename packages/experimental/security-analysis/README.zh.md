@@ -28,7 +28,7 @@ kind: "package-reference"
 
 在专用 `dsh` profile 中使用 [security-profile](../security-profile/README.zh.md)，添加 [security-web-profile](../security-web-profile/README.zh.md) 即可打开会话内工作台。默认通用 profile 不加载这些组合。
 
-分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好仅作为优先建议。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse` 与 `iot` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
+分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好选择经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse` 与 `iot` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
 
 通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。方法不安装工具，也不授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
 
@@ -126,7 +126,7 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 
 Metasploit 详情包含 JSON 任务文件模板，区分可复用的模块设置、本次环境与目标绑定，以及实测运行结果。指南要求 agent 在 `scripts/` 保留 rc 模板，在 `outputs/` 保留实际执行的 rc 和带哈希的输出，并将调用捕获为证据。复用采用所选环境的实测启动参数，明确宿主与容器路径，通过相同 Docker context 复制文件。模块覆盖值保留适用条件，未执行的负对照保持未验证。获准的 `import-source` 可归档 `importRoots` 内的文件；checkpoint 引用文件和证据。这些是现有原生 Shell 工具的使用指引，不是自动配方执行器，也不代表 Metasploit 集成已验收。
 
-`toolPreferences` Remote 只保存经过身份验证的活跃会话偏好；偏好是软建议，不改变角色、环境和执行权限，也不限制发现其它工具。下一次模型请求通过既有 runtime-context 快照记录这些 ID。安全委派在创建子会话时复制偏好，之后父子独立；会话释放或 Host 重启后恢复自动发现，不写入项目记录。
+经过身份验证的 toolPreferences Remote 在保存活跃会话选择前检查适配器、执行路由和已安装依赖。检查失败保留原选择；没有可检查适配器的工具会被拒绝。选择生效期间禁用 bash、pwsh 和原生工作流发现。下一次模型请求通过 runtime-context 快照记录适配器名称及操作。检查不授予执行权限，也不证明样本或设备已就绪。委派子会话继承选择；会话释放或 Host 重启时清除选择。恢复自动选择后可使用原生 Shell 工作流。
 
 provider 原始输出先保存，再提交证据引用。证据记录保留样本、工具版本、参数、来源 Session/call、完整性和批准计划。`security_evidence` 按字节分页，或按行号选取已保存的源码读取结果；分页读取原始字节。检索根据项目记录及原始证据重建 SQLite FTS，支持中文分词和标识符。共享经验必须经过用户审核，始终是参考材料，不是本项目证据。
 
@@ -215,7 +215,7 @@ flowchart LR
 
 失败区分配置、依赖、目标和执行阶段。采集保留可用原始输出与不完整状态；证据读取和幂等恢复不重复分析。Ghidra 与 ADB 保留原始文本，抓包分析保留 JSON，既有静态适配器保留结构化条目。版本探测不增加分析调用次数。服务或设备访问未经观测时保持未检测状态；安装检测通过不授予权限。
 
-集中配置减少重复拼装命令及误选设备或容器。复用 provider 执行让模型工具和操作员 API 保持相同的取消、租约及证据归属。固定接口仍仅覆盖声明操作，并依赖真实软件和目标。高级脚本或不支持环境可先用指定 `toolIds`、`details`、`native: true` 的 `security_capabilities`，再用 `native: true` 的 `security_environment` 加载指引。Shell 继续遵循既有权限。适配失败不会静默转为 Shell 调用，迁移不会拉取、重建、替换或停止外部容器。取消外部客户端不能证明远端已完成；不确定的完成状态保持未知。
+集中配置减少重复拼装命令及误选设备或容器。复用 provider 执行让模型工具和操作员 API 保持相同的取消、租约及证据归属。固定接口仍仅覆盖声明操作，并依赖真实软件和目标。未启用已检查偏好时，高级脚本或不支持环境可先用指定 `toolIds`、`details`、`native: true` 的 `security_capabilities`，再用 `native: true` 的 `security_environment` 加载指引。Shell 继续遵循既有权限。适配失败不会静默转为 Shell 调用，迁移不会拉取、重建、替换或停止外部容器。取消外部客户端不能证明远端已完成；不确定的完成状态保持未知。
 
 [路线图](../../../docs/roadmaps/security-analysis.zh.md#provider-adaptation)分别记录交付和真实环境验收。Loader 测试使用模拟服务与子进程夹具，不能证明真实 Ghidra 安装、Android 设备或外部 Kali 执行已验证。
 

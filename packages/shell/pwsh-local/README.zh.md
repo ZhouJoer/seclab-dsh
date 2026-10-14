@@ -57,6 +57,8 @@ kind: "package-reference"
 
 ### 运行命令
 
+末尾语句成功时返回零；末尾原生程序失败时保留原生退出码，包括有符号 Windows 加载器状态。显式 exit 和终止错误保留 PowerShell 语义。
+
 通过等待执行句柄的 `result()` 投影来运行命令；非零退出、超时或取消都会返回描述性结果，只有基础设施失败才会导致调用被拒绝。命令字符串作为单个参数传给 `-Command`：由 PowerShell 自己解析文本，不存在中间 shell，因此没有需要转义的 shell 引号层，原生 Win32 路径也原样通过。每条命令都先固定 UTF-8 输出，因此即使在 Windows PowerShell 5.1 兜底上，非 ASCII 输出也不会乱码。环境默认面向模型：`NO_COLOR=1 PAGER=cat GIT_PAGER=cat`（没有 `TERM=dumb`——那是 POSIX 概念），调用方显式提供的条目仍然优先。
 
 ```text

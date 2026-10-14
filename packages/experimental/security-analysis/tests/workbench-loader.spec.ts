@@ -655,7 +655,7 @@ else if (args.includes('--output')) {
   it('loads task-specific definitions on demand without injecting paths or unrelated guides', async () => {
     const installations = [{ id: 'radare2', command: '/tools/radare2', prefixArgs: ['--fixture'],
       versionArgs: ['-v'], source: 'Fixture configuration' }]
-    const { ctx, agent, model, controller } = await load(false, 0, { installations })
+    const { ctx, agent, model, controller } = await load(false, 0, { adapters: true, installations })
     await operator(controller, agent)({ kind: 'create', title: 'Binary analysis', objective: 'Inspect an owned ELF',
       environmentIds: ['local'], maxAttempts: 2 })
     agent.followup(webPrompt('Inspect the supplied native binary.'))
@@ -664,7 +664,7 @@ else if (args.includes('--output')) {
     expect(request).toContain('query security_capabilities')
     expect(request).toContain('Prefer native machine-readable results')
     expect(request).toContain('observed contents of all relevant materials')
-    expect(request).toContain('User preferences are soft priorities, not exclusions')
+    expect(request).toContain('Checked preferences disable native Shell execution')
     expect(request).not.toContain('/tools/radare2')
     expect(request).not.toContain('USBPcapCMD.exe')
     expect(request).not.toContain('pdgj')
@@ -709,20 +709,49 @@ else if (args.includes('--output')) {
         })
       }
     }
-    ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: ['radare2'], tags: [], collectionIds: [] }))
+    const pins = ['radare2', 'tshark'].map(id => [id, { command: process.execPath,
+      prefixArgs: ['-e', 'console.log("fixture 1.0")', '--'], versionArgs: ['--version'] }] as const)
+    await writeFile(join(roots[roots.length - 1]!, 'tools.json'), JSON.stringify({ version: 1, installations: { local: Object.fromEntries(pins) }, bindings: { radare2: 'local', tshark: 'local' } }))
+    await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: ['radare2'], tags: [], collectionIds: [] }))
     const scope = scopeOf(agent.ctx)
     if (!scope) throw new Error('Expected an agent scope')
     const assembly = await ctx.systemPrompt.assemble({ agent, scope })
     expect(JSON.stringify(assembly.contexts)).toContain('radare2')
     expect(JSON.stringify(assembly.contexts)).not.toContain('/tools/radare2')
     const other = await ctx.agents.create({ sessionId: SessionId('other-tool-preferences') })
-    expect(ctx.securityWorkbench.toolPreferences(other.agent).toolIds).toEqual([])
-    ctx.securityWorkbench.toolPreferences(other.agent, JSON.stringify({ toolIds: ['tshark'], tags: [], collectionIds: [] }))
+    expect((await ctx.securityWorkbench.toolPreferences(other.agent)).toolIds).toEqual([])
+    await ctx.securityWorkbench.toolPreferences(other.agent, JSON.stringify({ toolIds: ['tshark'], tags: [], collectionIds: [] }))
     await other.dispose()
-    expect(ctx.securityWorkbench.toolPreferences(other.agent).toolIds).toEqual([])
-    expect(ctx.securityWorkbench.toolPreferences(agent).toolIds).toEqual(['radare2'])
-    ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: [], tags: [], collectionIds: [] }))
-    expect(ctx.securityWorkbench.toolPreferences(agent)).toEqual({ toolIds: [], tags: [], collectionIds: [] })
+    expect((await ctx.securityWorkbench.toolPreferences(other.agent)).toolIds).toEqual([])
+    expect((await ctx.securityWorkbench.toolPreferences(agent)).toolIds).toEqual(['radare2'])
+    await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: [], tags: [], collectionIds: [] }))
+    expect(await ctx.securityWorkbench.toolPreferences(agent)).toEqual({ toolIds: [], tags: [], collectionIds: [] })
+  })
+  it('checks preferences before committing and blocks native execution until the selection is cleared', async () => {
+    const installations = [{ id: 'radare2', command: process.execPath,
+      prefixArgs: ['-e', 'console.log("fixture 1.0")', '--'], versionArgs: ['--version'], source: 'Fixture' },
+    { id: 'tshark', command: process.execPath, prefixArgs: ['-e', 'process.exit(23)', '--'], versionArgs: ['--version'], source: 'Fixture' }]
+    const { ctx, agent, controller } = await load(false, 0, { native: true, adapters: true, installations })
+    await operator(controller, agent)({ kind: 'create', title: 'Checked tools', objective: 'Inspect owned binary',
+      environmentIds: ['local'], maxAttempts: 2 })
+    const select = (toolIds: string[]) => ctx.securityWorkbench.toolPreferences(agent,
+      JSON.stringify({ toolIds, tags: [], collectionIds: [] }))
+    await select(['radare2'])
+    expect(ctx.securityWorkbench.toolboxConfiguration('local').adapters).toContainEqual(expect.objectContaining({ id: 'radare2', status: 'ready' }))
+    await expect(select(['tshark'])).rejects.toThrow('Adapter check failed')
+    await expect(select(['frida'])).rejects.toThrow('no dedicated adapter')
+    await expect(select(['ghidra'])).rejects.toThrow('imported sample')
+    expect((await ctx.securityWorkbench.toolPreferences(agent)).toolIds).toEqual(['radare2'])
+    expect((await execute(ctx, agent, 'security_capabilities', { toolIds: ['radare2'], details: true, native: true })).isError).toBe(true)
+    expect((await execute(ctx, agent, 'security_environment', { environmentId: 'local', toolId: 'radare2', native: true })).isError).toBe(true)
+    const shell = process.platform === 'win32' ? 'pwsh' : 'bash'
+    const blocked = await execute(ctx, agent, shell, { command: 'echo adapter-bypass', description: 'Test adapter enforcement' })
+    expect(blocked.isError).toBe(true)
+    expect(JSON.stringify(blocked)).toContain('dedicated adapters')
+    await select([])
+    const allowed = await execute(ctx, agent, shell, { command: 'echo restored-native', description: 'Test restored native workflow' })
+    expect(allowed.isError, JSON.stringify(allowed)).toBe(false)
+    expect(JSON.stringify(allowed)).toContain('restored-native')
   })
   it('runs generated scripts and relative outputs in the analysis directory and captures the execution log', async () => {
     const { ctx, agent, model, controller } = await load(false, 0, { native: true })
@@ -847,7 +876,7 @@ else if (args.includes('--output')) {
     expect(agent.session.snapshotEvents().some(event => event.type === 'tool/call' && ['write', 'edit'].includes(event.data.name))).toBe(false)
   })
   it('persists scoped child evidence reports without requiring or creating a finding review', async () => {
-    const { ctx, agent, controller, model } = await load(true, 0, { native: true })
+    const { ctx, agent, controller, model } = await load(true, 0, { native: true, adapters: true, installations: [{ id: 'radare2', command: process.execPath, prefixArgs: ['-e', 'console.log("fixture 1.0")', '--'], versionArgs: ['--version'], source: 'Fixture' }] })
     expect(ctx.tools.schemas().some(tool => tool.name === 'job_output')).toBe(false)
     expect(ctx.tools.get('job_output', agent)).toBeDefined()
     ctx.jobs.attachController('security-test')
@@ -870,7 +899,7 @@ else if (args.includes('--output')) {
       uncertainty: 'No candidate finding exists; this evidence assessment does not conclude a finding.',
       nextSteps: ['The coordinator can record a suspected finding if the evidence supports a candidate.'] }
     expect(controller.view(agent.id).records.filter(item => item.kind === 'finding' || item.kind === 'review')).toEqual([])
-    ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: ['radare2'], tags: [], collectionIds: [] }))
+    await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: ['radare2'], tags: [], collectionIds: [] }))
     for (const role of ['reconnaissance', 'reviewer'] as const) {
       const result = await execute(ctx, agent, 'security_delegate', {
         assetId: asset.value.id, role, question: 'Inspect the assigned scope.', criterion: 'Return a scoped structured report.',
@@ -884,7 +913,7 @@ else if (args.includes('--output')) {
         .map(item => item.value.report)).toContainEqual(model.childReport)
       expect(controller.view(agent.id).records.filter(item => item.kind === 'finding' || item.kind === 'review')).toEqual([])
       const child = model.requests.at(-1)!
-      expect(JSON.stringify(child.messages)).toContain('Operator tool preferences for this active session')
+      expect(JSON.stringify(child.messages)).toContain('Operator-selected adapters were checked')
       expect(JSON.stringify(child.messages)).toContain('radare2')
       const names = child.tools?.map(tool => tool.name)
       expect(names).toContain('structured_output')

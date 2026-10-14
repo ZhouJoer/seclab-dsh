@@ -1,5 +1,6 @@
 /** Retained adapter observations and byte-bounded evidence pages. @module */
 import { z } from 'zod'
+import { windowsStatusDiagnostic } from '@deepseek-ai/dsh-subprocess'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ProcessResult } from './workbench/process.ts'
 
@@ -70,6 +71,7 @@ export function adapterResultPage(bytes: Uint8Array, evidenceId: string, offset:
  */
 export function adapterProcessFailure(result: ProcessResult): string | undefined {
   if (result.exitCode !== 0 || result.signal !== null || result.timedOut || result.cancelled)
-    return JSON.stringify({ exitCode: result.exitCode, signal: result.signal, timedOut: result.timedOut, cancelled: result.cancelled })
+    return JSON.stringify({ exitCode: result.exitCode, signal: result.signal, timedOut: result.timedOut, cancelled: result.cancelled,
+      diagnostic: windowsStatusDiagnostic(result.exitCode) })
   return undefined
 }

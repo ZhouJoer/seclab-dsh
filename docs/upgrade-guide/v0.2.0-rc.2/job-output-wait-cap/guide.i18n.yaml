@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.0-rc.2/job-output-wait-cap/guide.md
+/:
+  en: eff0ad93686bcfe7
+  zh: 48828a46e1cd8f65
+/job-output-wait-cap:
+  en: 2fe2e1c20fe86afe
+  zh: 379fd3c3175f4230
+/job-output-wait-cap/change:
+  en: a8e84b6eb9f61d0a
+  zh: 63f5f5ea5fbad915
+/job-output-wait-cap/migration:
+  en: d154381cbd576dfc
+  zh: 03b36173427c871f

@@ -99,7 +99,7 @@ export async function apply(ctx) {
     ...observationFailure ? { analysisProgressCalls: 5 } : {},
     evolution: { provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' },
   })
-  const environmentEntry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/environment-local.js' : 'src/environment-local.ts'
+  const environmentEntry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/environment.js' : 'src/environment-local.ts'
   const environments = await import(new URL(`../../../packages/experimental/security-analysis/${environmentEntry}`, import.meta.url))
   await ctx.plugin(environments, {})
   const nativeEntry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/native.js' : 'src/native-provider.ts'

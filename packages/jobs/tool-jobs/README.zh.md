@@ -45,6 +45,8 @@ kind: "package-reference"
 
 不带配置加载插件是常用路径；`waitTimeoutMs` 高于 `maxWaitTimeoutMs` 时会在加载时失败。
 
+使用 `wait: true` 时，已有模型可见的未读输出会立即返回。否则，新输出、进度行变化或任务结束会唤醒等待；仅供观察者查看的日志不会唤醒。超时结果明确说明任务仍在运行，并要求模型报告状态而非重复同样的等待。读取部分输出后仍保留后续完成通知。生产方自身的缓冲，例如将命令输出传给 `Select-Object -Last`，仍可能直到命令结束才提供输出。
+
 ```yaml
 - name: '@deepseek-ai/dsh-tool-jobs'
 ```
@@ -52,7 +54,7 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `waitTimeoutMs` | `30,000` | `wait: true` 省略 `timeout_ms` 时使用的等待时间 |
-| `maxWaitTimeoutMs` | `600,000` | 模型所给等待时间的上限；更大的值向下收敛到它 |
+| `maxWaitTimeoutMs` | `60,000` | 模型所给等待时间的上限；更大的值向下收敛到它 |
 | `completionDelivery` | `wakeup` | `wakeup` 为空闲所有者开启一轮；`quiet` 让通知继续待领 |
 | `maxConsecutiveWakes` | 未设置 | 一个所有者可由唤醒开启的轮数，超出后通知降级为注入；未设置即不封顶 |
 

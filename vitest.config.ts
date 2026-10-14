@@ -41,7 +41,7 @@ const windowsUnsupportedPackages = process.platform === 'win32'
 const windowsUnsupportedTests = process.platform === 'win32'
   ? [
       ...windowsUnsupportedPackages.map(path => `${path}/tests/**/*.spec.ts`),
-      'packages/subprocess/subprocess/tests/**/*.spec.ts',
+      ...['control', 'egress', 'service'].map(name => `packages/subprocess/subprocess/tests/${name}.spec.ts`),
       'packages/subprocess/subprocess-local/tests/local.spec.ts',
       'packages/subprocess/subprocess-local/tests/process-inspector.spec.ts',
       'packages/subprocess/subprocess-local/tests/spawn.spec.ts',
@@ -72,7 +72,7 @@ const nonLinuxWebWorkerTests = process.platform === 'linux'
 const platformUnsupportedTests = [...windowsUnsupportedTests, ...nonLinuxWebWorkerTests]
 
 const windowsUnsupportedCoveragePackages = process.platform === 'win32'
-  ? [...windowsUnsupportedPackages, 'packages/subprocess/*']
+  ? [...windowsUnsupportedPackages, 'packages/subprocess/subprocess-local', 'packages/subprocess/win32-process']
   : []
 
 // Windows-only packages: their sources execute exclusively on win32 (koffi
@@ -96,6 +96,8 @@ const windowsOnlyCoverageExclusions = process.platform !== 'win32'
 // tests/runner.spec.ts, which spawns the real entry through tsx.
 const windowsRunnerCoverageExclusions = process.platform === 'win32'
   ? [
+      // Process-control suites require POSIX; the pure Windows status decoder runs on every host.
+      'packages/subprocess/subprocess/src/{control,index}.ts',
       'packages/sandbox/sandbox-windows-acl/src/runner.ts',
       // The session write lock's POSIX face (fs-ext flock plus inode
       // verification) executes only off-Windows: the Linux lanes hold its

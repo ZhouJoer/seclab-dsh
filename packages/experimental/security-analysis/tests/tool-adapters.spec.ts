@@ -37,6 +37,10 @@ async function fixture(tool = 'radare2', action = 'functions') {
   return { root, provider, context, request, artifact }
 }
 it('keeps values out of Shell and radare2 command syntax and retains exact input paths', () => {
+  expect(adapterArguments('radare2.symbols', {}, 'input.elf'))
+    .toEqual(['-N', '-q', '-e', 'scr.color=0', '-c', 'isj', 'input.elf'])
+  expect(decodeAdapterOutput('radare2.symbols', '[{"name":"sample_symbol","vaddr":4096}]'))
+    .toEqual([{ name: 'sample_symbol', vaddr: 4096 }])
   const path = 'C:\\input dir\\-样本.dll'
   expect(adapterArguments('radare2.disassemble', { address: '0x4010', count: 5 }, path))
     .toEqual(['-N', '-q', '-e', 'scr.color=0', '-c', 'pdj 5 @ 0x4010', path])
@@ -79,11 +83,13 @@ it.each([
   { patch: { truncated: true }, failure: 'collection limit' },
   { patch: { timedOut: true }, failure: 'timedOut' },
   { patch: { cancelled: true }, failure: 'cancelled' },
+  { patch: { exitCode: -1073741515, stdout: '', stderr: '' }, failure: 'STATUS_DLL_NOT_FOUND' },
 ])('retains diagnostics and cleans run directories for $failure', async ({ patch, failure }) => {
   const { provider, request, context, root } = await fixture()
   vi.mocked(runProcess).mockResolvedValue({ ...success, ...patch })
   const result = await provider.run(provider.resolve(request, context), context)
   expect(result.failure).toContain(failure)
+  expect(adapterResultSchema.parse(JSON.parse(Buffer.from(result.bytes).toString())).diagnostics).toContain(failure)
   expect(result.incomplete).toBe(true)
   expect(await readdir(join(root, 'runs'))).toEqual([])
 })

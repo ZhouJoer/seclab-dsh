@@ -15,6 +15,7 @@ import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import { publicJob, renderModelDelta, statusLine } from '../src/render.ts'
 
 const testToolSignal = new AbortController().signal
+const waitTimedOut = 'Wait timed out; the background job is still running. Report its status instead of repeating an unchanged wait. A completion notification will arrive when it finishes.\n[status: running]'
 
 const agentRegistryDisposers = new WeakMap<Agent, () => Promise<void>>()
 const agentScopeFibers = new WeakMap<Agent, { dispose: () => Promise<void> }>()
@@ -492,6 +493,55 @@ describe('job_output', () => {
     expect(text(await pending)).toBe('done deal\n[status: completed]')
   })
 
+  it('returns buffered output without waiting for job settlement', async () => {
+    const { ctx } = await setup()
+    const p = producer()
+    ctx.jobs.start(p.spec)
+    p.append('ready')
+    const wait = vi.spyOn(ctx.jobs, 'wait')
+    try {
+      expect(text(await call(ctx, 'job_output', { job_id: 'bash-1', wait: true }))).toBe('ready\n[status: running]')
+      expect(wait).not.toHaveBeenCalled()
+      expect(p.cancels).toEqual([])
+    } finally {
+      p.settle({ status: 'completed' })
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each(['output', 'progress'] as const)('returns on new %s and preserves the later completion notice', async (kind) => {
+    const { ctx } = await setup()
+    const inject = vi.fn()
+    const owner = await fakeAgent(ctx, 'output-owner', { inject })
+    const p = producer({ owner: owner.id })
+    const id = ctx.jobs.start(p.spec)
+    const aborter = new AbortController()
+    const pending = ctx.tools.execute({ signal: aborter.signal, callId: ToolCallId('read-output'), name: 'job_output',
+      arguments: { job_id: id, wait: true }, agent: owner })
+    try {
+      await tick()
+      p.append('observer-only', { channel: 'log' })
+      let returned = false
+      void pending.then(() => { returned = true })
+      await tick()
+      expect(returned).toBe(false)
+      if (kind === 'output') p.append('partial')
+      else p.progress('1/2 files')
+      const result = await pending
+      expect(text(result)).toBe(kind === 'output' ? 'partial\n[status: running]' : '(no new output)\n[status: running, 1/2 files]')
+      expect(p.cancels).toEqual([])
+      p.settle({ status: 'completed', result: 'final' })
+      await tick()
+      expect(inject).toHaveBeenCalledTimes(1)
+      expect(text(await call(ctx, 'job_output', { job_id: id }, owner))).toContain('final')
+    } finally {
+      aborter.abort()
+      p.settle({ status: 'completed' })
+      await pending
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('wait: true times out against the configured cap and leaves the job alive', async () => {
     const { ctx } = await setup({ waitTimeoutMs: 10, maxWaitTimeoutMs: 20 })
     ctx.jobs.start(producer().spec)
@@ -499,7 +549,30 @@ describe('job_output', () => {
     // A model-supplied timeout far above the cap is clamped: this returns
     // promptly (≤ the 20ms cap), not after ten minutes.
     const result = await call(ctx, 'job_output', { job_id: 'bash-1', wait: true, timeout_ms: 600_000 })
-    expect(text(result)).toBe('(no new output)\n[status: running]')
+    expect(text(result)).toBe(waitTimedOut)
+  })
+
+  it('returns control after one minute when a model requests a ten-minute wait by default', async () => {
+    const { ctx } = await setup()
+    const p = producer()
+    ctx.jobs.start(p.spec)
+    vi.useFakeTimers()
+    const pending = call(ctx, 'job_output', { job_id: 'bash-1', wait: true, timeout_ms: 600_000 })
+    let returned = false
+    void pending.then(() => { returned = true })
+    try {
+      await vi.advanceTimersByTimeAsync(59_999)
+      expect(returned).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(returned).toBe(true)
+      expect(text(await pending)).toBe(waitTimedOut)
+      expect(p.cancels).toEqual([])
+    } finally {
+      p.settle({ status: 'completed' })
+      await pending
+      await ctx.fiber.dispose()
+      vi.useRealTimers()
+    }
   })
 
   it('rejects an empty or unknown job id as an errored result', async () => {
@@ -1027,7 +1100,7 @@ describe('completion notices', () => {
     ctx.jobs.start(p.spec)
 
     const patient = call(ctx, 'job_output', { job_id: 'bash-1', wait: true, timeout_ms: 1000 }, owner)
-    expect(text(await call(ctx, 'job_output', { job_id: 'bash-1', wait: true, timeout_ms: 10 }, owner))).toBe('(no new output)\n[status: running]')
+    expect(text(await call(ctx, 'job_output', { job_id: 'bash-1', wait: true, timeout_ms: 10 }, owner))).toBe(waitTimedOut)
     p.settle({ status: 'completed' })
     expect(text(await patient)).toBe('(no new output)\n[status: completed]')
     await tick()
@@ -1041,7 +1114,7 @@ describe('completion notices', () => {
     const p = producer({ owner: owner.id })
     ctx.jobs.start(p.spec)
 
-    expect(text(await call(ctx, 'job_output', { job_id: 'bash-1', wait: true }, owner))).toBe('(no new output)\n[status: running]')
+    expect(text(await call(ctx, 'job_output', { job_id: 'bash-1', wait: true }, owner))).toBe(waitTimedOut)
     p.settle({ status: 'completed' })
     await tick()
     expect(inject).toHaveBeenCalledTimes(1)
