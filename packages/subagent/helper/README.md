@@ -55,7 +55,7 @@ The session projection derives only from recorded policy, start and end events. 
 
 #### What the model sees
 
-When enabled, `helper` asks for a reason, a self-contained question, attempted approaches and necessary context. It instructs the main model to use help when stuck and then continue its own work. The adviser receives only these materials and its read-only instructions, not a copy of the main conversation.
+When enabled, `helper` instructs the main model to consult proactively after three materially different attempts at the same obstacle produce no new evidence or progress, before another attempt or declaring the task blocked. The main model assesses these attempts from the task context and calls without waiting for a user reminder. It supplies the reason, a self-contained question, evidence, attempted approaches and observed results, distinguishing facts from assumptions. After receiving advice, it verifies the smallest recommended step and continues the task; new evidence or a new question can warrant another consultation. The adviser receives only the submitted materials and its read-only instructions, not a copy of the main conversation.
 
 #### Token effect
 

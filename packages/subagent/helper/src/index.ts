@@ -118,7 +118,7 @@ export class Helper extends TypertRemoteService {
     if (this.installations.has(agent)) return
     const tool = agent.ctx.tools.register(defineTool({
       name: 'helper',
-      description: 'Consult the configured advanced model when you are stuck or need expert diagnosis. Supply the concrete problem, evidence, and attempted approaches. The adviser can read files but cannot modify them. Wait for its advice, then continue the task yourself. Do not repeat an unchanged question.',
+      description: 'Consult the configured advanced model for expert diagnosis. Proactively call helper after three materially different attempts at the same obstacle produce no new evidence or progress. At that point, consult before another attempt or declaring the task blocked; do not wait for a user reminder. Supply the concrete problem, evidence, attempted approaches, and observed results. Distinguish observed facts from current assumptions. The adviser can read files but cannot modify them. Wait for its advice, verify the smallest recommended step, then continue the task yourself. Consult again when new evidence or a new question warrants it.',
       parameters: {
         reason: { type: 'string', required: true, description: 'Why expert help is needed.' },
         question: { type: 'string', required: true, description: 'A self-contained question for the adviser.' },
