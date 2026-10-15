@@ -52,13 +52,53 @@ Trace sample identification, unpacking, manifest recovery and resource restorati
 
 ![test1 investigation chain connecting materials, research directions and observations](docs/images/security-workbench/test1-investigation-chain.jpg)
 
-### Android
+### Android: device vulnerability analysis and validation
 
-Case study coming soon. This space is reserved for an Android example with recorded inputs, evidence and results.
+A Redmi K30 investigation combines device reconnaissance, kernel source comparison and boot image analysis to assess an older Android vulnerability. The workbench keeps research notes, kernel symbols, validation code and stage results together, so the analyst can review the proposed method before device execution.
 
-### Web
+The recorded device run observed use-after-free and double-free signals, with no crash or restart during that run. Device-side test files were cleaned up afterward. Full root privilege escalation was not performed and remains a separate step requiring approval.
 
-Case study coming soon. This space is reserved for a Web example with recorded scope, validation and findings.
+#### Investigation stages
+
+Browse the recorded reconnaissance, vulnerability assessment and validation preparation in the investigation list.
+
+![Android investigation list showing device reconnaissance, vulnerability assessment and validation preparation](docs/images/security-workbench/android-investigation-stages.jpg)
+
+#### Device validation progress
+
+Inspect the completed validation stage, tool activity and the next step awaiting approval.
+
+![Android work progress showing device validation results and the next approval step](docs/images/security-workbench/android-device-validation.jpg)
+
+#### Analysis summary
+
+Read the final summary, open retained research artifacts and inspect device cleanup results in the assistant.
+
+![Android analysis assistant showing retained artifacts, device cleanup and final research status](docs/images/security-workbench/android-analysis-summary.jpg)
+
+### Web: multi-tier lab analysis and reporting
+
+A local Web lab investigation follows an entry application, middleware and a database. It examines fastjson deserialization, OFBiz unauthorized file writes and database access through exposed configuration credentials. The workbench links findings to evidence and records observed flag values from all three layers.
+
+The report presents the assessment scope, methods, attack path, findings and remaining checks, with remediation advice in a separate card. The three findings remain marked as suspected: the 12 session evidence records are incomplete, and independent review and approved end-to-end runtime validation remain outstanding.
+
+#### OSCP-style report
+
+Read the report for a selected project revision, inspect the evidence limits and export the evidence package.
+
+![Web assessment report showing the summary, scope, methods and evidence limits](docs/images/security-workbench/web-assessment-report.jpg)
+
+#### Attack path and recorded results
+
+Follow the entry application, middleware and database path, and read the recorded flag values with their assessment status.
+
+![OSCP-style report showing the attack path and recorded flag values](docs/images/security-workbench/web-oscp-attack-path.jpg)
+
+#### Limitations and remediation
+
+Review outstanding checks and the separate remediation card for the application, middleware and database.
+
+![OSCP-style report showing assessment limitations and the separate remediation card](docs/images/security-workbench/web-oscp-remediation.jpg)
 
 ## Analysis scenarios
 

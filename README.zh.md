@@ -52,13 +52,53 @@ description: "AI 辅助的安全研究工作台，面向逆向、Web、Android �
 
 ![test1 调查链路关联材料、研究方向与观察](docs/images/security-workbench/test1-investigation-chain.jpg)
 
-### Android
+### Android：旧手机漏洞分析与真机验证
 
-案例待补充。此处预留具有输入材料、证据和结果记录的 Android 分析案例。
+以红米 K30 为对象，结合设备侦察、内核源码比对与启动镜像分析，评估旧版 Android 漏洞。工作台集中保留研究笔记、内核符号、验证代码和阶段结果，便于分析者在上机执行前审阅方法。
 
-### Web
+记录中的真机测试观察到了释放后使用（UAF）与双重释放信号，测试期间没有崩溃或重启，结束后已清理设备侧测试文件。完整 root 提权尚未执行，需要另行批准。
 
-案例待补充。此处预留具有范围、验证和发现记录的 Web 分析案例。
+#### 调查阶段
+
+在调查列表中查看设备侦察、漏洞评估与验证准备的阶段记录。
+
+![Android 调查列表展示设备侦察、漏洞评估与验证准备](docs/images/security-workbench/android-investigation-stages.jpg)
+
+#### 真机验证进展
+
+查看已完成的验证阶段、工具调用情况，以及等待批准的下一步操作。
+
+![Android 工作进展展示真机验证结果与待批准的后续步骤](docs/images/security-workbench/android-device-validation.jpg)
+
+#### 分析总结
+
+在分析助手中阅读最终结论、打开保留的研究产物，并查看设备清理结果。
+
+![Android 分析助手展示保留产物、设备清理结果与最终研究状态](docs/images/security-workbench/android-analysis-summary.jpg)
+
+### Web：多层靶场分析与报告
+
+以本地 Web 靶场为对象，沿入口应用、中间件和数据库展开调查，分析 fastjson 反序列化、OFBiz 未授权文件写入，以及配置凭据泄漏后的数据库访问。工作台将发现与证据关联，并记录三层目标中观察到的旗帜值。
+
+报告汇总评估范围、测试方法、攻击路径、技术发现和待完成检查，修复建议单独展示。三项发现保留“疑似”状态：12 条会话证据均标为不完整，独立复核与经批准的端到端运行验证仍待完成。
+
+#### OSCP 风格报告
+
+按项目修订版本查看报告，检查证据限制，并导出证据包。
+
+![Web 评估报告展示执行摘要、范围、测试方法与证据限制](docs/images/security-workbench/web-assessment-report.jpg)
+
+#### 攻击路径与结果记录
+
+查看入口应用、中间件到数据库的调查路径，以及记录的旗帜值和评估状态。
+
+![OSCP 风格报告展示攻击路径与记录的旗帜值](docs/images/security-workbench/web-oscp-attack-path.jpg)
+
+#### 限制与修复建议
+
+查看尚未完成的检查，以及单独列出的应用、中间件和数据库修复建议。
+
+![OSCP 风格报告展示评估限制与独立的修复建议卡片](docs/images/security-workbench/web-oscp-remediation.jpg)
 
 ## 分析场景
 

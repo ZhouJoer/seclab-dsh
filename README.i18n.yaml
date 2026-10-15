@@ -26,12 +26,30 @@
 /seclab-dsh-security-research-workbench/research-examples/firmware-restoring-front-end-resources-from-test1/investigation-chain:
   en: 70ae24224ccfba1a
   zh: b23f625a920de55f
-/seclab-dsh-security-research-workbench/research-examples/android:
-  en: d43fd0f83b08f046
-  zh: 9ef1601e92b403c4
-/seclab-dsh-security-research-workbench/research-examples/web:
-  en: fae606efb7a2843b
-  zh: 86fff39db03891c5
+/seclab-dsh-security-research-workbench/research-examples/android-device-vulnerability-analysis-and-validation:
+  en: a065c1985815eda7
+  zh: b7d8a62e5ee6da2e
+/seclab-dsh-security-research-workbench/research-examples/android-device-vulnerability-analysis-and-validation/investigation-stages:
+  en: 4f0199fce708095c
+  zh: dc6e7fc5fdbd56cb
+/seclab-dsh-security-research-workbench/research-examples/android-device-vulnerability-analysis-and-validation/device-validation-progress:
+  en: 873e6d3e180cc983
+  zh: 51a8183d5daac124
+/seclab-dsh-security-research-workbench/research-examples/android-device-vulnerability-analysis-and-validation/analysis-summary:
+  en: 663ad0b71ce894d8
+  zh: 4ad27cd874eb1552
+/seclab-dsh-security-research-workbench/research-examples/web-multi-tier-lab-analysis-and-reporting:
+  en: 881288f114ce9e51
+  zh: 317886497208eac7
+/seclab-dsh-security-research-workbench/research-examples/web-multi-tier-lab-analysis-and-reporting/oscp-style-report:
+  en: c91f1b50745ae6fc
+  zh: 33992389df5b00e3
+/seclab-dsh-security-research-workbench/research-examples/web-multi-tier-lab-analysis-and-reporting/attack-path-and-recorded-results:
+  en: 587951c5ed1553a4
+  zh: f2d015921c863dcf
+/seclab-dsh-security-research-workbench/research-examples/web-multi-tier-lab-analysis-and-reporting/limitations-and-remediation:
+  en: 06fc0725b444b0b7
+  zh: 75d1def4b5a7f32a
 /seclab-dsh-security-research-workbench/analysis-scenarios:
   en: b142915fdc75f4fc
   zh: 8a19c224457d242e
