@@ -9,38 +9,38 @@
   en: 4d4c6bf9a37c9c04
   zh: 343be9e72501870d
 /advisor-experimental-evaluation-report/summary:
-  en: 5201b6d5e68e5533
-  zh: 68ec3ffb78eaa129
+  en: 2eb93334f4ebca67
+  zh: 55c73b311c3202c2
 /advisor-experimental-evaluation-report/table-of-contents:
   en: a6bd72201ecae910
   zh: 569be676a5e3e5ef
 /advisor-experimental-evaluation-report/role-and-operation:
-  en: a3107b297a7c45ca
-  zh: fcb34b369bd871e0
+  en: 9a683d9bb6a25df5
+  zh: 215ef1d64b0fdb53
 /advisor-experimental-evaluation-report/key-experimental-observations:
   en: 1f57dd037f2fd716
   zh: bd07e54f63282d18
 /advisor-experimental-evaluation-report/key-experimental-observations/independent-review-can-correct-false-assumptions:
-  en: 5bc62e6660cd6bb7
-  zh: 97dc05b5bbb844e0
-/advisor-experimental-evaluation-report/key-experimental-observations/enabling-the-feature-does-not-guarantee-timely-consultation:
-  en: 5f84d61ba27d3777
-  zh: ed6c2edca1b2f656
+  en: 50ff67e4146ff706
+  zh: 93b9fa6957e0090f
+/advisor-experimental-evaluation-report/key-experimental-observations/proactive-consultation-was-infrequent-human-reminders-prompted-calls:
+  en: a08e690453ce26bb
+  zh: a2d6c23b563fdfc5
 /advisor-experimental-evaluation-report/key-experimental-observations/the-tool-environment-caused-substantial-unproductive-work:
-  en: b3cc96683796141b
-  zh: 4c9350e8c89efe06
+  en: af1550ee77483460
+  zh: 6e6c36b7c800adc9
 /advisor-experimental-evaluation-report/waiting-time-and-interaction-cost:
-  en: 283369af51874bb2
-  zh: 871e06e831311267
+  en: 3aa426364855fc73
+  zh: 1706bc628b5b2eeb
 /advisor-experimental-evaluation-report/cost-and-acceptance-criteria:
   en: 6973892b0aa71b3f
   zh: 1a4f45928914c7a9
-/advisor-experimental-evaluation-report/cost-and-acceptance-criteria/cumulative-tokens-do-not-directly-establish-efficiency-gains:
-  en: 1281ed198550d075
-  zh: 075cfc850d196a2c
+/advisor-experimental-evaluation-report/cost-and-acceptance-criteria/token-usage-and-cost-accounting:
+  en: 7346140f18a62be0
+  zh: 97844c26626e8ebc
 /advisor-experimental-evaluation-report/cost-and-acceptance-criteria/completion-needs-verifiable-stages:
-  en: 38a0b6ac286eb49f
-  zh: 384c447b17f27803
+  en: 74c765024b0f4a46
+  zh: 1e35b3e37b52e8aa
 /advisor-experimental-evaluation-report/relationship-to-existing-advisor-designs:
   en: 015082bf558badf6
   zh: 39ca7bdbc1975ef2
@@ -48,23 +48,23 @@
   en: c57923c8b8c2600b
   zh: ccfc1e8a544da802
 /advisor-experimental-evaluation-report/improvement-priorities/improve-consultation-reliability-first:
-  en: 83bfa9408a4e57e7
-  zh: ead8e586fc423c9e
+  en: b01d001950849f7c
+  zh: 507033e0c0294b40
 /advisor-experimental-evaluation-report/improvement-priorities/prioritize-correction-of-judgments:
-  en: ca4c91b014e34245
-  zh: 022a3287399b4a56
+  en: 93489fe6db196b05
+  zh: a06b4bf4c8f5be60
 /advisor-experimental-evaluation-report/improvement-priorities/make-tool-configuration-a-stable-input:
-  en: 8ad4afcc7d06fc23
-  zh: 71c4fb1b75146746
+  en: e557b5abc4331b6c
+  zh: 1687601eb47d07ad
 /advisor-experimental-evaluation-report/improvement-priorities/connect-advice-to-recorded-outcomes:
-  en: ebef0111c95ef18a
-  zh: ce0eb5ac58b4b7c9
+  en: 5bf64c9334054977
+  zh: a48441c7557121b6
 /advisor-experimental-evaluation-report/further-evaluation:
-  en: 59f1b10220af6987
-  zh: c4d1a88382ad3003
+  en: 05a98e18d77e52bd
+  zh: 418f937358f9ea44
 /advisor-experimental-evaluation-report/sources:
-  en: 4fd93a96bcbbe164
-  zh: 55d1de423a5361bc
+  en: de034e186d5aad95
+  zh: 5442ff71e2edda03
 /advisor-experimental-evaluation-report/dev-note:
-  en: 139eb03db937d168
-  zh: 710ac3ba405054a3
+  en: 6549a7c59a0319bf
+  zh: f25c7cd7c4470d6a
