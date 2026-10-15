@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for advisor-evaluation-2026-10-15.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/roadmaps/advisor-evaluation-2026-10-15.md
+/:
+  en: 42fb8ed5fc15b193
+  zh: 7114b6e7bd5fd89b
+/advisor-experimental-evaluation-report:
+  en: 4d4c6bf9a37c9c04
+  zh: 343be9e72501870d
+/advisor-experimental-evaluation-report/summary:
+  en: 5201b6d5e68e5533
+  zh: 68ec3ffb78eaa129
+/advisor-experimental-evaluation-report/table-of-contents:
+  en: a6bd72201ecae910
+  zh: 569be676a5e3e5ef
+/advisor-experimental-evaluation-report/role-and-operation:
+  en: a3107b297a7c45ca
+  zh: fcb34b369bd871e0
+/advisor-experimental-evaluation-report/key-experimental-observations:
+  en: 1f57dd037f2fd716
+  zh: bd07e54f63282d18
+/advisor-experimental-evaluation-report/key-experimental-observations/independent-review-can-correct-false-assumptions:
+  en: 5bc62e6660cd6bb7
+  zh: 97dc05b5bbb844e0
+/advisor-experimental-evaluation-report/key-experimental-observations/enabling-the-feature-does-not-guarantee-timely-consultation:
+  en: 5f84d61ba27d3777
+  zh: ed6c2edca1b2f656
+/advisor-experimental-evaluation-report/key-experimental-observations/the-tool-environment-caused-substantial-unproductive-work:
+  en: b3cc96683796141b
+  zh: 4c9350e8c89efe06
+/advisor-experimental-evaluation-report/waiting-time-and-interaction-cost:
+  en: 283369af51874bb2
+  zh: 871e06e831311267
+/advisor-experimental-evaluation-report/cost-and-acceptance-criteria:
+  en: 6973892b0aa71b3f
+  zh: 1a4f45928914c7a9
+/advisor-experimental-evaluation-report/cost-and-acceptance-criteria/cumulative-tokens-do-not-directly-establish-efficiency-gains:
+  en: 1281ed198550d075
+  zh: 075cfc850d196a2c
+/advisor-experimental-evaluation-report/cost-and-acceptance-criteria/completion-needs-verifiable-stages:
+  en: 38a0b6ac286eb49f
+  zh: 384c447b17f27803
+/advisor-experimental-evaluation-report/relationship-to-existing-advisor-designs:
+  en: 015082bf558badf6
+  zh: 39ca7bdbc1975ef2
+/advisor-experimental-evaluation-report/improvement-priorities:
+  en: c57923c8b8c2600b
+  zh: ccfc1e8a544da802
+/advisor-experimental-evaluation-report/improvement-priorities/improve-consultation-reliability-first:
+  en: 83bfa9408a4e57e7
+  zh: ead8e586fc423c9e
+/advisor-experimental-evaluation-report/improvement-priorities/prioritize-correction-of-judgments:
+  en: ca4c91b014e34245
+  zh: 022a3287399b4a56
+/advisor-experimental-evaluation-report/improvement-priorities/make-tool-configuration-a-stable-input:
+  en: 8ad4afcc7d06fc23
+  zh: 71c4fb1b75146746
+/advisor-experimental-evaluation-report/improvement-priorities/connect-advice-to-recorded-outcomes:
+  en: ebef0111c95ef18a
+  zh: ce0eb5ac58b4b7c9
+/advisor-experimental-evaluation-report/further-evaluation:
+  en: 59f1b10220af6987
+  zh: c4d1a88382ad3003
+/advisor-experimental-evaluation-report/sources:
+  en: 4fd93a96bcbbe164
+  zh: 55d1de423a5361bc
+/advisor-experimental-evaluation-report/dev-note:
+  en: 139eb03db937d168
+  zh: 710ac3ba405054a3
