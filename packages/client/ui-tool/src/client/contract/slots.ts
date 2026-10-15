@@ -16,7 +16,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * Keyed Tool call view dispatched by wire Tool name, including plugin tools.
      * Register with `key: '<tool name>'`; a typo never renders.
-     *
      * Registering an occupied key replaces its view; unclaimed keys use the
      * generic row. The owner supplies the call identity and frozen running
      * or settled node through explicit phase props. Preparing blocks have no dispatched

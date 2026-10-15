@@ -4,9 +4,9 @@ import { canObserve, delegationPrompt, resolveTask, toolsForRole } from '../src/
 
 describe('security role assignments', () => {
   it('allows optional expert consultation only for the coordinator', () => {
-    expect(toolsForRole('coordinator')).toContain('helper')
+    expect(toolsForRole('coordinator')).toContain('advisor')
     for (const role of ['reconnaissance', 'reverse-analyst', 'web-analyst', 'researcher', 'reviewer'] as const)
-      expect(toolsForRole(role)).not.toContain('helper')
+      expect(toolsForRole(role)).not.toContain('advisor')
   })
   it('directs binary collectors to installed reverse tools before custom parsing', () => {
     for (const role of ['reconnaissance', 'reverse-analyst'] as const) {

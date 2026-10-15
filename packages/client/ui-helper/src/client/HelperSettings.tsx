@@ -31,6 +31,9 @@ export function HelperSettingsCard(props: PropsRuntime<'plugins.item'> & PropsLo
     labels={{ save: t('save'), saving: t('saving'), saveFailed: t('saveFailed'), unavailable: t('unavailable'), readOnly: t('readOnly') }}>
     <div className={css.card}>
       <label><input type="checkbox" disabled={disabled} checked={value.enabled === 'true'} onChange={(event) =>{  props.edit('enabled', String(event.target.checked)) }} />{t('enabled')}</label>
+      <label className={css.field}>{t('defaultMode')}<select disabled={disabled} value={value.mode} onChange={(event) =>{  props.edit('mode', event.target.value) }}>
+        <option value="normal">{t('normal')}</option><option value="proactive">{t('proactive')}</option>
+      </select></label>
       <p className={css.muted}>{t('sessionHint')}</p>
       <label className={css.field}>{t('backend')}<select disabled={disabled} value={value.backend} onChange={(event) =>{  props.edit('backend', event.target.value) }}>
         <option value="codex">{t('codex')}</option><option value="api">{t('api')}</option>

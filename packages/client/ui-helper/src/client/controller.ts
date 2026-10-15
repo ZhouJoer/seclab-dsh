@@ -19,7 +19,7 @@ export interface DirectoryActions {
   test: (workspaceId: WorkspaceId) => Promise<void>
 }
 /** All fields staged by the Helper page. */
-export const fields = ['enabled', 'backend', 'provider', 'model', 'reasoningEffort', 'codexModel', 'codexReasoningEffort'] as const
+export const fields = ['enabled', 'mode', 'backend', 'provider', 'model', 'reasoningEffort', 'codexModel', 'codexReasoningEffort'] as const
 /** Editable form values with the shared save state. */
 export interface FormState extends SettingsFormShell { values: Record<typeof fields[number], string> }
 /** Account and catalogs can fail independently. */
@@ -61,7 +61,7 @@ export class HelperController {
       parse: text => text === '__choose__' ? undefined : { kind: 'set', value: field === 'enabled' ? text === 'true' : text },
     })))
     this.state = this.form.bind(() => ({ ...this.form.shell(), values: {
-      enabled: this.form.field('enabled').text, backend: this.form.field('backend').text,
+      enabled: this.form.field('enabled').text, mode: this.form.field('mode').text, backend: this.form.field('backend').text,
       provider: this.form.field('provider').text, model: this.form.field('model').text,
       reasoningEffort: this.form.field('reasoningEffort').text, codexModel: this.form.field('codexModel').text,
       codexReasoningEffort: this.form.field('codexReasoningEffort').text,

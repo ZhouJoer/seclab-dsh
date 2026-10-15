@@ -28,7 +28,7 @@ Compose `@deepseek-ai/dsh-base`, an application bundle, and `@deepseek-ai/dsh-ex
 
 The security Web profile listens on `127.0.0.1:3081` by default; the ordinary Web profile uses port `3080`. An explicit `--port` overrides the security default, including `--port 0` for an allocated port. A busy port fails at bind; the profile does not silently switch ports.
 
-This composition includes the optional [Helper controls](../../client/ui-helper/README.md). Helper starts disabled; choose an API expert or ChatGPT Codex in Plugins → Helper and enable it per session. The coordinator can consult it when enabled. The source launcher keeps these bundle layers below user settings, so saved model choices survive restart.
+This composition includes the optional [Advisor controls](../../client/ui-helper/README.md). Advisor starts disabled; choose an API expert or ChatGPT Codex in Plugins → Advisor and enable it per session. The coordinator can consult it when enabled. The source launcher keeps these bundle layers below user settings, so saved model choices survive restart.
 
 -----
 

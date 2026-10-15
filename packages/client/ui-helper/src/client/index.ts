@@ -62,7 +62,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         await scoped.sessions.using(id, { source: 'helperTest' }, async () => {
           const session = scoped.sessions.binding(id)?.session
           if (!session) throw new Error(t('sessionMissing'))
-          await unwrap(session.command('/helper on'))
+          await unwrap(session.command('/advisor on'))
           scoped.uiWorkspace.openSession(id)
           await unwrap(session.prompt([{ type: 'text', text: t('testPrompt') }], 'queue'))
         })
@@ -80,14 +80,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     }))
     const actions = (id: SessionId): UsageActions => ({
       configure: () => { scoped.pluginNavigation.openItem('helper') },
-      toggle: async (enabled) => {
+      toggle: async (enabled, mode = 'normal') => {
         const session = scoped.sessions.binding(id)?.session
         if (!session) throw new Error(t('sessionMissing'))
-        await unwrap(session.command(`/helper ${enabled ? 'on' : 'off'}`))
+        await unwrap(session.command(`/advisor ${enabled ? mode : 'off'}`))
       },
       openChild: (child) =>{  scoped.uiWorkspace.openSession(child) },
     })
     scoped.slots.inject('conversation.input.left', () => scoped.slots.register({ name: 'conversation.input.left', id: 'helper', locale: 'helper', inject: actions }, HelperControl))
+    scoped.slots.inject('tool.call.toolview', () => scoped.slots.register({ name: 'tool.call.toolview', key: 'advisor', locale: 'helper', inject: actions }, HelperToolCard))
     scoped.slots.inject('tool.call.toolview', () => scoped.slots.register({ name: 'tool.call.toolview', key: 'helper', locale: 'helper', inject: actions }, HelperToolCard))
   })
   try { await ui } catch (error) { await ui.dispose(); await unmount(); throw error }

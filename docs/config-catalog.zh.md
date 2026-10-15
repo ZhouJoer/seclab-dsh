@@ -1524,13 +1524,15 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `subagents` · `llm` · `systemPrompt` · `sessionProjections`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/subagent/helper/src/index.ts:26`](../packages/subagent/helper/src/index.ts)
+- `source`: [`packages/subagent/helper/src/index.ts:27`](../packages/subagent/helper/src/index.ts)
 
 ```ts config-catalog
 /** Live settings; each consultation captures one complete selection. */
 export interface Config {
   /** Initial availability for newly created top-level sessions. */
   enabled: Volatile<boolean>
+  /** Initial consultation prompting mode for newly created top-level sessions. */
+  mode: Volatile<HelperMode>
   /** Consultation runtime sampled at the start of each call. */
   backend: Volatile<'api' | 'codex'>
   /** Existing DSH API provider id; credentials remain with that provider. */
@@ -1544,6 +1546,9 @@ export interface Config {
   /** Codex effort id, or empty for the native default. */
   codexReasoningEffort: Volatile<string>
 }
+
+/** How actively the main model is prompted to seek advice. */
+export type HelperMode = 'normal' | 'proactive'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-helper -->
 

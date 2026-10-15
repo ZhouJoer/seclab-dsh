@@ -93,7 +93,7 @@ The Toolbox separates shareable definitions, environment installations and measu
 
 | Role | Task | Available analysis capabilities |
 |---|---|---|
-| `coordinator` | Plan, integrate and validate | Domain tools, native scripts, web references, jobs/goal/todo; approved validation execution |
+| `coordinator` | Plan, integrate and validate | Domain tools, native scripts, web references, jobs/goal/todo, optional `advisor`; approved validation execution |
 | `reconnaissance` | `inventory` | Native scripts, binary identity/hex/strings, Ghidra inventory, fixed adb queries, environment health, evidence search |
 | `reverse-analyst` | `surface`, `assessment`, `mining` | Native scripts, binary inspection, read-only Ghidra queries, JADX and fixed adb queries, environment health, evidence search and public research |
 | `web-analyst` | `surface`, `assessment` | Native scripts, assigned HTTP evidence, immutable source reads/search, environment health and public research |

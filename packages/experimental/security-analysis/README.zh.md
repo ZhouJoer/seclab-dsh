@@ -93,7 +93,7 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 
 | 角色 | 任务 | 可用分析能力 |
 |---|---|---|
-| `coordinator` | 规划、汇总与验证 | 领域工具、原生脚本、网页资料、jobs/goal/todo；执行已批准的验证计划 |
+| `coordinator` | 规划、汇总与验证 | 领域工具、原生脚本、网页资料、jobs/goal/todo、可选的 `advisor`；执行已批准的验证计划 |
 | `reconnaissance` | `inventory` | 原生脚本、二进制身份/十六进制/字符串、Ghidra 清单、固定 adb 查询、环境检查、证据检索 |
 | `reverse-analyst` | `surface`、`assessment`、`mining` | 原生脚本、二进制检查、只读 Ghidra 查询、JADX 和固定 adb 查询、环境检查、证据检索与公开资料研究 |
 | `web-analyst` | `surface`、`assessment` | 原生脚本、已分配的 HTTP 证据、不可变源码读取/搜索、环境检查与公开资料研究 |

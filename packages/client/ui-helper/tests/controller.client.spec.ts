@@ -9,7 +9,7 @@ afterEach(() => { controllers.splice(0).forEach((controller) =>{  controller.dis
 function setup() {
   const host = stubConfigForm<HelperSettings>()
   host.publish({ status: 'ready', writable: true, revision: 1, user: {}, value: {
-    enabled: false, backend: 'codex', provider: '', model: '', reasoningEffort: 'high', codexModel: 'expert', codexReasoningEffort: 'high',
+    enabled: false, mode: 'normal', backend: 'codex', provider: '', model: '', reasoningEffort: 'high', codexModel: 'expert', codexReasoningEffort: 'high',
   } })
   const actions = {
     loginFailed: () => 'ChatGPT login failed.',

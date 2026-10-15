@@ -12,24 +12,33 @@ import { zh } from '../src/client/locales.ts'
 afterEach(cleanup)
 const t = makeTranslate(zh)
 
-it('opens configuration without enabling Helper and keeps the toggle separate', async () => {
-  const state: HelperState = { enabled: false, calls: [] }
+it('opens configuration separately and selects normal or proactive mode', async () => {
+  const state: HelperState = { enabled: false, mode: 'normal', calls: [] }
   const useProjection = (() => state) as ComponentProps<typeof HelperControl>['useProjection']
   const configure = vi.fn(), toggle = vi.fn(async () => {})
   const view = render(<HelperControl t={t} useProjection={useProjection} configure={configure} toggle={toggle} />)
-  fireEvent.click(view.getByRole('button', { name: 'Helper: 关闭 · 0' }))
+  fireEvent.click(view.getByRole('button', { name: 'Advisor: 关闭 · 0' }))
   fireEvent.click(view.getByRole('menuitem', { name: '配置高级模型 / Codex' }))
   expect(configure).toHaveBeenCalledOnce()
   expect(toggle).not.toHaveBeenCalled()
-  fireEvent.click(view.getByRole('button', { name: 'Helper: 关闭 · 0' }))
-  fireEvent.click(view.getByRole('menuitem', { name: '开启' }))
-  await vi.waitFor(() => { expect(toggle).toHaveBeenCalledWith(true) })
+  fireEvent.click(view.getByRole('button', { name: 'Advisor: 关闭 · 0' }))
+  fireEvent.click(view.getByRole('menuitem', { name: '正常' }))
+  await vi.waitFor(() => { expect(toggle).toHaveBeenCalledWith(true, 'normal'); expect(view.getByRole('button', { name: 'Advisor: 关闭 · 0' }).hasAttribute('disabled')).toBe(false) })
   expect(configure).toHaveBeenCalledOnce()
+  fireEvent.click(view.getByRole('button', { name: 'Advisor: 关闭 · 0' }))
+  fireEvent.click(view.getByRole('menuitem', { name: '积极' }))
+  await vi.waitFor(() => { expect(toggle).toHaveBeenCalledWith(true, 'proactive'); expect(view.getByRole('button', { name: 'Advisor: 关闭 · 0' }).hasAttribute('disabled')).toBe(false) })
+  state.enabled = true; state.mode = 'proactive'
+  view.rerender(<HelperControl t={t} useProjection={useProjection} configure={configure} toggle={toggle} />)
+  fireEvent.click(view.getByRole('button', { name: 'Advisor: 积极 · 0' }))
+  expect(view.getByRole('menuitem', { name: '积极' }).hasAttribute('disabled')).toBe(true)
+  fireEvent.click(view.getByRole('menuitem', { name: '关闭' }))
+  await vi.waitFor(() => { expect(toggle).toHaveBeenCalledWith(false, 'normal') })
 })
 
 it.each(['native', 'ptc'])('shows persisted advice, missing usage and child log for %s calls', (mode) => {
   const callId = 'consult' as HelperCall['callId']
-  const state: HelperState = { enabled: true, calls: [{ callId, backend: 'api', model: 'expert',
+  const state: HelperState = { enabled: true, mode: 'normal', calls: [{ callId, backend: 'api', model: 'expert',
     ...(mode === 'ptc' ? { rootCallId: 'run-code' as HelperCall['callId'] } : {}),
     reasoningEffort: 'high', status: 'completed', startedAt: 0, elapsedMs: 1500,
     childSessionId: SessionId('child'), usage: { inputTokens: 20, outputTokens: 10 },
@@ -53,7 +62,7 @@ it.each(['native', 'ptc'])('shows persisted advice, missing usage and child log 
 
 it.each(['error', 'aborted', 'interrupted'] as const)('shows persisted %s without assuming success', (status) => {
   const callId = 'consult' as HelperCall['callId']
-  const state: HelperState = { enabled: false,
+  const state: HelperState = { enabled: false, mode: 'normal',
     calls: [{ callId, backend: 'codex', model: 'expert', startedAt: 0, status }],
   }
   const useProjection = (() => state) as ComponentProps<typeof HelperToolCard>['useProjection']

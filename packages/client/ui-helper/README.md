@@ -24,13 +24,13 @@ Choose an expert model, manage native ChatGPT login, and inspect consultation re
 <a id="use-this-package"></a>
 ## Use this package
 
-The security Web composition mounts this plugin with [Helper](../../subagent/helper/README.md). In another Web composition, mount `@deepseek-ai/dsh-client-ui-helper` together with the Helper service and existing conversation, plugin-settings and workspace services. This plugin has no configuration fields.
+The security Web composition mounts this plugin with [Advisor](../../subagent/helper/README.md). In another Web composition, mount `@deepseek-ai/dsh-client-ui-helper` together with the Advisor service and existing conversation, plugin-settings and workspace services. This plugin has no configuration fields.
 
-Open the composer Helper menu → Configure advanced model / Codex, or Plugins → Helper · Advanced model / Codex. Opening settings preserves the current chat and its Helper switch. Choose an existing API route or native Codex, select a supported reasoning effort, and save. Selecting a model prefers `high` when advertised; otherwise select an offered effort or provider default. Invalid saved choices remain visible and block testing. API credentials and custom reasoning mappings belong on the Models page.
+Open the composer Advisor menu → Configure advanced model / Codex, or Plugins → Advisor · Advanced model / Codex. Opening settings preserves the current chat and its Advisor switch. Choose an existing API route or native Codex, select a supported reasoning effort, and save. Selecting a model prefers `high` when advertised; otherwise select an offered effort or provider default. Invalid saved choices remain visible and block testing. API credentials and custom reasoning mappings belong on the Models page.
 
-The ChatGPT controls show public account details, open the official login link, cancel a pending login, and refresh account/model metadata. Authentication remains owned by Codex. Select a workspace before creating a test chat; it enables Helper only in that fresh chat and keeps the main model unchanged.
+The ChatGPT controls show public account details, open the official login link, cancel a pending login, and refresh account/model metadata. Authentication remains owned by Codex. Select a workspace before creating a test chat; it enables Advisor only in that fresh chat and keeps the main model unchanged.
 
-The composer menu controls the current session and shows persisted counts, statuses, elapsed time and token totals. Expand a Helper tool call to inspect submitted materials, advice and reported model details. API calls offer the complete child log. Missing token fields display “Not reported”; history paging and reconnects do not recalculate counts from visible cards.
+The composer menu selects Off, Normal or Proactive for the current session and shows persisted counts, statuses, elapsed time and token totals. Normal uses the standard tool instructions; Proactive adds progress reminders and consumes additional input tokens. The selected mode survives reconnects and session restoration. Expand a Advisor tool call to inspect submitted materials, advice and reported model details. API calls offer the complete child log. Missing token fields display “Not reported”; history paging and reconnects do not recalculate counts from visible cards.
 
 -----
 
@@ -40,7 +40,7 @@ The composer menu controls the current session and shows persisted counts, statu
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The controller stages preferences through the shared settings form and refreshes independent account/model directories. Cards combine raw tool blocks with the Helper session projection, so native calls and PTC subcalls use the same persisted facts. No runtime invariant companion is published: the views derive from their owning services without a second mutable source.
+The controller stages preferences through the shared settings form and refreshes independent account/model directories. Cards combine raw tool blocks with the Advisor session projection, so native calls and PTC subcalls use the same persisted facts. No runtime invariant companion is published: the views derive from their owning services without a second mutable source.
 
 </details>
 
@@ -53,7 +53,7 @@ The controller stages preferences through the shared settings form and refreshes
 
 #### What the model sees
 
-The explicit test action submits a localized user message asking the main model to call `helper` once for a read-only README heading check. The [Helper service](../../subagent/helper/README.md#model-experience) owns the tool instructions.
+The explicit test action submits a localized user message asking the main model to call `advisor` once for a read-only README heading check. The [Advisor service](../../subagent/helper/README.md#model-experience) owns the tool instructions.
 
 #### Token effect
 

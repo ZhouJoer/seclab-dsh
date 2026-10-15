@@ -50,6 +50,7 @@
       name: '@deepseek-ai/dsh-helper'
       config:
         enabled: true
+        mode: proactive
         backend: api
         provider: deepseek-official
         model: deepseek-v4-pro

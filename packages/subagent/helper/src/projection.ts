@@ -17,15 +17,15 @@ const call = z.object({
   elapsedMs: z.number().nonnegative().optional(),
   childSessionId: z.string().transform(brandString<SessionId>).optional(), usage: usage.optional(),
 }).strict() as z.ZodType<HelperCall>
-const stateSchema = z.object({ enabled: z.boolean().nullable(), calls: z.array(call) }).strict()
+const stateSchema = z.object({ enabled: z.boolean().nullable(), mode: z.enum(['normal', 'proactive']), calls: z.array(call) }).strict()
 
 /** Helper selections and idempotent settlements; a closed parent turn ends orphaned runs. */
 export const helperProjection = {
-  key: 'helper', stateVersion: 1, stateSchema,
-  init: () => ({ enabled: null, calls: [] }),
+  key: 'helper', stateVersion: 2, stateSchema,
+  init: () => ({ enabled: null, mode: 'normal', calls: [] }),
   apply: (state, event) => {
     if (event.type === 'session/end-seed' && event.data.inherited) return { ...state, calls: [] }
-    if (event.type === 'helper/policy') return { ...state, enabled: event.data.enabled }
+    if (event.type === 'helper/policy') return { ...state, enabled: event.data.enabled, mode: event.data.mode ?? 'normal' }
     if (event.type === 'helper/start') {
       if (state.calls.some(item => item.callId === event.data.callId)) return state
       return { ...state, calls: [...state.calls, call.parse(event.data)] }
