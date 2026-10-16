@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-16-security-task-context.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/seclab-history/2026-10-16-security-task-context.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-10-16-security-task-context:
+  en: 40ef533d1cc92adb
+  zh: 3ed21c12e9848691
+/2026-10-16-security-task-context/summary:
+  en: de3e83cc7c47c7c3
+  zh: cc22766381ded6ab
+/2026-10-16-security-task-context/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-10-16-security-task-context/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-10-16-security-task-context/compatibility:
+  en: 4932a3bb098fb357
+  zh: b3a34ecebac78115
+/2026-10-16-security-task-context/verification:
+  en: 81707ff3d1f71443
+  zh: e138f26ed9ca0ef6
+/2026-10-16-security-task-context/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

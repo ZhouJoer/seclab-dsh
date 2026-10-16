@@ -30,9 +30,9 @@ import type {
   SubprocessTerminalHandle,
 } from '@deepseek-ai/dsh-subprocess'
 import Subagents from '@deepseek-ai/dsh-subagent'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import Jobs from '@deepseek-ai/dsh-jobs-local'
 import { JobId } from '@deepseek-ai/dsh-jobs'
-import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver'
 import type { WorkbenchView } from '../src/workbench/model.ts'
 import { createScope, bindScopeParent, scopeOf } from '@deepseek-ai/dsh-scope'
 import Approval from '@deepseek-ai/dsh-user-approval'
@@ -211,6 +211,8 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     ['storage-domain', StorageDomain],
     ['subprocess', UnusedSubprocess],
     ['subagents', Subagents],
+    ['native-fs', LocalFs],
+    ['working-directory', WorkingDirectory],
     ['jobs', Jobs],
     ['approval', Approval],
     [
@@ -1032,8 +1034,8 @@ else if (args.includes('--output')) {
     ctx.jobs.attachController('security-test')
     ctx.effect(() => ctx.subagents.registerProvider({
       name: 'spawn', inheritsParentContext: false,
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-      start: request => startInProcessRun(request, {}),
+      capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+      prepareContinuable: async () => ({}),
     }))
     const root = roots[roots.length - 1]!
     await writeFile(join(root, 'delegation.bin'), 'owned sample')
@@ -1708,7 +1710,7 @@ it('runs logged tool-free refinement through the Loader and disposes its model S
 
 it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loader and stores a readable report', async (format) => {
   const { ctx, agent, controller, model } = await load(false, 0, { dedicatedModel: false })
-  ctx.systemPrompt.section({ name: 'fixture:requires-model', order: 5, text: 'Model {{model}} in {{cwd}}' })
+  ctx.systemPrompt.section({ name: 'fixture:requires-model', order: 5, text: 'Model {{model}} from {{provider}}' })
   const send = operator(controller, agent)
   await send({ kind: 'create', title: 'Report fixture', objective: '仅静态检查此文件。没有独立复核时保持待复核状态。',
     environmentIds: ['local'], maxAttempts: 1 })
@@ -1951,8 +1953,8 @@ it('keeps a delegated structured report available during budget wrap-up', async 
   ctx.jobs.attachController('budget-child')
   ctx.effect(() => ctx.subagents.registerProvider({
     name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-    start: request => startInProcessRun(request, {}),
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+    prepareContinuable: async () => ({}),
   }))
   const root = roots[roots.length - 1]!
   await writeFile(join(root, 'budget.bin'), 'owned fixture')
@@ -1996,8 +1998,8 @@ async function delegationFixture(
 it('logs check instructions and explicit evidence references in a delegated child', async () => {
   const { ctx, agent, controller, args, send, model } = await delegationFixture()
   ctx.effect(() => ctx.subagents.registerProvider({ name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-    start: request => startInProcessRun(request, {}) }))
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+    prepareContinuable: async () => ({}) }))
   await send({ kind: 'check', check: { assetId: args.assetId, title: 'Inspect assigned parser', phase: 'assessment',
     criterion: 'Return the checked input condition', dependencies: [], evidenceIds: [] } })
   const check = controller.view(agent.id).records.find(item => item.kind === 'check')!
@@ -2021,9 +2023,9 @@ it('reserves worker capacity before asynchronous admission and replays one logge
   args.question = '  ' + args.question + '  '
   args.criterion = '  ' + args.criterion + '  '
   args.reason = '  ' + args.reason + '  '
-  const provider = vi.fn((request: Parameters<typeof startInProcessRun>[0]) => startInProcessRun(request, {}))
+  const provider = vi.fn(async () => ({}))
   ctx.effect(() => ctx.subagents.registerProvider({ name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true }, start: provider }))
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true }, prepareContinuable: provider }))
   const entered = Promise.withResolvers<undefined>()
   const continueAdmission = Promise.withResolvers<undefined>()
   const original = controller.admitDelegation.bind(controller)
@@ -2078,8 +2080,8 @@ it('persists worker creation failure and admits a fresh retry after its reservat
   expect((await ctx.jobs.wait(JobId(receipt.jobId), 10000, agent.id)).status).toBe('failed')
   expect(controller.delegationForCall(agent.id, 'missing-provider')).toMatchObject({ status: 'failed' })
   ctx.effect(() => ctx.subagents.registerProvider({ name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-    start: request => startInProcessRun(request, {}) }))
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+    prepareContinuable: async () => ({}) }))
   const retry = await execute(ctx, agent, 'security_delegate', { ...args, retryOf: controller.delegationForCall(agent.id, 'missing-provider')!.id }, 'available-provider')
   expect(retry.isError, JSON.stringify(retry)).toBe(false)
   expect((await ctx.jobs.wait(JobId((retry.value as { jobId: string }).jobId), 10000, agent.id)).status).toBe('completed')
@@ -2088,8 +2090,8 @@ it('persists worker creation failure and admits a fresh retry after its reservat
 it('records a worker deadline separately from its cancelled execution status', async () => {
   const { ctx, agent, controller, args } = await delegationFixture({ delegationTimeoutMs: 25 })
   ctx.effect(() => ctx.subagents.registerProvider({ name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-    start: request => new Promise((_resolve, reject) => {
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+    prepareContinuable: request => new Promise((_resolve, reject) => {
       if (request.signal.aborted) reject(new Error('Worker deadline'))
       else request.signal.addEventListener('abort', () => { reject(new Error('Worker deadline')) }, { once: true })
     }) }))
@@ -2103,14 +2105,17 @@ it.each(['completed', 'cancelled', 'cleanup-failed'] as const)('settles %s only 
   const disposing = Promise.withResolvers<undefined>()
   const released = Promise.withResolvers<undefined>()
   ctx.effect(() => ctx.subagents.registerProvider({ name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-    start: async (request) => {
-      const run = await startInProcessRun(request, {})
-      return { ...run, dispose: async () => {
-        disposing.resolve(undefined); await released.promise; await run.dispose()
-        if (outcome === 'cleanup-failed') throw new Error('Fixture cleanup failed')
-      } }
-    } }))
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+    prepareContinuable: async () => ({}) }))
+  const startActivation = ctx.subagents.startActivation.bind(ctx.subagents)
+  const activationSpy = vi.spyOn(ctx.subagents, 'startActivation').mockImplementation(async (spec) => {
+    const run = await startActivation(spec)
+    return { ...run, dispose: async () => {
+      disposing.resolve(undefined); await released.promise; await run.dispose()
+      if (outcome === 'cleanup-failed') throw new Error('Fixture cleanup failed')
+    } }
+  })
+  onTestFinished(() => { activationSpy.mockRestore() })
   const result = await execute(ctx, agent, 'security_delegate', args, 'cleanup-assignment')
   expect(result.isError, JSON.stringify(result)).toBe(false)
   const receipt = result.value as { jobId: string }
@@ -2124,7 +2129,8 @@ it.each(['completed', 'cancelled', 'cleanup-failed'] as const)('settles %s only 
       await vi.waitFor(() => { expect(controller.view(agent.id).records.find(item => item.kind === 'engagement')?.value).toMatchObject({ stopped: true }) })
     }
   } finally { released.resolve(undefined); await stopping }
-  expect((await ctx.jobs.wait(JobId(receipt.jobId), 10000, agent.id)).status).toBe(outcome === 'completed' ? 'completed' : outcome === 'cancelled' ? 'killed' : 'failed')
+  const job = await ctx.jobs.wait(JobId(receipt.jobId), 10000, agent.id)
+  expect(job.status, JSON.stringify(job)).toBe(outcome === 'completed' ? 'completed' : outcome === 'cancelled' ? 'killed' : 'failed')
   expect(controller.delegationForCall(agent.id, 'cleanup-assignment')).toMatchObject({ status: outcome === 'cleanup-failed' ? 'failed' : outcome })
   expect(controller.delegationForCall(agent.id, 'cleanup-assignment')?.report !== undefined).toBe(outcome === 'completed')
 })
@@ -2132,8 +2138,8 @@ it.each(['completed', 'cancelled', 'cleanup-failed'] as const)('settles %s only 
 it.each(['oversized', 'foreign-evidence'] as const)('rejects %s child reports and releases their worker slot', async (failure) => {
   const { ctx, agent, controller, model, args } = await delegationFixture({ maxConcurrentDelegations: 1, maxOutputBytes: 4096 })
   ctx.effect(() => ctx.subagents.registerProvider({ name: 'spawn', inheritsParentContext: false,
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-    start: request => startInProcessRun(request, {}) }))
+    capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true },
+    prepareContinuable: async () => ({}) }))
   const ordinary = model.childReport
   model.childReport = failure === 'oversized' ? { ...ordinary, summary: '中文😀'.repeat(1024) } : { ...ordinary, evidenceIds: ['foreign'] }
   const result = await execute(ctx, agent, 'security_delegate', args, 'invalid-report')

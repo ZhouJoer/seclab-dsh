@@ -35,10 +35,13 @@
     - id: security-workbench
       name: '@deepseek-ai/dsh-experimental-security-analysis'
       config:
-        analysisTurnTokens: 360000
         evolution:
           auto: true
+        analysisTurnTokens: 360000
         root: !!js dshHomePath('security')
+        toolConfiguration:
+          path: !!js dshHomePath('security/tools.json')
+          environmentId: local
         importRoots: !!js '[process.cwd()]'
         taskIntake:
           workspaces: []
@@ -96,3 +99,14 @@
       name: '@deepseek-ai/dsh-experimental-security-profile'
     - id: ui-security-workbench
       name: '@deepseek-ai/dsh-experimental-client-ui-security-analysis'
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: false
+    - id: helper-codex
+      name: '@deepseek-ai/dsh-subagent-codex'
+      config:
+        providerName: codex
+        consultation: true
+    - id: ui-helper
+      name: '@deepseek-ai/dsh-client-ui-helper'

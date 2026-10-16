@@ -160,6 +160,8 @@ export interface WorkbenchConfig {
 
 declare module '@deepseek-ai/dsh-jobs' {
   interface JobKindMap {
+    /** Security delegation retained as a collectable workbench job. */
+    subagent: 'subagent'
     'security-check': 'security-check'
   }
 }
@@ -938,14 +940,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
               signal.throwIfAborted()
               this.creating.set(parent.id, { delegationId: captured.id, preferences })
               try {
-                return await this.ctx.subagents.start('spawn', { parent, signal, maxDepth: 1, label: input.question,
-                  prompt: [{ type: 'text', text: delegationPrompt({ ...input,
-                    ...(check?.kind === 'check' ? { check: { id: check.value.id, title: check.value.title, criterion: check.value.criterion } } : {}),
-                    durationMs: this.config.delegationTimeoutMs, maxOutputBytes: this.config.maxOutputBytes }) }],
-                  outputSchema: { type: 'object', additionalProperties: false,
-                    properties: { summary: { type: 'string' }, evidenceIds: { type: 'array', items: { type: 'string' } },
-                      uncertainty: { type: 'string' }, nextSteps: { type: 'array', items: { type: 'string' } } },
-                    required: ['summary', 'evidenceIds', 'uncertainty', 'nextSteps'] },
+                return await this.ctx.subagents.startActivation({ provider: 'spawn', signal, label: input.question, delivery: 'caller',
+                  request: { parent, maxDepth: 1,
+                    prompt: [{ type: 'text', text: delegationPrompt({ ...input,
+                      ...(check?.kind === 'check' ? { check: { id: check.value.id, title: check.value.title, criterion: check.value.criterion } } : {}),
+                      durationMs: this.config.delegationTimeoutMs, maxOutputBytes: this.config.maxOutputBytes }) }],
+                    outputSchema: { type: 'object', additionalProperties: false,
+                      properties: { summary: { type: 'string' }, evidenceIds: { type: 'array', items: { type: 'string' } },
+                        uncertainty: { type: 'string' }, nextSteps: { type: 'array', items: { type: 'string' } } },
+                      required: ['summary', 'evidenceIds', 'uncertainty', 'nextSteps'] },
+                  },
                 })
               } finally { this.creating.delete(parent.id) }
             })
@@ -953,22 +957,34 @@ export default class SecurityWorkbench extends TypertRemoteService {
             const task = create.then(async (run) => {
               let report: SecurityDelegation['report']
               let output: string
+              let cancellation: Promise<void> | undefined
+              const cancel = (): void => {
+                cancellation ??= run.dispose()
+                void cancellation.catch(() => undefined)
+              }
+              signal.addEventListener('abort', cancel, { once: true })
+              if (signal.aborted) cancel()
               try {
                 const result = await run.result
                 if (result.stopReason !== 'completed') throw new Error(`Delegated check ended: ${result.stopReason}`)
                 report = childReportSchema.parse(result.structured)
-                output = JSON.stringify({ delegationId: captured.id, childSessionId: run.id, report })
+                output = JSON.stringify({ delegationId: captured.id, childSessionId: run.childId, report })
                 if (Buffer.byteLength(output, 'utf8') > this.config.maxOutputBytes)
                   throw new Error('Delegated report exceeds maxOutputBytes; narrow the question')
-              } finally { await run.dispose() }
+              } finally {
+                signal.removeEventListener('abort', cancel)
+                await (cancellation ?? run.dispose())
+              }
               signal.throwIfAborted()
               await controller.settleDelegation(captured.id, { status: 'completed', report }, signal)
               return { status: 'completed' as const, result: output }
             }).catch(async (error: unknown) => {
               const detail = error instanceof Error ? error.message : String(error)
-              const status = signal.aborted ? 'cancelled' as const : 'failed' as const
+              const project = controller.projectView(captured.engagementId).records.find(record => record.kind === 'engagement')?.value
+              const cancelled = signal.aborted || project?.stopped === true || project?.archived === true
+              const status = cancelled ? 'cancelled' as const : 'failed' as const
               await controller.settleDelegation(captured.id, { status, detail, timedOut: deadline.aborted })
-              return { status: signal.aborted ? 'killed' as const : 'failed' as const, detail }
+              return { status: cancelled ? 'killed' as const : 'failed' as const, detail }
             })
             const release = controller.trackDelegation(captured.engagementId, abort, task)
             this.pending.add(task)

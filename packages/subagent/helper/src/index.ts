@@ -1,5 +1,6 @@
 /** Opt-in, read-only expert consultations using DSH or native Codex. @module */
 import { Context, type Volatile } from '@deepseek-ai/cordis'
+import { randomUUID } from 'node:crypto'
 import Schema from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -7,13 +8,13 @@ import type { CommandDefinitionId } from '@deepseek-ai/dsh-commands'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId, lastAssistantStreamChunk, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { PostToolDecision, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-subagent-codex'
-import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver'
-import type { SubagentRun, SubagentResult } from '@deepseek-ai/dsh-subagent'
+import type { SubagentActivation, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { helperProjection } from './projection.ts'
 import type { HelperCall, HelperMode, HelperSettings, HelperState } from './types.ts'
 export type { HelperSettings, HelperCall, HelperState, HelperMode } from './types.ts'
@@ -58,7 +59,7 @@ export class Helper extends TypertRemoteService {
     codexReasoningEffort: Schema.string().default('high').volatile(),
   })
   private readonly installations = new Map<Agent, () => void>()
-  private readonly metrics = new WeakMap<Agent, LocalMetrics>()
+  private readonly consultations = new Map<SessionId, { metrics: LocalMetrics; allow: string[]; defaultEffort: boolean }>()
 
   /**
    * @param ctx Host services.
@@ -82,19 +83,25 @@ export class Helper extends TypertRemoteService {
     })
     ctx.effect(() => ctx.subagents.registerProvider({
       name: 'helper-api', inheritsParentContext: false,
-      capabilities: { agentOptions: true, outputSchema: false, depthLimit: true, toolFilter: true, persona: true },
-      start: request => startInProcessRun(request, { setup: (childCtx, child) => {
-        const metrics: LocalMetrics = {}
-        this.metrics.set(child, metrics)
-        childCtx.on('session/event', (session, event) => {
-          if (session === child.session) this.observeMetrics(metrics, event)
-        })
-        if (request.agentOptions?.reasoningEffort === undefined) delete child.options.reasoningEffort
-        childCtx.tools.presentAs('native')
-        childCtx.tools.guard(exec => READ_TOOLS.has(exec.name) ? undefined : 'The advisor is a read-only adviser')
-      } }),
+      capabilities: { agentOptions: true, agentPreset: false, outputSchema: false, depthLimit: true },
+      prepareContinuable: ({ sessionId }) => {
+        if (!this.consultations.has(sessionId)) throw new Error('Advisor requires captured read-only settings')
+        return Promise.resolve({})
+      },
     }), 'helper API provider')
     ctx.on('agent/created', ({ agent }) => {
+      const consultation = this.consultations.get(agent.id)
+      if (consultation !== undefined) {
+        const childCtx = agent.ctx
+        childCtx.on('session/event', (session, event) => {
+          if (session === agent.session) this.observeMetrics(consultation.metrics, event)
+        })
+        if (consultation.defaultEffort) delete agent.options.reasoningEffort
+        childCtx.tools.presentAs('native')
+        childCtx.tools.restrict({ allow: consultation.allow })
+        childCtx.tools.guard(exec => READ_TOOLS.has(exec.name) ? undefined : 'The advisor is a read-only adviser')
+        return
+      }
       if (agent.session.header.origin === 'subagent') return
       const state = this.state(agent)
       if (state.enabled === null) agent.session.append('helper/policy', {
@@ -216,40 +223,56 @@ export class Helper extends TypertRemoteService {
       rootCallId: exec.rootCallId,
       ...effort === '' ? {} : { reasoningEffort: effort }, startedAt: Date.now(), status: 'running' }
     agent.session.append('helper/start', record)
-    let run: SubagentRun | undefined
+    let run: SubagentActivation | undefined
     let result: SubagentResult | undefined
     let failure: unknown
+    const childId = api ? SessionId(randomUUID()) : undefined
+    const metrics: LocalMetrics = {}
+    let cancellation: Promise<void> | undefined
+    const cancel = (): void => {
+      if (run === undefined) return
+      cancellation ??= run.dispose()
+      void cancellation.catch(() => undefined)
+    }
     try {
       if (!model || (api && !settings.provider)) throw new Error('Configure the advisor model before using it')
       const options = { model, ...effort === '' ? {} : { reasoningEffort: ReasoningEffortId(effort) },
         ...api ? { provider: settings.provider } : {} }
       if (api) await this.ctx.llm.resolveCallConfig({ ...options, provider: settings.provider }, exec.signal)
       const allow = [...READ_TOOLS].filter(name => agent.ctx.tools.get(name, agent) !== undefined)
-      run = await this.ctx.subagents.start(api ? 'helper-api' : 'helper-codex', {
-        parent: agent, signal: exec.signal, label: args.reason, agentOptions: options,
-        prompt: [{ type: 'text', text: `${api ? PERSONA : CODEX_PERSONA}\n\nReason: ${args.reason}\nQuestion: ${args.question}\nAttempts: ${args.attempts ?? ''}\nContext: ${args.context ?? ''}` }],
-        ...api ? { persona: PERSONA, toolFilter: { allow }, maxDepth: 1 } : {},
+      if (childId !== undefined) this.consultations.set(childId, { metrics, allow, defaultEffort: effort === '' })
+      run = await this.ctx.subagents.startActivation({
+        provider: api ? 'helper-api' : 'helper-codex', signal: exec.signal, label: args.reason, delivery: 'caller',
+        ...childId === undefined ? {} : { childId },
+        request: { parent: agent, agentOptions: options,
+          prompt: [{ type: 'text', text: `${api ? PERSONA : CODEX_PERSONA}\n\nReason: ${args.reason}\nQuestion: ${args.question}\nAttempts: ${args.attempts ?? ''}\nContext: ${args.context ?? ''}` }],
+          ...api ? { maxDepth: 1 } : {},
+        },
       })
+      exec.signal.addEventListener('abort', cancel, { once: true })
+      if (exec.signal.aborted) cancel()
       result = await run.result
       if (result.stopReason !== 'completed') throw new Error(result.diagnostic ?? `Helper ended: ${result.stopReason}`)
       return result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
     } catch (error) { failure = error; throw error }
     finally {
-      try { await run?.dispose() }
+      exec.signal.removeEventListener('abort', cancel)
+      try { await (cancellation ?? run?.dispose()) }
       catch (error) {
         if (failure !== undefined) throw new AggregateError([failure, error], 'Helper failed and could not release its child')
         failure = error
         throw error
       }
       finally {
-        const metrics = run?.localAgent ? this.metrics.get(run.localAgent) : result
+        if (childId !== undefined) this.consultations.delete(childId)
+        const observed = api ? metrics : result
         agent.session.append('helper/end', {
           ...record, status: exec.signal.aborted ? 'aborted' : failure ? 'error' : 'completed',
           elapsedMs: Math.max(0, Date.now() - record.startedAt),
-          ...run?.localAgent ? { childSessionId: run.localAgent.session.id } : {},
-          ...metrics?.model === undefined ? {} : { model: metrics.model },
-          ...metrics?.reasoningEffort === undefined ? {} : { reasoningEffort: metrics.reasoningEffort },
-          ...metrics?.usage === undefined ? {} : { usage: metrics.usage },
+          ...api && run !== undefined ? { childSessionId: run.childId } : {},
+          ...observed?.model === undefined ? {} : { model: observed.model },
+          ...observed?.reasoningEffort === undefined ? {} : { reasoningEffort: observed.reasoningEffort },
+          ...observed?.usage === undefined ? {} : { usage: observed.usage },
         })
       }
     }

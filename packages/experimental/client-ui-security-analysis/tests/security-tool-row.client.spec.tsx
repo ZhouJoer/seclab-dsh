@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
+import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { SecurityToolRow, securityToolNames } from '../src/client/SecurityToolRow.tsx'
 import { toolAdapters } from '@deepseek-ai/dsh-experimental-security-analysis/src/tool-adapter-catalog.ts'
@@ -23,6 +24,7 @@ it.each(['preparing', 'start'] as const)('shows the running state during %s with
 })
 it('shows a short static result while keeping its raw record collapsed', () => {
   const block: ToolResultNode = { kind: 'tool-result', seq: 1, time: 1, callId: 'static',
+    name: 'security_static', args: PartialArguments.fromText('{}'),
     call: { name: 'security_static', argsRaw: '{}' }, callTime: 0, isError: false, subCalls: [],
     content: [{ type: 'text', text: JSON.stringify({ summary: '发现可控长度进入拷贝', evidenceId: 'private-id',
       details: 'raw'.repeat(200) }) }] }
@@ -39,6 +41,7 @@ it('shows a short static result while keeping its raw record collapsed', () => {
 
 it.each([false, true])('distinguishes dispatch from completion and preserves dispatch errors (error=%s)', (isError) => {
   const block: ToolResultNode = { kind: 'tool-result', seq: 1, time: 1, callId: 'delegate',
+    name: 'security_delegate', args: PartialArguments.fromText('{}'),
     call: { name: 'security_delegate', argsRaw: '{}' }, callTime: 0, isError, subCalls: [],
     content: [{ type: 'text', text: JSON.stringify(isError ? { error: 'Capacity reached' } : { jobId: 'job' }) }] }
   const props = { phase: 'result', block, callId: 'delegate', toolName: 'security_delegate', openFile: vi.fn(), loadImage: vi.fn(),

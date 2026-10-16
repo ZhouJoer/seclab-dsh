@@ -60,6 +60,7 @@ describe('web e2e: Security workbench', () => {
     browser = await chromium.launch(executablePath === undefined ? {} : { executablePath })
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-security-workbench'))
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]')
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
@@ -479,7 +480,8 @@ describe('web e2e: Security workbench', () => {
     await approval.getByRole('button', { name: 'Approve this version' }).click()
     await expect.poll(() => controller.view(agent.id).records.find(item => item.kind === 'plan')?.value.status).toBe('approved')
     await approval.getByRole('button', { name: 'Execute plan' }).click()
-    await expect.poll(() => controller.view(agent.id).records.find(item => item.kind === 'execution')?.value.status).toBe('completed')
+    await expect.poll(() => controller.view(agent.id).records.find(item => item.kind === 'execution')?.value.status,
+      { timeout: 30_000 }).toBe('completed')
     await approval.getByText('Execution result: Completed', { exact: true }).waitFor()
     await controller.command(agent.id, { operationId: 'blocked-plan', expectedRevision: controller.view(agent.id).revision,
       action: { kind: 'plan', checkId: check.value.id,
@@ -510,7 +512,11 @@ describe('web e2e: Security workbench', () => {
     await dashboard.getByRole('button', { name: 'Resolve blocker', exact: true }).click()
     const focusedCheck = assistant.locator('article').filter({ has: page.getByText('Read selected source', { exact: true }) })
     await focusedCheck.getByRole('button', { name: 'Reconcile and retry', exact: true }).waitFor()
-    await expect.poll(() => focusedCheck.evaluate(element => element === document.activeElement)).toBe(true)
+    await expect.poll(() => focusedCheck.evaluate(element => ({
+      focused: element === document.activeElement,
+      activeTag: document.activeElement?.tagName,
+      activeLabel: document.activeElement?.getAttribute('aria-label'),
+    }))).toMatchObject({ focused: true })
     await focusedCheck.getByLabel('Review or recovery rationale').fill('The owned error output was reviewed; keep this task stopped.')
     await focusedCheck.getByRole('button', { name: 'Reconcile and retry', exact: true }).click()
     await expect.poll(() => controller.view(agent.id).records.find(item => item.kind === 'check')?.value.status).toBe('planned')

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-helper",
   "description": "Optional read-only expert consultations with persistent usage and native Codex account controls",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-alpha.4",
   "publishConfig": {
     "access": "public"
   },
@@ -59,7 +59,6 @@
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-projection": "workspace:*",
     "@deepseek-ai/dsh-subagent": "workspace:*",
-    "@deepseek-ai/dsh-subagent-in-process-driver": "workspace:*",
     "@deepseek-ai/dsh-subagent-codex": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*"
   },
@@ -73,7 +72,6 @@
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-projection": "workspace:*",
     "@deepseek-ai/dsh-subagent": "workspace:*",
-    "@deepseek-ai/dsh-subagent-in-process-driver": "workspace:*",
     "@deepseek-ai/dsh-subagent-codex": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-agent-loop": "workspace:*",

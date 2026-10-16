@@ -146,7 +146,7 @@ export function codexAppServerArgv(readOnly = false): string[] {
 
 /** Fully resolved inputs for one Codex app-server run. */
 export interface CodexRunSpec {
-  /** Parent Session workspace, also supplied to `thread/start`. */
+  /** Selected child working directory, also supplied to `thread/start`. */
   readonly cwd: string
   /** Profile-selected native model; omitted to preserve Codex settings. */
   readonly model?: string
@@ -437,7 +437,7 @@ export async function startCodexRun(
     onError: spec.onError,
     signal: request.signal,
     onAbort,
-  }).then(value => ({ ...value, ...wire.collectMetrics() }))
+  }).then(value => spec.permissionMode === 'read-only' ? { ...value, ...wire.collectMetrics() } : value)
 
   return subprocessRunHandle({
     id: brandString<SessionId>(randomUUID()),

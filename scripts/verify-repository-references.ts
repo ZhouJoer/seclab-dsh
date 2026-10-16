@@ -34,7 +34,7 @@ function isMaintained(file: string): boolean {
  * @param file - Repository-relative path used in diagnostics and exclusions.
  * @param source - File text or a symlink's stored target.
  * @param commits - Lowercase full or abbreviated identifiers that Git resolves to commits.
- * @returns One finding per line and reference kind; digests and other Git object types are accepted.
+ * @returns One finding per line and reference kind; digests, lockfile byte counts, and other Git object types are accepted.
  */
 export function findRepositoryReferences(
   file: string,
@@ -47,7 +47,8 @@ export function findRepositoryReferences(
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
-    if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
+    const identifiers = file.endsWith('.lock') ? line.replace(/\bsize\s*=\s*\d+(?=\s*[,}]|$)/gu, '') : line
+    if ([...identifiers.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }
   }
@@ -70,7 +71,32 @@ function readMaintainedFiles(repoRoot: string): Map<string, string> {
   return sources
 }
 
-function repositoryCommits(repoRoot: string, sources: Iterable<string>): Set<string> {
+/**
+ * Find the one object whose name starts with a prefix.
+ * @param objects - Every object name in the local object database, sorted.
+ * @param prefix - Lowercase hexadecimal prefix.
+ * @returns The matching object name, or `undefined` when none or several match.
+ */
+export function uniquePrefixMatch(objects: readonly string[], prefix: string): string | undefined {
+  let low = 0
+  let high = objects.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if ((objects[middle] ?? prefix) < prefix) low = middle + 1
+    else high = middle
+  }
+  const match = objects[low]
+  if (match?.startsWith(prefix) !== true || objects[low + 1]?.startsWith(prefix) === true) return undefined
+  return match
+}
+
+/**
+ * Resolve commit-identifier candidates in maintained sources against the local object database.
+ * @param repoRoot - Working tree whose Git objects are inspected.
+ * @param sources - File texts or symlink targets to extract candidates from.
+ * @returns Lowercase candidates that name exactly one available object, which is a commit.
+ */
+export function repositoryCommits(repoRoot: string, sources: Iterable<string>): Set<string> {
   const candidates = [...new Set([...sources].flatMap(source =>
     [...source.matchAll(commitCandidate)].map(match => match[0].toLowerCase())))]
   if (candidates.length === 0) return new Set()

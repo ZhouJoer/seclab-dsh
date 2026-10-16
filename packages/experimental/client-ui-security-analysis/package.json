@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-client-ui-security-analysis",
   "description": "Security project workbench, evidence review and validation plan approval",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.1-alpha.4",
   "publishConfig": {
     "access": "public"
   },
@@ -70,11 +70,11 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-util-crypto": "workspace:*",
     "@testing-library/react": "^16.1.0",
-    "@types/react": "~18.3.1",
     "@xyflow/react": "^12.12.0",
     "fflate": "^0.8.3",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "@deepseek-ai/dsh-util-values": "workspace:*"
   },
   "files": [
     "lib/index.js",

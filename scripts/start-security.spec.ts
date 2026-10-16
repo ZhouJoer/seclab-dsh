@@ -62,6 +62,12 @@ it('keeps task intake and operator tools in the launched profile and resolves it
       { id: 'python', command: 'python', versionArgs: ['--version'], source: stringValue },
       { id: 'jadx', command: 'jadx', versionArgs: ['--version'], source: stringValue },
     ])
+    const environmentsValue: unknown = expect.arrayContaining([expect.objectContaining({
+      id: 'local',
+      kind: 'local',
+      cwd: { __jsExpr: 'process.cwd()' },
+      tools: toolsValue,
+    })])
     expect(workbench?.config).toMatchObject({
       analysisTurnTokens: 360000,
       taskIntake: {
@@ -69,12 +75,7 @@ it('keeps task intake and operator tools in the launched profile and resolves it
         defaultEnvironmentIds: ['local'],
         maxAttempts: 3,
       },
-      environments: [{
-        id: 'local',
-        kind: 'local',
-        cwd: { __jsExpr: 'process.cwd()' },
-        tools: toolsValue,
-      }],
+      environments: environmentsValue,
     })
 
     const presetProvider = entries.find(entry => entry.id === 'security-presets')

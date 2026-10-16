@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
+import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { HelperState, HelperCall } from '@deepseek-ai/dsh-helper/types'
 import type {} from '../src/client/index.ts'
@@ -46,7 +47,8 @@ it.each(['native', 'ptc'])('shows persisted advice, missing usage and child log 
   const useProjection = (() => state) as ComponentProps<typeof HelperToolCard>['useProjection']
   const openChild = vi.fn()
   const props: ComponentProps<typeof HelperToolCard> = { t, callId, useProjection, openChild, phase: 'result',
-    block: { kind: 'tool-result', seq: 10, time: 0, callTime: 0, callId, call: { name: 'helper', argsRaw: '{"reason":"uncertain"}' },
+    block: { kind: 'tool-result', seq: 10, time: 0, callTime: 0, callId, name: 'helper', args: PartialArguments.fromText('{"reason":"uncertain"}'),
+      call: { name: 'helper', argsRaw: '{"reason":"uncertain"}' },
       content: [{ type: 'text', text: 'Inspect the race before retrying.' }], isError: false, subCalls: [] },
   }
   const view = render(<HelperToolCard {...props} />)
@@ -67,7 +69,8 @@ it.each(['error', 'aborted', 'interrupted'] as const)('shows persisted %s withou
   }
   const useProjection = (() => state) as ComponentProps<typeof HelperToolCard>['useProjection']
   const view = render(<HelperToolCard t={t} callId={callId} useProjection={useProjection} openChild={vi.fn()} phase="result"
-    block={{ kind: 'tool-result', seq: 10, time: 0, callTime: 0, callId, call: null, content: [], isError: true, subCalls: [] }} />)
+    block={{ kind: 'tool-result', seq: 10, time: 0, callTime: 0, callId, name: '', args: PartialArguments.EMPTY,
+      call: null, content: [], isError: true, subCalls: [] }} />)
   expect(view.getByText(new RegExp(zh[status]))).toBeTruthy()
   expect(view.queryByText('成功')).toBeNull()
 })

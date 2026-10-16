@@ -146,26 +146,24 @@ describe('renderToolsSdk', () => {
     expect(text).toContain('[K in ToolName]: (args: ToolArgsMap[K]) => Promise<ToolOutputMap[K]>;')
     expect(text).toContain('/** Run a shell command. */')
     // The fixed instruction lines the model relies on.
-    expect(text).toContain('erasable syntax only')
+    expect(text).toContain('and `code`, the program to execute')
     expect(text).toContain('rejects with `ToolCallError`')
     expect(text).toContain('MAY overlap under `Promise.all`')
     expect(text).toContain('lossless JSON')
   })
 
-  it('names both required call arguments, not just the program', () => {
-    // The schema requires `code` AND `description`; instructions that mention
-    // only the program let a model emit `{code}` alone and fail INVALID_ARGS.
+  it('lists the required description before the program', () => {
     const text = renderToolsSdk([bash])
     expect(text).toContain('`code`')
     expect(text).toContain('`description`')
-    expect(text).toContain('two required arguments')
+    expect(text).toContain('two required arguments: `description`, a short summary of what the program does, and `code`')
   })
 
   it('keeps generated bindings inside a run_code program', () => {
     const text = renderToolsSdk([bash])
     expect(text).toContain('A declaration does not make its name a directly callable tool')
     expect(text).toContain('only names supplied as separate tool schemas may be called directly')
-    expect(text).toContain('`run_code({ code: "return await tools.bash({ command: \'pwd\', description: \'Show current directory\' })"')
+    expect(text).toContain('`run_code({ description: "Show current directory", code: "console.log(await tools.bash({ description: \'Show current directory\', command: \'pwd\' }))" })`')
     expect(text).toContain('Program-only SDK bindings:')
     expect(text).not.toContain('The available tools:')
   })
@@ -214,6 +212,14 @@ describe('renderToolsSdk', () => {
       properties: { command: { type: 'string', const: 'pwd', enum: ['pwd'] } },
     })
     expect(renderToolsSdk([constrained])).toContain('tools.bash({ command: \'pwd\' })')
+  })
+
+  it('uses an output example accepted by both Node execution modes', () => {
+    const text = renderToolsSdk([bash])
+    expect(text).toContain('console.log(await tools.bash(')
+    expect(text).not.toContain('return await tools.bash')
+    expect(text).not.toContain('body of an async TypeScript function')
+    expect(text).not.toContain('TypeScript REPL statements')
   })
 
   it('is deterministic: same tool set, byte-identical text regardless of input order', () => {

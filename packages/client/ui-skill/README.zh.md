@@ -59,6 +59,8 @@ source 不实现任何裁决钩子，也没有引用 codec：pick 落下字面�
 
 `/client` 导出接口只有插件主体（`apply`／`inject`）；source 对象是注册 effect 的内部实现。工具行把 `skill` wire 名称注册进 ui-tool 的 keyed `tool.call.toolview` slot。
 
+对于已发送文本，插件注册使用调用方已确认 `skillNames`、返回原文中下一个候选的 UserText 匹配器，并拥有 `conversation.user.text.node` 中的 `skill` 条目。renderer 从自身绑定 Session 的 Injection 接收 `openSkill`，委托本 source 的预览操作，而非 Chat owner props。不可交互的预览仍为标签。[UserText](../ui-conversation/README.zh.md#sent-user-text) 拥有求值与节点分发。
+
 </details>
 
 -----
@@ -112,5 +114,3 @@ source 不实现任何裁决钩子，也没有引用 codec：pick 落下字面�
 无。
 
 </details>
-
-**运行时不变式：** 不发布伴生入口。slash source、locale dictionary 与 keyed toolview 都是由注册表持有的注册项，其释放行为已由 HMR（热模块替换）安全规范证明；它们不发出 Cordis 事件或持有跨插件可变状态。

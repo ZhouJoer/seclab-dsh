@@ -18,7 +18,7 @@ afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.di
 async function setup(script: ConstructorParameters<typeof MockAdapter>[0], enabled = true, effort = 'high') {
   const ctx = new Context()
   contexts.push(ctx)
-  await mountAgentLoopTestDependencies(ctx)
+  await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(SubagentRuntime)

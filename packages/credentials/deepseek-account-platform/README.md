@@ -19,6 +19,8 @@ Profile and balance HTTP 401 responses or top-level response code `40003` (inval
 
 Sign in through the system browser and keep the account credential in the existing local credential store. Local cancellation prevents late callbacks and exchange responses from signing the user in.
 
+Platform requests report `no-response` when fetch rejects before returning a Response, including request timeouts. HTTP errors and response-body failures do not use this code; authorization-attempt expiry retains `expired`.
+
 Device identity reads validate the existing login device record and expose only its ID, the current account ID, and the shared login OS version string.
 
 ## Table of Contents
@@ -57,7 +59,7 @@ A private patch can read environment variables through Cordis expressions:
 
 The authenticated client supplies its browser-accessible callback origin, including the local SSH forwarding port, and its UI kind. The provider fixes the callback path and binds the resulting redirect_uri to both initialization and exchange. Callback requests use state and PKCE validation rather than RPC authentication. Completion, cancellation and disposal remove only the attempt route. Exchange failures publish failed state without retrying: Web closes its authorization tab and keeps the failure dialog in the original tab; the callback page attempts to close itself and offers a manual-close message. Desktop receives HTTP 204 and focuses its existing login UI through the account stream.
 
-Host diagnostics use the `[deepseek-account]` prefix on standard output and in the Host inspector Console. They include endpoint paths, HTTP status, numeric response codes, failure stages, invalid field paths, received types and validation codes, and browser URL rejection rules; headers, request and response bodies, authorization URLs, and raw exceptions are excluded.
+Host diagnostics use `console.error` with the `[deepseek-account]` prefix on standard error and in the Host inspector Console, only for request, response-validation, or sign-in failures. Successful requests, caller cancellation, and normal account state changes are silent; request timeouts remain failures. Failure diagnostics include endpoint paths, HTTP status, numeric response codes, failure stages, invalid field paths, received types and validation codes, and browser URL rejection rules; headers, request and response bodies, authorization URLs, and raw exceptions are excluded.
 
 `rewriteBrowserOrigin` defaults to `false`, requiring same-origin browser URLs. A private development patch may set it to `true` to map authorization and completion URLs to `platformOrigin`, preserving their fixed paths and query strings. Source URLs must use HTTPS or already match the configured origin; user information, fragments and unexpected paths remain rejected. Shipped profiles retain strict same-origin validation.
 
@@ -68,7 +70,7 @@ At provider initialization, a valid stored grant whose issuer differs from platf
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-No runtime invariant companion is published: account presence reads the credential store, and attempt state projects private state directly. There is no independently maintained account index to compare. Behavior tests verify asynchronous cancellation and commit ordering.
+Account presence reads the credential store, and attempt state projects private state directly. Behavior tests verify asynchronous cancellation and commit ordering.
 
 <a id="further-exploration"></a>
 ## Further Exploration
@@ -97,7 +99,7 @@ No model request prefix changes.
 
 The [desktop login decision](../../../.agents/notes/implemented/architecture/2026-09-14-deepseek-account-login.md) records cancellation and storage ownership.
 
-The first profile read after sign-in uses the sanitized user returned by auth_exchange. A null or malformed user falls back to current; subsequent refreshes and Host restarts also query current. Failed current requests retain the latest successful profile for the same credential in Host memory; credential changes and disposal clear it. A ready current response whose stable account ID first becomes available or changes notifies watch subscribers, so identity consumers re-read getPlatformSession; refreshes that repeat the same ID stay silent. Exchange registers the submitted device information.
+The first profile read after sign-in uses the sanitized user returned by auth_exchange. A null or malformed user falls back to current; subsequent refreshes and Host restarts also query current. Failed current requests retain the latest successful profile for the same credential in Host memory; credential changes and disposal clear it. A ready current response whose stable account ID first becomes available or changes notifies only Host subscribers using `watch(signal, true)`, so identity consumers re-read getPlatformSession; refreshes that repeat the same ID stay silent. Exchange registers the submitted device information.
 
 accountRequestHeaders overlays requestHeaders for current, balance and embedded Platform page/API requests. Cookie pairs merge by name so routing overrides retain other deployment cookies. Authorization initialization, exchange, cancellation and logout keep requestHeaders. Both maps remain private to Host and Electron main; the session's userId stays Host-only too, and renderer bootstrap receives only origin and token.
 
