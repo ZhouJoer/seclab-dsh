@@ -128,7 +128,8 @@ export async function apply(ctx) {
       assert.equal(before.revision, 0)
       await securityCtx.securityWorkbench.command(exec.agent, JSON.stringify({ operationId: 'fixture-create-report-project',
         expectedRevision: before.revision, action: { kind: 'create', title: '静态安全简报',
-          objective: '仅静态检查提供的源码。没有独立复核时保持待复核状态。', environmentIds: [], maxAttempts: 1 } }))
+          objective: '仅静态检查提供的源码。没有独立复核时保持待复核状态。', environmentIds: [], maxAttempts: 1,
+          taskContext: { background: '仅整理本任务提供的材料，不运行样本。授权声明未填写。' } } }))
       const result = await next()
       assert.notEqual(result.isError, true)
       const view = await securityCtx.securityWorkbench.view(exec.agent)

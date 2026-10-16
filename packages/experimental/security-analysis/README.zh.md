@@ -26,6 +26,12 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用
 
+可选的 `taskContext` 包含 `background` 和独立可选的 `authorization` 声明（`basis`、`scope`、`allowedActions`、`restrictions`，以及可选的毫秒时间戳 `expiresAt`）。仅启用授权声明时要求四个文字字段完整。声明是用户填写的信息，不代表已核验权限；它不登记资产，也不替代执行审批、角色、有效期或次数检查。缺少此字段的旧任务保持不变。
+
+工作区资源设置保存默认值，新任务复制为独立快照。创建时省略 `taskContext` 表示继承默认值，传入 `null` 表示本次不使用。更新时省略表示保留原值，传入 `null` 表示清除。仅经过认证的操作者接口可编辑声明。完整摘要不得超过 `taskContextMaxBytes`（默认 4096 UTF-8 字节）；超限拒绝保存，不截断，也不调用模型整理。
+
+安全插件以来源为 `security-task-context` 的 `user/message` 记录快照。Session 投影保存最新快照及其是否被压缩移除。内容未变且仍保留时，进度或修订更新不重复追加；修改、到期、清除、切换任务和压缩移除后追加替代快照。普通 Web 输入在获准轮次首次请求前冻结工作区默认值，随后安全工具创建任务时复制同一份。历史摘要仍消耗输入 token，模型仍可能询问缺失、冲突或超出范围的信息。
+
 在专用 `dsh` profile 中使用 [security-profile](../security-profile/README.zh.md)，添加 [security-web-profile](../security-web-profile/README.zh.md) 即可打开会话内工作台。默认通用 profile 不加载这些组合。
 
 分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好选择经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse` 与 `iot` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
@@ -120,7 +126,7 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 
 协调者、侦察、逆向分析和 Web 分析角色使用原生工作区工具及继承的 DSH 权限运行脚本。`security_capabilities.analysisDirectory` 返回 Session 工作区下 `.dsh/analysis/<task-session-key>/` 的绝对路径；缺少工作区或活动绑定时返回 null。查询不会创建目录或授予权限。协调者和子任务指令要求把生成脚本放入 `scripts/`、结果及日志放入 `outputs/`、中间文件放入 `tmp/`；Shell 调用以分析目录作为 `workdir`，用绝对路径读取原始输入。任务与 Session 标识决定各自独立且稳定的目录。文件跨轮保留；清理前需保存相关工具结果作为证据。用户要求的项目代码和交付物遵循项目布局。研究和复核角色不能执行脚本。项目停止和归档会取消跟踪的原生前台进程及所属后台任务，并等待清理。原生 Shell 取消涵盖 DSH 管理的进程树；外部服务或脱离的容器工作负载需要通过对应环境的生命周期操作清理。专用验证 provider 仍要求已批准计划。
 
-只读 `toolboxDirectory` Remote 立即显示未检测的定义，打开页面不运行探测。`toolboxInventory` 和 `security_environment` 按当前目录检测所选工具 ID 及其递归依赖。Host 与 CLI 共享定义校验、候选路径发现、依赖排序、探测参数和结果解析。reverse 集合包含通过选定 Python 探测的 capstone 和 pefile 模块。CLI `doctor` 报告 Python 解释器、虚拟环境和 pip 信息；`import`、`export`、`--tag` 与 `--collection` 管理可复用工具包。`security_capabilities` 按查询词、标签、集合或工具 ID 返回有界摘要；`details` 加载所选工具或 `providerId` 的完整说明。`toolDiscoveryPageSize` 限制每页数量，`modelResultBytes` 限制完整响应。系统指令仅保留发现原则。TShark 详情区分可执行文件、驱动、接口与访问检查，并包含 Wireshark extcap 发现方法；版本检测不能证明抓包权限。
+只读 `toolboxDirectory` Remote 立即显示未检测的定义，打开页面不运行探测。`toolboxInventory` 和 `security_environment` 按当前目录检测所选工具 ID 及其递归依赖。Host 与 CLI 共享定义校验、候选路径发现、依赖排序、探测参数和结果解析。reverse 集合包含通过选定 Python 探测的 capstone 和 pefile 模块。CLI `doctor` 报告 Python 解释器、虚拟环境和 pip 信息；`import`、`export`、`--tag` 与 `--collection` 管理可复用工具包。`security_capabilities` 按查询词、标签、集合或工具 ID 返回有界摘要；`details` 加载所选工具或 `providerId` 的完整说明。`toolDiscoveryPageSize` 限制每页数量，`modelResultBytes` 限制完整响应。固定系统指令保留发现规则，不枚举外部工具。每次发现调用都读取当前目录；导入的工具包无需重启或扩充固定提示词即可发现。适配器名称、操作与支持环境来自共享适配器定义，所选指南按需加载。TShark 详情区分可执行文件、驱动、接口与访问检查，并包含 Wireshark extcap 发现方法；版本检测不能证明抓包权限。
 
 共享指导优先采用原生机器可读结果，并按当前安全问题选择有界查询。按需加载的[工具指南](src/builtin-tools.ts)说明二进制、抓包、动态、Android、HTTP 和扫描工具的格式及限制；[调查方法](src/methods.ts)衔接所需观察、最小查询、结果解释和停止决策。输入身份、参数和覆盖范围匹配时复用已保存结果。radare2 指引将相关查询合并到同一进程，执行一次所需分析；插件发现保留无目标调用参数 -q -c Lcj --，避免使用会禁用插件的 -NN。小型任务脚本筛选或关联字段，同时保留原始文件和定位信息。把文本放入 `stdout` 不等于结构化其内容。空结果、部分结果、截断、格式不支持或执行失败均需明确保留缺口；工具观察和建模假设应与 finding 及 review 结论区分。
 

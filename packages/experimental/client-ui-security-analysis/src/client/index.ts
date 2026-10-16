@@ -122,6 +122,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       })
     }
     const dashboardActions: DashboardActions = {
+      configureWorkspace: (id, input) => actions.configureWorkspace(id, input),
       followProjects: signal => remote.followProjects(signal),
       httpHistory: (project, input) => unwrap(remote.httpHistory(project, input)),
       httpExchange: (project, evidence, step, part, offset) => unwrap(remote.httpExchange(project, evidence, step, part, offset)),

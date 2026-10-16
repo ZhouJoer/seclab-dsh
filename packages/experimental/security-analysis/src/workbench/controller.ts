@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
+import { taskContextSchema, resolveTaskContext, type TaskContext } from '../task-context.ts'
 import {
   engagementSchema,
   checkpointSchema,
@@ -59,6 +60,7 @@ function supportsExternalHttp(environment: SecurityEnvironment | undefined): env
 }
 /** Fixed deployment limits and import authority. */
 export interface WorkbenchOptions {
+  taskContextMaxBytes: number
   importRoots: string[]
   environments: SecurityEnvironment[]
   maxDurationMs: number
@@ -433,15 +435,16 @@ export class SecurityController {
       .records.filter(item => item.kind === 'engagement').filter(item => includeArchived || !item.value.archived)
       .map(item => item.value)
   }
-  /** Rename, remove or restore a project from an authenticated operator gesture.
+  /** Edit or remove a project from an authenticated operator gesture.
    * @param projectId - existing project identity.
-   * @param input - revision-checked rename, archive, restore or permanent deletion request.
+     * @param input - revision-checked management request; omitted task context preserves it, null clears it.
    * @returns committed project list, including archived entries for recovery.
    */
   async manageProject(projectId: string, input: unknown): Promise<Engagement[]> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       action: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal('rename'), title: text }).strict(),
+        z.object({ kind: z.literal('task-context'), taskContext: taskContextSchema.nullable().optional() }).strict(),
         z.object({ kind: z.literal('archive') }).strict(),
         z.object({ kind: z.literal('restore') }).strict(),
         z.object({ kind: z.literal('purge') }).strict(),
@@ -457,6 +460,12 @@ export class SecurityController {
     }
     await this.journal.commit(request.operationId, request.expectedRevision, { projectId, request }, (view) => {
       const project = this.project(view, projectId)
+      if (request.action.kind === 'task-context') {
+        const taskContext = resolveTaskContext(request.action.taskContext === undefined ? project.taskContext : request.action.taskContext,
+          this.options.taskContextMaxBytes)
+        const { taskContext: _previous, ...retained } = project
+        return [{ kind: 'engagement', value: { ...retained, ...(taskContext ? { taskContext } : {}) } }]
+      }
       if (request.action.kind === 'rename') return [{ kind: 'engagement', value: { ...project, title: request.action.title } }]
       if (request.action.kind === 'restore') return [{ kind: 'engagement', value: { ...project, archived: false } }]
       return [{ kind: 'engagement', value: { ...project, archived: true, stopped: true } },
@@ -470,12 +479,13 @@ export class SecurityController {
   /** Attach operator-selected materials, creating the first project atomically when needed.
    * @param sessionId - authenticated operator Session, never a delegated child.
    * @param input - revision, material selection and optional initial task fields.
+   * @param defaultTaskContext - workspace snapshot used only for a newly committed task with omitted context.
    * @returns the committed Session scope with measured materials.
    */
-  async importMaterials(sessionId: string, input: unknown): Promise<WorkbenchView> {
-    return this.withArtifactWrite(() => this.importMaterialsImpl(sessionId, input))
+  async importMaterials(sessionId: string, input: unknown, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
+    return this.withArtifactWrite(() => this.importMaterialsImpl(sessionId, input, defaultTaskContext))
   }
-  private async importMaterialsImpl(sessionId: string, input: unknown): Promise<WorkbenchView> {
+  private async importMaterialsImpl(sessionId: string, input: unknown, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       material: materialInputSchema.optional(),
       target: externalTargetInput.optional(),
@@ -485,7 +495,8 @@ export class SecurityController {
     await this.journal.commit(request.operationId, request.expectedRevision, { sessionId, material: request }, async (view) => {
       const bound = this.binding(sessionId)
       if (bound && bound.role !== 'coordinator') throw new Error('Coordinator role required')
-      const created = bound ? [] : request.task ? this.createRecords(sessionId, { kind: 'create', ...request.task }) : []
+      const created = bound ? [] : request.task ? this.createRecords(sessionId, { kind: 'create', ...request.task,
+        taskContext: request.task.taskContext === undefined ? defaultTaskContext : request.task.taskContext }) : []
       const project = bound ? this.project(view, bound.engagementId) : created.find(item => item.kind === 'engagement')?.value
       if (!project || !('stopped' in project))
         throw new Error('Select a workspace and configure its resources before adding materials')
@@ -595,6 +606,7 @@ export class SecurityController {
   }
 
   private createRecords(sessionId: string, action: Extract<SecurityCommand['action'], { kind: 'create' }>): SecurityRecord[] {
+    const taskContext = resolveTaskContext(action.taskContext, this.options.taskContextMaxBytes)
     if (action.environmentIds.some(id => !this.options.environments.some(env => env.id === id)))
       throw new Error('Unknown environment')
     const targetEnvironment = action.target
@@ -609,6 +621,7 @@ export class SecurityController {
       maxAttempts: action.maxAttempts,
       id: randomUUID(),
       stopped: false,
+      ...(taskContext ? { taskContext } : {}),
     })
     const records: SecurityRecord[] = [
       { kind: 'engagement', value: project },
@@ -636,14 +649,16 @@ export class SecurityController {
    * @param operator - true only for a user gesture, never model-supplied.
    * @param signal - cancellation of a pending model-generated report.
    * @param onStopped - operator carrier cancellation after durable stop, before awaiting resource cleanup.
+   * @param defaultTaskContext - workspace snapshot resolved after idempotent replay, only when creation omits context.
    * @returns committed project state.
    */
   async command(sessionId: string, input: unknown, operator: boolean = false,
-    signal: AbortSignal = new AbortController().signal, onStopped?: (project: string) => void): Promise<WorkbenchView> {
-    return this.withArtifactWrite(() => this.commandImpl(sessionId, input, operator, signal, onStopped))
+    signal: AbortSignal = new AbortController().signal, onStopped?: (project: string) => void,
+    defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
+    return this.withArtifactWrite(() => this.commandImpl(sessionId, input, operator, signal, onStopped, defaultTaskContext))
   }
   private async commandImpl(sessionId: string, input: unknown, operator: boolean,
-    signal: AbortSignal, onStopped?: (project: string) => void): Promise<WorkbenchView> {
+    signal: AbortSignal, onStopped?: (project: string) => void, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
     const command = commandSchema.parse(input)
     const action = command.action
     const operatorActions = ['create', 'select', 'leave', 'approve', 'publish', 'resume', 'web-target', 'external-web-target']
@@ -654,7 +669,8 @@ export class SecurityController {
       action.kind === 'stop' || action.kind === 'revoke' ? undefined : command.expectedRevision,
       { sessionId, operator, action },
       async (view) => {
-        if (action.kind === 'create') return this.createRecords(sessionId, action)
+        if (action.kind === 'create') return this.createRecords(sessionId, { ...action,
+          taskContext: action.taskContext === undefined ? defaultTaskContext : action.taskContext })
         if (action.kind === 'select') {
           if (this.project(view, action.engagementId).archived) throw new Error('Restore the removed project before selecting it')
           return [

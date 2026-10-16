@@ -7909,6 +7909,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TaskContext',
+    declaration: 'export type TaskContext = z.infer<typeof taskContextSchema>;',
+  },
+  {
     name: 'TeamId',
     declaration: 'export type TeamId = Branded<\'TeamId\'>;',
   },
@@ -8470,11 +8474,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkbenchConfiguration',
-    declaration: 'export interface WorkbenchConfiguration {\n    workspace: {\n        cwd: string;\n        revision: number;\n        configured: boolean;\n        environmentIds: string[];\n        maxAttempts?: number;\n    } | null;\n    materialLimits: {\n        bytes: number;\n        entries: number;\n    };\n    selectedProject?: string;\n    projects: {\n        id: string;\n        title: string;\n    }[];\n    environments: {\n        id: string;\n        kind: \'local\' | \'docker\' | \'android\';\n        label: string;\n        tools: string[];\n    }[];\n    providers: {\n        id: string;\n        operations: readonly string[];\n    }[];\n    knowledgeIntervalMs: number;\n}',
+    declaration: 'export interface WorkbenchConfiguration {\n    workspace: {\n        cwd: string;\n        revision: number;\n        configured: boolean;\n        environmentIds: string[];\n        maxAttempts?: number;\n        taskContext?: TaskContext;\n    } | null;\n    materialLimits: {\n        bytes: number;\n        entries: number;\n    };\n    taskContextMaxBytes: number;\n    selectedProject?: string;\n    projects: {\n        id: string;\n        title: string;\n    }[];\n    environments: {\n        id: string;\n        kind: \'local\' | \'docker\' | \'android\';\n        label: string;\n        tools: string[];\n    }[];\n    providers: {\n        id: string;\n        operations: readonly string[];\n    }[];\n    knowledgeIntervalMs: number;\n}',
   },
   {
     name: 'WorkbenchOptions',
-    declaration: 'export interface WorkbenchOptions {\n    importRoots: string[];\n    environments: SecurityEnvironment[];\n    maxDurationMs: number;\n    maxOutputBytes: number;\n    approvalTtlMs: number;\n    maxDerivedAssets: number;\n    maxArtifactBytes: number;\n    reportLimits?: ReportLimits;\n}',
+    declaration: 'export interface WorkbenchOptions {\n    taskContextMaxBytes: number;\n    importRoots: string[];\n    environments: SecurityEnvironment[];\n    maxDurationMs: number;\n    maxOutputBytes: number;\n    approvalTtlMs: number;\n    maxDerivedAssets: number;\n    maxArtifactBytes: number;\n    reportLimits?: ReportLimits;\n}',
   },
   {
     name: 'WorkbenchView',

@@ -14,6 +14,7 @@ import { AnalysisStart } from './AnalysisStart.tsx'
 import { WorkspaceResources } from './WorkspaceResources.tsx'
 import { MaterialPanel } from './MaterialPanel.tsx'
 import { ProjectManagement, projectLabel } from './ProjectManagement.tsx'
+import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { ActivityPanel, type ActivityActions } from './ActivityPanel.tsx'
 import { PlanReview } from './PlanReview.tsx'
@@ -207,6 +208,7 @@ export function Workbench(props: WorkbenchProps) {
   const maxAttempts = workspace?.maxAttempts
   const workspaceControls = workspace && <WorkspaceResources
     key={`${workspace.cwd}:${workspace.revision}`} workspace={workspace} environments={configuration.environments}
+    taskContextMaxBytes={configuration.taskContextMaxBytes}
     disabled={busy > 0} t={t} save={input => perform(async () => {
       const current = ++generation.current
       const configured = await props.configureWorkspace(sessionId, JSON.stringify(input))
@@ -312,6 +314,30 @@ export function Workbench(props: WorkbenchProps) {
               )}
               {busy > 0 && <p role="status">{t('loading')}</p>}
               <div className={css.body}>
+                {project?.kind === 'engagement' && <ProjectTaskContext
+                  key={project.value.id + JSON.stringify(project.value.taskContext)} t={t}
+                  value={project.value.taskContext} maxBytes={configuration.taskContextMaxBytes}
+                  workspace={configuration.workspace ?? undefined}
+                  saveDefaults={workspace?.maxAttempts === undefined ? undefined
+                    : (taskContext) => {
+                      let saved = false
+                      return perform(async () => {
+                        const settings = workspace
+                        const next = await props.configureWorkspace(sessionId, JSON.stringify({
+                          expectedRevision: settings.revision, environmentIds: settings.environmentIds,
+                          maxAttempts: settings.maxAttempts, taskContext }))
+                        if (activeSession.current === sessionId) { setConfiguration(next); saved = true }
+                      }).then(() => saved)
+                    }}
+                  disabled={busy > 0 || !!project.value.archived} save={async (taskContext) => {
+                    let saved = false
+                    await perform(async () => {
+                      await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(),
+                        expectedRevision: view.revision, action: { kind: 'task-context', taskContext } }))
+                      if (activeSession.current === sessionId) { await load(); saved = true }
+                    })
+                    return saved
+                  }} />}
                 {tab !== 'planApprovals' && <ToolPreferences key={sessionId} {...props} />}
                 {project && (tab === 'overview' || tab === 'assets') && <MaterialPanel key={sessionId + project.value.id} t={t}
                   disabled={busy > 0 || project.value.stopped}
@@ -402,6 +428,7 @@ export function Workbench(props: WorkbenchProps) {
                       <>
                         {maxAttempts === undefined && <p role="alert" className={css.error}>{t(workspace ? 'missingAttemptLimit' : 'missingAnalysisWorkspace')}</p>}
                         <AnalysisStart key={sessionId} t={t} disabled={busy > 0 || running || maxAttempts === undefined}
+                          defaultTaskContext={workspace?.taskContext} taskContextMaxBytes={configuration.taskContextMaxBytes}
                           limits={configuration.materialLimits} environments={configuration.environments}
                           prepare={async (input) => {
                             if (maxAttempts === undefined) throw new Error(t(workspace ? 'missingAttemptLimit' : 'missingAnalysisWorkspace'))
@@ -409,7 +436,7 @@ export function Workbench(props: WorkbenchProps) {
                               operationId: input.operationId, expectedRevision: view.revision,
                               material: input.material, target: input.target ? { ...input.target,
                                 environmentId: input.environmentId, label: input.title } : undefined,
-                              title: input.title, objective: input.objective,
+                              title: input.title, objective: input.objective, taskContext: input.taskContext,
                               resources: { environmentIds: [input.environmentId], maxAttempts },
                             }))
                           }}

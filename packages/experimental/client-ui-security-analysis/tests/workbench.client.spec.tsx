@@ -430,14 +430,14 @@ it('saves workspace environment choices and can disable intake without changing 
   fireEvent.click(screen.getByRole('button', { name: '保存工作区配置' }))
   await screen.findByText('调整可用环境')
   expect(JSON.parse(vi.mocked(api.configureWorkspace).mock.calls[0]![1]))
-    .toEqual({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 5 })
+    .toEqual({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 5, taskContext: null })
   expect(vi.mocked(api.configureWorkspace).mock.calls[0]![0]).toBe('parent')
   expect(api.command).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('checkbox', { name: 'Lab' }))
   fireEvent.click(screen.getByRole('button', { name: '保存工作区配置' }))
   await screen.findByText('已停用此工作区的自动任务创建。')
   expect(JSON.parse(vi.mocked(api.configureWorkspace).mock.calls[1]![1]))
-    .toEqual({ expectedRevision: 1, environmentIds: [], maxAttempts: 5 })
+    .toEqual({ expectedRevision: 1, environmentIds: [], maxAttempts: 5, taskContext: null })
 })
 
 it('requires an explicit attempt limit when no deployment default is configured', async () => {
@@ -584,7 +584,7 @@ it('lets the operator remove a saved environment that the deployment no longer p
   fireEvent.click(screen.getByRole('button', { name: '保存工作区配置' }))
   await screen.findByText('已停用此工作区的自动任务创建。')
   expect(JSON.parse(vi.mocked(api.configureWorkspace).mock.calls[0]![1]))
-    .toEqual({ expectedRevision: 2, environmentIds: [], maxAttempts: 3 })
+    .toEqual({ expectedRevision: 2, environmentIds: [], maxAttempts: 3, taskContext: null })
 })
 
 it('waits for a workspace save before refreshing a completed turn and keeps the saved revision', async () => {
@@ -622,7 +622,7 @@ it('waits for a workspace save before refreshing a completed turn and keeps the 
   fireEvent.click(screen.getByRole('button', { name: '保存工作区配置' }))
   await waitFor(() => { expect(save).toHaveBeenCalledTimes(2) })
   expect(JSON.parse(save.mock.calls[1]![1]))
-    .toEqual({ expectedRevision: 2, environmentIds: ['local'], maxAttempts: 3 })
+    .toEqual({ expectedRevision: 2, environmentIds: ['local'], maxAttempts: 3, taskContext: null })
 })
 
 

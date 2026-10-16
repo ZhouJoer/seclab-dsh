@@ -4,13 +4,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
 import { workspaceKey } from './task-bootstrap.ts'
+import { taskContextSchema, resolveTaskContext } from './task-context.ts'
 
 const selectionSchema = z.object({
   environmentIds: z.array(z.string().trim().min(1)).refine(ids => new Set(ids).size === ids.length, 'Environment IDs must be unique'),
   maxAttempts: z.number().int().positive(),
 }).strict()
-const recordSchema = selectionSchema.extend({ revision: z.number().int().positive() }).strict()
-const updateSchema = selectionSchema.extend({ expectedRevision: z.number().int().nonnegative() }).strict()
+const recordSchema = selectionSchema.extend({ revision: z.number().int().positive(), taskContext: taskContextSchema.optional() }).strict()
+const updateSchema = selectionSchema.extend({ expectedRevision: z.number().int().nonnegative(),
+  taskContext: taskContextSchema.nullable().optional() }).strict()
 const workspaceIntakeDomain = defineDomain({
   name: 'security_workspace_intake', version: 1,
   tables: { workspaces: domainTable(recordSchema) },
@@ -28,7 +30,8 @@ export interface WorkspaceIntakeStore {
   /**
    * Persist a selection after validating the wire input and configured resources.
    * @param cwd - absolute Session workspace directory resolved by the Host.
-   * @param input - resource IDs, attempt limit, and observed revision; first writes use revision zero.
+   * @param input - resources, attempt limit and revision (zero for first write);
+   * omitted task context preserves it, null clears it.
    * @returns detached committed selection with its new revision.
    */
   set(cwd: string, input: unknown): Promise<WorkspaceIntakeRecord>
@@ -45,9 +48,11 @@ function keyOf(cwd: string): string {
  * Open durable workspace resource selections without changing project or file access.
  * @param ctx - Host context providing storageDomain.
  * @param configuredEnvironmentIds - deployment resource identities accepted by configuration writes.
+ * @param taskContextMaxBytes - maximum complete model-facing task context size.
  * @returns store owned and closed by the caller.
  */
-export async function openWorkspaceIntake(ctx: Context, configuredEnvironmentIds: readonly string[]): Promise<WorkspaceIntakeStore> {
+export async function openWorkspaceIntake(ctx: Context, configuredEnvironmentIds: readonly string[],
+  taskContextMaxBytes: number): Promise<WorkspaceIntakeStore> {
   const domain = await ctx.storageDomain.open(workspaceIntakeDomain)
   const table = domain.table('workspaces')
   let writes = Promise.resolve()
@@ -66,8 +71,11 @@ export async function openWorkspaceIntake(ctx: Context, configuredEnvironmentIds
         const current = table.get(key)
         if ((current?.revision ?? 0) !== update.expectedRevision)
           throw new Error('Workspace resource configuration changed; reload before saving')
+        const taskContext = resolveTaskContext(update.taskContext === undefined ? current?.taskContext : update.taskContext,
+          taskContextMaxBytes)
         const record = recordSchema.parse({ environmentIds: update.environmentIds,
-          maxAttempts: update.maxAttempts, revision: update.expectedRevision + 1 })
+          maxAttempts: update.maxAttempts, revision: update.expectedRevision + 1,
+          ...(taskContext ? { taskContext } : {}) })
         await table.put(key, record)
         return structuredClone(record)
       })

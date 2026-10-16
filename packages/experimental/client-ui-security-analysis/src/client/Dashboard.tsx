@@ -6,10 +6,11 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DeviceDirectory, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { CaptureControls } from './CaptureControls.tsx'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ProjectManagement } from './ProjectManagement.tsx'
+import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { Improvements, type ImprovementActions } from './Improvements.tsx'
 import { ProjectDeletion } from './ProjectDeletion.tsx'
 import type { ProjectActions } from './project-actions.tsx'
@@ -42,6 +43,7 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   stopProject(id: SessionId): Promise<void>
   resumeProject(id: SessionId): Promise<void>
   createWorkspace(path: string): Promise<WorkspaceId>
+  configureWorkspace(sessionId: SessionId, input: string): Promise<WorkbenchConfiguration>
 }
 type Props = DashboardActions & PropsLocale<typeof NS> & PropsRuntime<'main'> & PropsRenderSlots<'security.workbench.session'>
 /** Render project facts and explicit analysis actions.
@@ -80,6 +82,8 @@ export function Dashboard(props: Props) {
   const [captureEnvironments, setCaptureEnvironments] = useState<DeviceDirectory['environments']>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [contextSettings, setContextSettings] = useState<{ session: SessionId; config: WorkbenchConfiguration }>()
+  const contextWorkspace = contextSettings?.config.workspace
   const [stopping, setStopping] = useState(false)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -200,6 +204,7 @@ export function Dashboard(props: Props) {
     setSelected(id); setView({ revision: 0, records: [] }); setTab('graphTitle'); setCreating(false)
     setSessionId(undefined); setReference(undefined); setAssistant(false); setAdvanced(false)
     setMissingSession(false); setFocusCheckId(undefined)
+    setContextSettings(undefined)
     setEvidenceId(''); setEvidenceQuery(''); setReportId(''); setError(''); setBusy(false); setStopping(false)
     setDeleting('')
   }
@@ -317,6 +322,40 @@ export function Dashboard(props: Props) {
             }}>{t(stopping ? 'activityStopping' : 'stop')}</button><button className={css.primary} disabled={busy} onClick={() =>{  if (assistant) setAssistant(false); else void perform(() => connect(false)) }}>{t(assistant ? 'dashboardHideAssistant' : 'dashboardAssistant')}</button></>}
             {!project.archived && <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button>}
           </div>
+          <ProjectTaskContext key={project.id + JSON.stringify(project.taskContext)} t={t}
+            value={project.taskContext} maxBytes={contextSettings?.config.taskContextMaxBytes}
+            workspace={contextSettings?.config.workspace ?? undefined} disabled={busy || !!project.archived} loading={busy}
+            prepare={() => { if (!busy) void perform(async () => {
+              const current = generation.current
+              const id = sessionId ?? await props.findSession(selected)
+              if (current !== generation.current) return
+              if (!id) { setMissingSession(true); return }
+              const retained = props.retainSession(id)
+              try {
+                await retained.ready
+                const config = await props.configuration(id)
+                if (current === generation.current) setContextSettings({ session: id, config })
+              } finally { retained.release() }
+            }) }}
+            saveDefaults={!contextSettings || contextWorkspace?.maxAttempts === undefined ? undefined
+              : taskContext => perform(async () => {
+                const current = generation.current
+                const settings = contextWorkspace
+                const retained = props.retainSession(contextSettings.session)
+                try {
+                  await retained.ready
+                  const config = await props.configureWorkspace(contextSettings.session, JSON.stringify({
+                    expectedRevision: settings.revision, environmentIds: settings.environmentIds,
+                    maxAttempts: settings.maxAttempts, taskContext }))
+                  if (current === generation.current) setContextSettings({ session: contextSettings.session, config })
+                } finally { retained.release() }
+              })}
+            save={taskContext => perform(async () => {
+              const current = generation.current
+              await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(),
+                expectedRevision: view.revision, action: { kind: 'task-context', taskContext } }))
+              if (current === generation.current) await refresh()
+            })} />
           {!project.archived && pendingPlans.length > 0 && <div className={css.notice}>
             <p role="status">{t('pendingPlanHint')} ({pendingPlans.length})</p>
           </div>}

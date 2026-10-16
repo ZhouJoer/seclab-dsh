@@ -94,7 +94,7 @@ it('requires a saved attempt limit before creating an analysis', async () => {
   fireEvent.click(screen.getByRole('button', { name: en.saveWorkspaceResources }))
   await waitFor(() => { expect(screen.queryByText(en.missingAttemptLimit)).toBeNull() })
   expect(JSON.parse(configureWorkspace.mock.calls[0]![1])).toEqual({
-    expectedRevision: 0, environmentIds: ['local'], maxAttempts: 6,
+    expectedRevision: 0, environmentIds: ['local'], maxAttempts: 6, taskContext: null,
   })
   fireEvent.change(screen.getByLabelText('What would you like to analyze?'), { target: { value: 'Inspect code' } })
   fireEvent.click(start)

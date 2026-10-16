@@ -6,9 +6,10 @@ import type { ReactNode } from 'react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as common } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { engagementSchema, recordSchema } from '@deepseek-ai/dsh-experimental-security-analysis/src/workbench/model.ts'
-import type { WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { TaskContext, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { Dashboard } from '../src/client/Dashboard.tsx'
 import { deviceActions } from './device-fixture.client.ts'
+import { workbenchConfiguration } from './configuration-fixture.client.ts'
 import { en } from '../src/client/locales.ts'
 import type {} from '../src/client/index.ts'
 
@@ -28,6 +29,11 @@ function harness(extra: object = {}) {
   const release = vi.fn()
   const api = {
     ...deviceActions,
+    configuration: vi.fn(async () => workbenchConfiguration()),
+    configureWorkspace: vi.fn(async (_id: string, input: string) => workbenchConfiguration({
+      workspace: { ...workbenchConfiguration().workspace!, revision: 1,
+        taskContext: (JSON.parse(input) as { taskContext: TaskContext }).taskContext },
+    })),
     followProjects: async function* (signal: AbortSignal) {
       yield [alpha, beta].map(item => ({ project: item.value, runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '', state: item.value.stopped ? 'stopped' as const : 'idle' as const }))
       if (!signal.aborted) await new Promise<void>((resolve) =>{  signal.addEventListener('abort', () =>{  resolve() }, { once: true }) })
@@ -90,6 +96,54 @@ it('shares one activity subscription across graph and timeline navigation', asyn
   fireEvent.click(within(navigation).getByRole('button', { name: 'Tools & progress' }))
   fireEvent.click(within(navigation).getByRole('button', { name: 'Investigation' }))
   expect(followActivity).toHaveBeenCalledTimes(1)
+})
+it('places folded task context above every detail tab and edits without opening an assistant or model turn', async () => {
+  const { api, props, release } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
+  const summary = await screen.findByText(en.taskContextTitle)
+  const details = summary.closest('details')!
+  const navigation = screen.getByRole('navigation', { name: en.dashboardDetailNavigation })
+  expect(details.open).toBe(false)
+  expect(details.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  expect(api.configuration).not.toHaveBeenCalled()
+  details.open = true
+  fireEvent(details, new Event('toggle'))
+  fireEvent.change(await screen.findByLabelText(en.taskContextBackground), { target: { value: 'Draft context' } })
+  expect(release).toHaveBeenCalledTimes(1)
+  expect(api.manageProject).not.toHaveBeenCalled()
+  fireEvent.click(within(navigation).getByRole('button', { name: en.dashboardOverview }))
+  expect(screen.getByLabelText<HTMLTextAreaElement>(en.taskContextBackground).value).toBe('Draft context')
+  details.open = false
+  fireEvent(details, new Event('toggle'))
+  details.open = true
+  fireEvent(details, new Event('toggle'))
+  expect(api.configuration).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByRole('button', { name: en.taskContextSave }))
+  await waitFor(() => { expect(api.manageProject).toHaveBeenCalledTimes(1) })
+  expect(JSON.parse(api.manageProject.mock.calls[0]![1])).toMatchObject({ expectedRevision: 1,
+    action: { kind: 'task-context', taskContext: { background: 'Draft context' } } })
+  expect(api.createSession).not.toHaveBeenCalled()
+  expect(api.associateSession).not.toHaveBeenCalled()
+  expect(api.observe).not.toHaveBeenCalled()
+  expect(screen.queryByLabelText('Assistant draft')).toBeNull()
+})
+it('saves reusable workspace context separately without changing task or environment settings', async () => {
+  const { api, props } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
+  const details = (await screen.findByText(en.taskContextTitle)).closest('details')!
+  details.open = true
+  fireEvent(details, new Event('toggle'))
+  fireEvent.change(await screen.findByLabelText(en.taskContextBackground), { target: { value: 'Reusable background' } })
+  fireEvent.click(screen.getByRole('button', { name: en.taskContextSaveDefault }))
+  await screen.findByRole('button', { name: en.taskContextDefaultSaved })
+  expect(api.manageProject).not.toHaveBeenCalled()
+  expect(api.configureWorkspace).toHaveBeenCalledWith('s1', JSON.stringify({
+    expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3, taskContext: { background: 'Reusable background' },
+  }))
+  expect(details.open).toBe(true)
+  expect(screen.getByLabelText<HTMLTextAreaElement>(en.taskContextBackground).value).toBe('Reusable background')
 })
 it('returns from evidence detail without losing the evidence filter', async () => {
   const { api, props } = harness()

@@ -5,6 +5,7 @@ import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import { httpSummarySchema } from '../http-model.ts'
+import { taskContextSchema } from '../task-context.ts'
 
 /** Identifies an assessment project. */
 export type EngagementId = Branded<'SecurityEngagement'>
@@ -63,6 +64,7 @@ export const engagementSchema = z
     stopped: z.boolean(),
     archived: z.boolean().optional(),
     maxAttempts: z.number().int().positive(),
+    taskContext: taskContextSchema.optional(),
   })
   .strict()
 /** A measured sample or an explicitly unverified legacy declaration. */

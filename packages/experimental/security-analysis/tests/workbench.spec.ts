@@ -32,6 +32,7 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
   const journal = await openSecurityJournal(ctx)
   const artifacts = new ArtifactStore(root, 65536)
   const controller = new SecurityController(journal, artifacts, {
+    taskContextMaxBytes: 4096,
     importRoots: [root],
     environments: [{ id: 'local', kind: 'local', label: 'Lab', cwd: root, tools: [] },
       { id: 'kali', kind: 'docker', label: 'Kali', cwd: root,

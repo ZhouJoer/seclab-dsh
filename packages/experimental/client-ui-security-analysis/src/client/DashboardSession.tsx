@@ -59,10 +59,11 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
   return <>
     {props.creating && <div className={css.creation}>
       {error && <p role="alert">{error}<button onClick={() => void load()}>{t('refresh')}</button></p>}
-      {configuration && maxAttempts === undefined && <>
-        <p role="alert">{t(workspace ? 'missingAttemptLimit' : 'missingAnalysisWorkspace')}</p>
+      {configuration && <details open={maxAttempts === undefined}><summary>{t('editWorkspaceResources')}</summary>
+        {maxAttempts === undefined && <p role="alert">{t(workspace ? 'missingAttemptLimit' : 'missingAnalysisWorkspace')}</p>}
         {workspace && <WorkspaceResources key={`${workspace.cwd}:${workspace.revision}`}
           t={t} workspace={workspace} environments={configuration.environments} disabled={saving}
+          taskContextMaxBytes={configuration.taskContextMaxBytes}
           save={async (input) => {
             const current = generation.current
             setSaving(true); setError('')
@@ -72,8 +73,9 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
             } catch (error) { if (current === generation.current) setError(String(error)) }
             finally { if (current === generation.current) setSaving(false) }
           }} />}
-      </>}
+      </details>}
       <AnalysisStart t={t} disabled={!configuration || maxAttempts === undefined || saving}
+        defaultTaskContext={workspace?.taskContext} taskContextMaxBytes={configuration?.taskContextMaxBytes}
         toolPreferences={{ sessionId, toolCatalog: props.toolCatalog, toolPreferences: props.toolPreferences }}
         environments={configuration?.environments ?? []} limits={configuration?.materialLimits}
         prepare={async (input) => {
@@ -86,7 +88,7 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
             material: input.material, target: input.target ? { ...input.target,
               environmentId: input.environmentId, label: input.title } : undefined,
 
-            title: input.title, objective: input.objective,
+            title: input.title, objective: input.objective, taskContext: input.taskContext,
             resources: { environmentIds: [input.environmentId], maxAttempts },
           }))
           if (generationAtStart !== generation.current) throw new Error(t('analysisSessionChanged'))

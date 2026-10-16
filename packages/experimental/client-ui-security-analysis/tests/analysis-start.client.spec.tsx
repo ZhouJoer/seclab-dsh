@@ -17,7 +17,7 @@ it('starts with automatic selection after failed checks while preserving the obj
   const preferences = vi.fn(async (_id: SessionId, input?: string) =>
     input && (JSON.parse(input) as Preferences).collectionIds.length ? pending.promise : initial)
   const prepare = vi.fn(async () => {}), send = vi.fn(async () => {})
-  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false}
+  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} taskContextMaxBytes={4096}
     environments={[{ id: 'host', label: 'Host', kind: 'local' }]} limits={{ bytes: 1024, entries: 10 }}
     prepare={prepare} send={send} continueInChat={() => {}} started={() => {}}
     toolPreferences={{ sessionId: SessionId('session'), toolPreferences: preferences,
@@ -48,7 +48,7 @@ function setup(local = true) {
   const send = vi.fn(async (_objective: string) => {})
   const started = vi.fn()
   const continueInChat = vi.fn()
-  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false}
+  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} taskContextMaxBytes={4096}
     environments={[{ id: 'container', label: 'Container', kind: 'docker' },
       ...(local ? [{ id: 'host', label: 'Host', kind: 'local' }] : [])]}
     limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} continueInChat={continueInChat} started={started} />)
@@ -146,7 +146,7 @@ it('requires an explicit nonlocal choice and never submits after an import failu
 it('explains a missing service environment without offering an empty selector', () => {
   const prepare = vi.fn<AnalysisStartProps['prepare']>(async () => {})
   const send = vi.fn(async () => {})
-  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} environments={[]}
+  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} environments={[]} taskContextMaxBytes={4096}
     limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} continueInChat={() => {}} started={() => {}} />)
   expect(screen.getByRole('alert').textContent).toBe(zh.noAnalysisEnvironment)
   expect(screen.getByText(zh.analysisRecordHint)).toBeDefined()

@@ -7,6 +7,7 @@ import type { WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-secur
  */
 export function workbenchConfiguration(overrides: Partial<WorkbenchConfiguration> = {}): WorkbenchConfiguration {
   return {
+    taskContextMaxBytes: 4096,
     workspace: { cwd: '/workspace', revision: 0, configured: true, environmentIds: ['local'], maxAttempts: 3 },
     materialLimits: { bytes: 1024, entries: 10 }, projects: [],
     environments: [{ id: 'local', label: 'Lab', tools: [], kind: 'local' }], providers: [], knowledgeIntervalMs: 0,

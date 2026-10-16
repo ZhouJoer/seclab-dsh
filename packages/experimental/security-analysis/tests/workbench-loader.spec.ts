@@ -86,7 +86,7 @@ class ScopeModel extends LlmAdapter {
   nativeCalls: { name: string; args: Record<string, unknown> | ((request: GenerateOptions) => Record<string, unknown>) }[] = []
   nativeCallId = (request: number) => 'native-' + String(request)
   readonly requests: GenerateOptions[] = []
-  beforeResponse: ((request: number) => void) | undefined
+  beforeResponse: ((request: number) => void | Promise<void>) | undefined
   firstSkill: string | undefined
   scopeCalls = 1
   usageTokens = 0
@@ -108,7 +108,7 @@ class ScopeModel extends LlmAdapter {
   }
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
-    this.beforeResponse?.(this.requests.length)
+    await this.beforeResponse?.(this.requests.length)
     if (this.usageTokens || this.cacheReadTokens) yield { type: 'usage', usage: { inputTokens: this.usageTokens, outputTokens: 0, cacheReadTokens: this.cacheReadTokens,
       ...(this.exactUsageTotal ? { totalTokens: this.usageTokens + this.cacheReadTokens } : {}) } }
     const native = this.nativeCalls[this.requests.length - 1]
@@ -287,7 +287,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                         ...(options.taskIntake === 'default' ? { defaultEnvironmentIds: ['local'] } : {}), workspaces: [
                           { cwd: options.taskIntake === 'current' ? root : join(root, 'other'), environmentIds: ['local'] },
                         ] } } : {}),
-                      root: join(root, 'workbench'), importRoots: [root],
+                      root: join(root, 'workbench'), importRoots: [root], toolCatalogPath: join(root, 'catalog.json'),
                       ...(options.adapters ? { ...(options.adapters === 'deployment' ? {} : { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' } }),
                         toolAdapters: { bindings: { radare2: 'local', ...options.bindings } } } : {}),
                       environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root,
@@ -352,6 +352,129 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('injects optional background on the first Web request without creating a task or interpreting its URL as a target', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
+    model.scopeCalls = 0
+    const taskContext = { background: 'Reference only: http://127.0.0.1:8000/example' }
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3, taskContext }))
+    expect(model.requests).toHaveLength(0)
+    agent.followup(webPrompt('Inspect the supplied source.'))
+    await agent.whenIdle()
+    expect(controller.projects()).toEqual([])
+    expect(JSON.stringify(model.requests[0]?.messages)).toContain(taskContext.background)
+    expect(JSON.stringify(model.requests[0]?.messages)).toContain('absent')
+    model.scopeCalls = model.requests.length + 1
+    agent.followup(webPrompt('Continue inspecting the supplied source.'))
+    await agent.whenIdle()
+    expect(controller.projects()[0]?.taskContext).toEqual(taskContext)
+    expect(controller.view(agent.id).records.filter(record => record.kind === 'asset')).toEqual([])
+  })
+
+  it('freezes the default between the first model request and task admission', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
+    const entered = Promise.withResolvers<undefined>(), release = Promise.withResolvers<undefined>()
+    onTestFinished(() => { release.resolve(undefined) })
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3, taskContext: { background: 'Original context' } }))
+    model.beforeResponse = async (request) => { if (request === 1) { entered.resolve(undefined); await release.promise } }
+    agent.followup(webPrompt('Inspect the sample.'))
+    await entered.promise
+    expect(controller.projects()).toEqual([])
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 1, environmentIds: ['local'], maxAttempts: 3, taskContext: { background: 'Future context' } }))
+    release.resolve(undefined)
+    await agent.whenIdle()
+    expect(controller.projects()[0]?.taskContext).toEqual({ background: 'Original context' })
+    expect(JSON.stringify(model.requests[0]?.messages)).toContain('Original context')
+    expect(JSON.stringify(model.requests[0]?.messages)).not.toContain('Future context')
+  })
+
+  it('retains one independent snapshot across twenty requests and changing runtime context', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { analysisProgressCalls: 100 })
+    await operator(controller, agent)({ kind: 'create', title: 'Context', objective: 'Read source', environmentIds: ['local'], maxAttempts: 3,
+      taskContext: { background: 'Stable background' } })
+    ctx.systemPrompt.context({ name: 'fixture:changing-progress', order: 1, text: () => String(model.requests.length) })
+    model.scopeCalls = 19
+    agent.followup(webPrompt('Inspect source.'))
+    await agent.whenIdle()
+    expect(model.requests).toHaveLength(20)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'security-task-context')).toHaveLength(1)
+    for (const request of model.requests) expect(request.messages.filter(message => message.source?.kind === 'security-task-context')).toHaveLength(1)
+  })
+
+  it('copies defaults for explicit creation, honors null and leaves earlier tasks unchanged', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0)
+    const defaults = { background: 'Workspace default' }
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3, taskContext: defaults }))
+    await ctx.securityWorkbench.importMaterials(agent, JSON.stringify({ operationId: 'context-create', expectedRevision: 0, title: 'Default', objective: 'Read' }))
+    expect(controller.projects()[0]?.taskContext).toEqual(defaults)
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 1, environmentIds: ['local'], maxAttempts: 3, taskContext: null }))
+    expect(controller.projects()[0]?.taskContext).toEqual(defaults)
+    await ctx.securityWorkbench.importMaterials(agent, JSON.stringify({ operationId: 'context-create', expectedRevision: 0, title: 'Default', objective: 'Read' }))
+    expect(controller.projects()).toHaveLength(1)
+    await ctx.securityWorkbench.command(agent, JSON.stringify({ operationId: 'context-second', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'create', title: 'No declaration', objective: 'Read', environmentIds: ['local'], maxAttempts: 3, taskContext: null } }))
+    expect(controller.projects().find(project => project.title === 'No declaration')?.taskContext).toBeUndefined()
+    const creation = JSON.stringify({ operationId: 'context-inherit', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'create', title: 'Inherited', objective: 'Read', environmentIds: ['local'], maxAttempts: 3 } })
+    await ctx.securityWorkbench.command(agent, creation)
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 2, environmentIds: ['local'], maxAttempts: 3, taskContext: defaults }))
+    await ctx.securityWorkbench.command(agent, creation)
+    expect(controller.projects().find(project => project.title === 'Inherited')?.taskContext).toBeUndefined()
+    expect(controller.projects()).toHaveLength(3)
+    expect(model.requests).toHaveLength(0)
+  })
+
+  it('supersedes edited and removed declarations without allowing model edits', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0)
+    model.scopeCalls = 0
+    await operator(controller, agent)({ kind: 'create', title: 'Context', objective: 'Read', environmentIds: ['local'], maxAttempts: 3,
+      taskContext: { background: 'First' } })
+    agent.followup(webPrompt('Inspect.')); await agent.whenIdle()
+    const project = controller.projects()[0]!
+    await ctx.securityWorkbench.manageProject(project.id, JSON.stringify({ operationId: 'edit-context', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'task-context', taskContext: { background: 'Second' } } }))
+    agent.followup(webPrompt('Continue.')); await agent.whenIdle()
+    expect(JSON.stringify(model.requests.at(-1)?.messages.at(-1))).toContain('Second')
+    await ctx.securityWorkbench.manageProject(project.id, JSON.stringify({ operationId: 'clear-context', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'task-context', taskContext: null } }))
+    agent.followup(webPrompt('Continue.')); await agent.whenIdle()
+    const events = agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'security-task-context')
+    expect(events).toHaveLength(3)
+    expect(JSON.stringify(events.at(-1))).toContain('absent')
+    await expect(controller.command(agent.id, { operationId: 'model-context', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'task-context', taskContext: { background: 'Model edit' } } })).rejects.toThrow()
+  })
+
+  it.each(['pre-step', 'retry'] as const)('restores a removed snapshot before the next model request through %s', async (mode) => {
+    const { ctx, agent, controller, model } = await load(false, 0)
+    model.scopeCalls = 0
+    await operator(controller, agent)({ kind: 'create', title: 'Context', objective: 'Read', environmentIds: ['local'], maxAttempts: 3,
+      taskContext: { background: 'Retained context' } })
+    agent.followup(webPrompt('Inspect.')); await agent.whenIdle()
+    const baseline = agent.session.snapshotEvents().find(event => event.type === 'user/message' && event.data.source.kind === 'security-task-context')!
+    const compact = () => { agent.session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Summary' }] }), {
+      surfaceOp: { op: 'replace', startSeq: baseline.seq, endSeq: baseline.seq }, sourceEventSeqs: [baseline.seq],
+    }) }
+    if (mode === 'pre-step') ctx.on('agent/pre-step', (_input, next) => { compact(); return next() })
+    else {
+      model.beforeResponse = (request) => { if (request === 2) throw new Error('Fixture context overflow') }
+      ctx.on('agent/request-error', async () => { compact(); return { kind: 'retry' } })
+    }
+    agent.followup(webPrompt('Continue.')); await agent.whenIdle()
+    expect(model.requests).toHaveLength(mode === 'retry' ? 3 : 2)
+    expect(model.requests.at(-1)?.messages.filter(message => message.source?.kind === 'security-task-context')).toHaveLength(1)
+    expect(JSON.stringify(model.requests.at(-1)?.messages)).toContain('Retained context')
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'security-task-context')).toHaveLength(2)
+  })
+
+  it('does not log a declaration or create a task when pre-step rejects', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3, taskContext: { background: 'Pending' } }))
+    ctx.on('agent/pre-step', async () => ({ kind: 'reject' }))
+    agent.followup(webPrompt('Inspect.')); await agent.whenIdle()
+    expect(model.requests).toHaveLength(0)
+    expect(controller.projects()).toHaveLength(0)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'security-task-context')).toHaveLength(0)
+  })
   it.each(['adb', 'packet-capture'] as const)('dispatches the %s provider adapter and reads retained evidence without another process', async (id) => {
     const fixture = `import fs from 'node:fs'; import crypto from 'node:crypto'; import assert from 'node:assert/strict';
 const args = process.argv.slice(1);
@@ -651,6 +774,33 @@ else if (args.includes('--output')) {
     expect((await execute(ctx, agent, 'security_static', args)).isError).toBe(true)
     expect(controller.activity!.usage(project)).toMatchObject([{ tool: 'source', verified: false, total: 1, failed: 1 }])
     expect(controller.view(agent.id).revision).toBe(revision)
+  })
+  it('discovers newly imported tool guides without expanding the fixed system instructions', async () => {
+    const { ctx, agent } = await load()
+    const scope = scopeOf(agent.ctx)
+    if (!scope) throw new Error('Expected an agent scope')
+    const before = await ctx.systemPrompt.assemble({ agent, scope })
+    const guidance = before.sections.find(section => section.name === 'security:workbench')?.text
+    expect(guidance).toBeDefined()
+    expect(guidance).not.toContain('security_radare2')
+    expect(guidance).not.toContain('For radare2, r2ghidra')
+    const pack = JSON.stringify({ version: 1, id: 'fixture-pack', label: 'Fixture pack', tools: [
+      { id: 'fixture-inspector', label: 'Fixture inspector', tags: ['fixture-format'], commands: ['fixture-inspector'],
+        guide: 'Inspect fixture-format records with --json and retain the original offsets.' },
+    ] })
+    const preview = ctx.securityWorkbench.previewToolPack(pack)
+    ctx.securityWorkbench.importToolPack(pack, preview.revision, false)
+    const brief = await execute(ctx, agent, 'security_capabilities', { query: 'fixture-format' })
+    expect(brief.isError).toBe(false)
+    expect(JSON.stringify(brief)).toContain('fixture-inspector')
+    expect(JSON.stringify(brief)).not.toContain('retain the original offsets')
+    const detail = await execute(ctx, agent, 'security_capabilities', { toolIds: ['fixture-inspector'], details: true })
+    expect(detail.isError).toBe(false)
+    expect(JSON.stringify(detail)).toContain('retain the original offsets')
+    const after = await ctx.systemPrompt.assemble({ agent, scope })
+    expect(after.sections).toEqual(before.sections)
+    expect(after.contexts).toEqual(before.contexts)
+    expect(JSON.stringify(after)).not.toContain('fixture-inspector')
   })
   it('loads task-specific definitions on demand without injecting paths or unrelated guides', async () => {
     const installations = [{ id: 'radare2', command: '/tools/radare2', prefixArgs: ['--fixture'],

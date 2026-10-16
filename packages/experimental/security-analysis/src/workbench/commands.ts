@@ -1,5 +1,6 @@
 /** Validated security commands shared by Host execution and browser consumers. @module */
 import { z } from 'zod'
+import { taskContextSchema } from '../task-context.ts'
 import {
   checkSchema,
   externalWebAssetSchema,
@@ -35,6 +36,7 @@ const actions = z.discriminatedUnion('kind', [
       environmentIds: z.array(text),
       maxAttempts: z.number().int().positive(),
       target: externalTargetInput.optional(),
+      taskContext: taskContextSchema.nullable().optional(),
     })
     .strict(),
   z.object({ kind: z.literal('select'), engagementId: text }).strict(),

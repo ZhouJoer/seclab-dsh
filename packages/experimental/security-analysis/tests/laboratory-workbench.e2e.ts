@@ -29,7 +29,8 @@ it.skipIf(!process.env.DSH_SECURITY_DOCKER_IMAGE)('collects HTTP inside the owne
   const journal = await openSecurityJournal(ctx)
   const artifacts = new ArtifactStore(root, 2 * 1024 * 1024)
   const controller = new SecurityController(journal, artifacts, { importRoots: [root], environments: [],
-    maxDurationMs: 30000, maxOutputBytes: 65536, approvalTtlMs: 60000, maxArtifactBytes: 2 * 1024 * 1024, maxDerivedAssets: 10 })
+    taskContextMaxBytes: 4096, maxDurationMs: 30000, maxOutputBytes: 65536, approvalTtlMs: 60000,
+    maxArtifactBytes: 2 * 1024 * 1024, maxDerivedAssets: 10 })
   const existingImage = process.env.DSH_SECURITY_DOCKER_IMAGE
   if (!existingImage) throw new Error('Configure the local toolbox image for this opt-in test')
   const config: Config = Config({ dockerCommand: process.env.DSH_SECURITY_DOCKER_COMMAND ?? 'docker', existingImage, baseImage: 'kalilinux/kali-rolling@sha256:30399bd65187e06525008dd13eecc2b3439d26a82b2c6b0ba32dee72bd843117', targetImage: 'bkimminich/juice-shop:v20.2.0@sha256:8739101ade29358abb5469ee66ae78e582c97ed0a5543a4ad102e5fa5193526b', buildTimeoutMs: 120000, timeoutMs: 120000, graceMs: 5000, maxOutputBytes: 65536, memoryMb: 2048, cpus: 2, pids: 256, temporaryMb: 512 })

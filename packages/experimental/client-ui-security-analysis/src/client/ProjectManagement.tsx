@@ -1,11 +1,13 @@
 /** Project labels and operator task management. @module */
 import { useState } from 'react'
 import { ProjectDeletion } from './ProjectDeletion.tsx'
+import type { TaskContext } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
 import css from './Workbench.module.css'
 /** Operator actions; archive preserves records and purge permanently removes them. */
 export type ProjectAction = { kind: 'rename'; title: string } | { kind: 'archive' } | { kind: 'restore' } | { kind: 'purge' }
+  | { kind: 'task-context'; taskContext: TaskContext | null }
 /** Keep native option labels within the selection control.
  * @param title - complete project name retained in its tooltip.
  * @param id - stable identity distinguishing shortened labels.

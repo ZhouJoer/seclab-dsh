@@ -284,6 +284,11 @@
 .resourceForm .field { margin-top: 12px; }
 .resourceSummary { padding: 16px 0; margin-bottom: 14px; }
 
+.taskContextFields { display: grid; gap: 12px; min-width: 0; margin-top: 12px; }
+.taskContextFields fieldset { min-width: 0; border: 0; margin: 0; padding: 0; }
+.taskContextFields legend { font-weight: 500; margin-bottom: 10px; }
+.taskContextPreview { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; font-size: 13px; }
+
 .field { min-width: 0; max-width: 100%; }
 .field input, .field select, .field textarea { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
 .field select { text-overflow: ellipsis; }
@@ -306,3 +311,7 @@
 .miningCard summary { cursor: pointer; font-weight: 600; }
 .miningCard ol { margin: 8px 0 0; padding-inline-start: 20px; display: grid; gap: 6px; }
 .miningCard code { overflow-wrap: anywhere; }
+.taskContextPanel { border: .5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; background: var(--dsw-alias-bg-layer-1); }
+.taskContextPanel > summary { cursor: pointer; color: var(--dsw-alias-label-primary); font-weight: 500; padding: 4px 0; }
+.taskContextPanel > summary small { display: inline-block; margin-left: 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 400; }
+.taskContextPanel > summary:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }

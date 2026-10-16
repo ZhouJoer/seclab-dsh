@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../session/session-projection" },
     { "path": "../../credentials/credentials" },
     { "path": "../../util/http-proxy" },
     { "path": "../../session-query/session-query" },

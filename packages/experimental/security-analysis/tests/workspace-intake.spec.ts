@@ -34,7 +34,7 @@ async function harness() {
     handles.facility = facility
     ctx.storage.mount('domain', facility)
     ctx.provide('storageDomain', facility)
-    const store = await openWorkspaceIntake(ctx, ['local', 'device'])
+    const store = await openWorkspaceIntake(ctx, ['local', 'device'], 4096)
     handles.store = store
     return { store, close }
   }
@@ -44,6 +44,32 @@ async function harness() {
 const selection = { expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3 }
 
 describe('workspace resource configuration', () => {
+  it('restores a complete optional authorization declaration after closing and reopening storage', async () => {
+    const { root, start } = await harness()
+    const first = await start()
+    const taskContext = { authorization: { basis: 'Owned fixture', scope: 'This workspace only',
+      allowedActions: 'Read supplied code', restrictions: 'No external access or execution' }, background: 'Reusable context' }
+    await first.store.set(root, { ...selection, taskContext })
+    await first.close()
+    const reopened = await start()
+    expect(reopened.store.get(root)?.taskContext).toEqual(taskContext)
+    expect(reopened.store.get(join(root, 'another'))).toBeUndefined()
+  })
+  it('preserves omitted task context, isolates workspaces and persists explicit clearing', async () => {
+    const { root, start } = await harness()
+    const first = await start()
+    await first.store.set(root, { ...selection, taskContext: { background: 'Context only' } })
+    await first.store.set(root, { ...selection, expectedRevision: 1 })
+    expect(first.store.get(root)?.taskContext).toEqual({ background: 'Context only' })
+    expect(first.store.get(join(root, 'other'))).toBeUndefined()
+    await first.close()
+    const second = await start()
+    expect(second.store.get(root)?.taskContext).toEqual({ background: 'Context only' })
+    await expect(second.store.set(root, { ...selection, expectedRevision: 2, taskContext: { background: '中'.repeat(4096) } })).rejects.toThrow('exceeds')
+    expect(second.store.get(root)?.revision).toBe(2)
+    await second.store.set(root, { ...selection, expectedRevision: 2, taskContext: null })
+    expect(second.store.get(root)?.taskContext).toBeUndefined()
+  })
   it('keeps independently selected workspaces separate and normalizes their directory spelling', async () => {
     const { root, start } = await harness()
     const { store } = await start()
