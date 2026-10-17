@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-client-ui-security-analysis",
   "description": "Security project workbench, evidence review and validation plan approval",
-  "version": "0.2.1-alpha.4",
+  "version": "0.2.1-rc.1",
   "publishConfig": {
     "access": "public"
   },

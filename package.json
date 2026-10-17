@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-root",
   "description": "AI-assisted security research workbench for reverse engineering, Web, Android and IoT, with traceable evidence, specialist agents and controlled validation. Built on DeepSeek Harness.",
-  "version": "0.2.1-alpha.4",
+  "version": "0.2.1-rc.1",
   "license": "MIT",
   "private": true,
   "type": "module",

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-helper",
   "description": "Optional read-only expert consultations with persistent usage and native Codex account controls",
-  "version": "0.2.1-alpha.4",
+  "version": "0.2.1-rc.1",
   "publishConfig": {
     "access": "public"
   },

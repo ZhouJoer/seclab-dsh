@@ -8,6 +8,7 @@ header:
   pin: true
 replay:
   override: true
+platform: posix
 permission: workspace-write
 workspace:
   final: true

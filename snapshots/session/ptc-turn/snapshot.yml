@@ -6,3 +6,4 @@ recording: live
 header:
   class: ptc
   pin: true
+platform: posix
