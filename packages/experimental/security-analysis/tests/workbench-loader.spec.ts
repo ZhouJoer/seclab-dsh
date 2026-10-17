@@ -888,6 +888,13 @@ else if (args.includes('--output')) {
       environmentIds: ['local'], maxAttempts: 2 })
     const select = (toolIds: string[]) => ctx.securityWorkbench.toolPreferences(agent,
       JSON.stringify({ toolIds, tags: [], collectionIds: [] }))
+    const options = await ctx.securityWorkbench.toolPreferenceOptions(agent)
+    expect(options.tools.find(tool => tool.id === 'radare2')?.unavailable).toBeUndefined()
+    expect(options.tools.find(tool => tool.id === 'r2pipe')?.unavailable).toBe('adapter')
+    expect(options.tools.find(tool => tool.id === 'ghidra')?.unavailable).toBe('sample')
+    expect(options.tools.find(tool => tool.id === 'strings')?.unavailable).toBe('configuration')
+    expect(options.collections.find(group => group.id === 'firmware')?.toolIds).toEqual(['radare2', 'r2ghidra'])
+    expect(ctx.securityWorkbench.toolboxDirectory('local').inventory.tools.find(tool => tool.id === 'radare2')?.status).toBe('not-checked')
     await select(['radare2'])
     expect(ctx.securityWorkbench.toolboxConfiguration('local').adapters).toContainEqual(expect.objectContaining({ id: 'radare2', status: 'ready' }))
     await expect(select(['tshark'])).rejects.toThrow('Adapter check failed')
@@ -2194,6 +2201,33 @@ it('cancels an active refinement and drains the worker before project stop retur
   await rejected
   expect(controller.view(agent.id).records.filter(item => item.kind === 'knowledge')).toEqual(before)
   expect(ctx.agents.get(worker!.id)).toBeUndefined()
+})
+
+it('records a directory overview through the reverse analyst tool without reading member contents', async () => {
+  const { ctx, agent, controller } = await load()
+  const root = roots[roots.length - 1]!
+  const directory = join(root, 'materials')
+  await mkdir(join(directory, 'program'), { recursive: true })
+  await writeFile(join(directory, 'program', 'main.js'), 'private member content')
+  const send = operator(controller, agent)
+  await send({ kind: 'create', title: 'Directory selection', objective: 'Locate the relevant program', environmentIds: ['local'], maxAttempts: 2 })
+  await send({ kind: 'import-source', path: directory, label: 'Materials' })
+  const source = controller.view(agent.id).records.find(item => item.kind === 'asset')!
+  if (source.kind !== 'asset') throw new Error('Missing directory asset')
+  const childId = SessionId('directory-overview-child')
+  await bindDelegatedChild(controller, agent.id, childId, source.value.id, 'reverse-analyst')
+  const { agent: child } = await ctx.agents.create({ sessionId: childId, parentAgent: agent,
+    meta: { parentSession: agent.id, origin: 'subagent', delegationDepth: 1 } })
+  const result = await execute(ctx, child, 'security_static', { provider: 'source', operation: 'directory',
+    assetId: source.value.id, environmentId: 'local', parameters: '{}' })
+  expect(result.isError, JSON.stringify(result)).toBe(false)
+  const evidence = controller.view(agent.id).records.find(item => item.kind === 'evidence')
+  if (evidence?.kind !== 'evidence') throw new Error('Missing directory observation')
+  const output: unknown = JSON.parse((await controller.artifacts.read(evidence.value.artifact)).toString())
+  expect(output).toMatchObject({ operation: 'directory', items: [
+    { kind: 'directory', path: 'program', fileCount: 1, bytes: 22, excludedCount: 0 },
+  ], hasMore: false })
+  expect(JSON.stringify(output)).not.toContain('private member content')
 })
 
 it('recovers binary identity from a directory asset by importing one file without changing child permissions', async () => {

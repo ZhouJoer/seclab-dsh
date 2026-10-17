@@ -3,6 +3,7 @@
   config:
     analysisTurnTokens: 360000
     maxDurationMs: 1800000
+    maxDerivedAssets: 1024
     evolution:
       auto: true
     root: !!js dshHomePath('security')

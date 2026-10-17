@@ -2225,6 +2225,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'formatted versioned JSON.',
       },
       {
+        signature: '@Remote(\'toolPreferenceOptions\') async toolPreferenceOptions(agent: Agent): Promise<ToolPreferenceOptions>',
+        description: 'List session-specific preference choices without executing installation probes.',
+        parameters: [{ name: 'agent', description: 'authenticated active session defining the authorized environments.' }],
+        returns: 'tools with unavailable reasons and collections containing only configured, checkable adapters.',
+      },
+      {
         signature: '@Remote(\'toolPreferences\') async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences>',
         description: 'Read or check and update adapter preferences for the authenticated active session only.',
         parameters: [{ name: 'agent', description: 'carrier-resolved session; caller cannot nominate another agent.' }, { name: 'input', description: 'optional JSON selection; empty arrays restore automatic discovery.' }],
@@ -8803,6 +8809,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ToolPackPreview',
     declaration: 'export interface ToolPackPreview {\n    revision: string;\n    pack: ToolPack;\n    conflicts: string[];\n}',
+  },
+  {
+    name: 'ToolPreferenceOptions',
+    declaration: 'export interface ToolPreferenceOptions {\n    tools: (Pick<ToolDefinition, \'id\' | \'label\' | \'tags\'> & {\n        unavailable?: \'adapter\' | \'sample\' | \'provider\' | \'configuration\';\n        detail?: string;\n    })[];\n    collections: ToolPack[\'collections\'];\n}',
   },
   {
     name: 'ToolPreferences',

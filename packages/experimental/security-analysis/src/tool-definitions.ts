@@ -76,6 +76,14 @@ export const toolPreferencesSchema = z.object({ toolIds: z.array(id).max(100), t
   collectionIds: z.array(id).max(100) }).strict()
 /** Transient preferences copied to a delegated session at creation. */
 export type ToolPreferences = z.infer<typeof toolPreferencesSchema>
+/** Preference choices without probes; unavailable tools remain visible with their prerequisites. */
+export interface ToolPreferenceOptions {
+  tools: (Pick<ToolDefinition, 'id' | 'label' | 'tags'> & {
+    unavailable?: 'adapter' | 'sample' | 'provider' | 'configuration'
+    detail?: string
+  })[]
+  collections: ToolPack['collections']
+}
 /** Filter catalog data without executing probes or loading full guides.
  * @param tools - current definitions.
  * @param collections - registered tool collections.

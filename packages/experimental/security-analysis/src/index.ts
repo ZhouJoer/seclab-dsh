@@ -46,7 +46,7 @@ import { SecurityActivityStore, type SecurityActivityFrame, type SecurityActivit
 import { analysisDirectory, ANALYSIS_FILES_GUIDANCE } from './analysis-workspace.ts'
 import { TOOL_DISCOVERY_GUIDANCE } from './analysis-tools.ts'
 import { ToolCatalog, type ToolCatalogSnapshot, type ToolPackPreview } from './tool-catalog.ts'
-import { discoverTools, toolPreferencesSchema, type ToolPreferences } from './tool-definitions.ts'
+import { discoverTools, toolPreferencesSchema, type ToolPreferences, type ToolPreferenceOptions } from './tool-definitions.ts'
 import { LocalToolConfiguration, browseToolFiles, toolConfigurationInput } from './tool-configuration.ts'
 import { modelToolDefinition, modelToolInventory, toolAdapters } from './tool-adapter-catalog.ts'
 import { ToolAdapterProvider, type ToolAdapterLimits } from './tool-adapter-provider.ts'
@@ -1419,6 +1419,30 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const preferences = this.preferences.get(id)
     return !!preferences && !!(preferences.toolIds.length + preferences.tags.length + preferences.collectionIds.length)
   }
+  /** List session-specific preference choices without executing installation probes.
+   * @param agent - authenticated active session defining the authorized environments.
+   * @returns tools with unavailable reasons and collections containing only configured, checkable adapters.
+   */
+  @Remote('toolPreferenceOptions')
+  async toolPreferenceOptions(agent: Agent): Promise<ToolPreferenceOptions> {
+    const controller = await this.ready
+    const catalog = this.toolCatalog()
+    const project = controller.view(agent.id).records.find(item => item.kind === 'engagement')
+    const environments = project?.kind === 'engagement' ? project.value.environmentIds
+      : resolveTaskIntakeResources(this.intakeConfig(agent.session.header.cwd), agent.session.header.cwd)?.environmentIds ?? []
+    const tools = catalog.tools.map((tool): ToolPreferenceOptions['tools'][number] => {
+      const choice = { id: tool.id, label: tool.label, tags: tool.tags }
+      const adapter = toolAdapters.find(item => item.id === tool.id)
+      if (!adapter) return { ...choice, unavailable: 'adapter' }
+      if (!adapter.probeIds.length) return { ...choice, unavailable: 'sample' }
+      if (!controller.providers.list().includes(adapter.provider)) return { ...choice, unavailable: 'provider' }
+      try { this.toolConfiguration.route(tool.id, environments) }
+      catch (error) { return { ...choice, unavailable: 'configuration', detail: String(error) } }
+      return choice
+    })
+    return { tools, collections: catalog.collections.map(group => ({ ...group,
+      toolIds: group.toolIds.filter(id => tools.some(tool => tool.id === id && !tool.unavailable)) })) }
+  }
   /** Read or check and update adapter preferences for the authenticated active session only.
    * @param agent - carrier-resolved session; caller cannot nominate another agent.
    * @param input - optional JSON selection; empty arrays restore automatic discovery.
@@ -1436,7 +1460,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         const controller = await this.ready
         const project = controller.view(agent.id).records.find(item => item.kind === 'engagement')
         const environments = project?.kind === 'engagement' ? project.value.environmentIds
-          : resolveTaskIntakeResources(this.config.taskIntake, agent.session.header.cwd)?.environmentIds ?? []
+          : resolveTaskIntakeResources(this.intakeConfig(agent.session.header.cwd), agent.session.header.cwd)?.environmentIds ?? []
         const revision = JSON.stringify([catalog.revision,
           this.toolConfiguration.path === undefined ? null : this.toolConfiguration.read().revision])
         const probes = new Map<string, Set<string>>()

@@ -16,7 +16,7 @@ The experimental [security domain](../../packages/experimental/security-analysis
 
 [Record schemas](../../packages/experimental/security-analysis/src/workbench/model.ts) define project, asset, check, evidence, finding, plan, execution, delegation and reviewed knowledge values. Each command appends one revision to the storage-domain journal. Artifact bytes are published before references. Session logs retain model-visible tool results; the domain journal owns check and delegation recovery. `SecurityDelegation` records an assigned question, immutable project and asset scope, execution outcome, child report and coordinator disposition. Jobs own live execution; a report's acceptance does not confirm a finding.
 
-`ToolCatalogSnapshot` holds the resolved tool definitions, collections, packs and import revision. `ToolPackPreview` lists conflicts before an explicit import. `ToolPreferences` contains active-session checked adapter selections, recorded in model context but excluded from project persistence. See [tool configuration](../../packages/experimental/security-analysis/README.md) for import, probing and lifecycle semantics.
+`ToolCatalogSnapshot` holds the resolved tool definitions, collections, packs and import revision. `ToolPackPreview` lists conflicts before an explicit import. `ToolPreferences` contains active-session checked adapter selections, recorded in model context but excluded from project persistence. `ToolPreferenceOptions` lists session-authorized choices without running probes, retains unavailable tools with prerequisite reasons, and limits collection members to configured, checkable adapters. See [tool configuration](../../packages/experimental/security-analysis/README.md) for import, probing and lifecycle semantics.
 
 ## Cordis API reference
 
@@ -167,6 +167,12 @@ Optional security profile service; default application compositions remain indep
  * @returns formatted versioned JSON.
  */
 @Remote('exportToolPack') exportToolPack(id: string): string
+
+/** List session-specific preference choices without executing installation probes.
+ * @param agent - authenticated active session defining the authorized environments.
+ * @returns tools with unavailable reasons and collections containing only configured, checkable adapters.
+ */
+@Remote('toolPreferenceOptions') async toolPreferenceOptions(agent: Agent): Promise<ToolPreferenceOptions>
 
 /** Read or check and update adapter preferences for the authenticated active session only.
  * @param agent - carrier-resolved session; caller cannot nominate another agent.

@@ -726,6 +726,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ToolCatalogSnapshot: 'security-workbench.md',
   ToolPackPreview: 'security-workbench.md',
   ToolPreferences: 'security-workbench.md',
+  ToolPreferenceOptions: 'security-workbench.md',
   ToolboxConfiguration: 'security-workbench.md',
   ToolboxConfigurationResult: 'security-workbench.md',
   ToolboxFiles: 'security-workbench.md',

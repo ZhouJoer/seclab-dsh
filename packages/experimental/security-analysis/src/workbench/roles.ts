@@ -45,7 +45,7 @@ export function canObserve(role: SecurityRole, provider: string, operation: stri
   const adapter = toolAdapters.find(tool => tool.provider === provider && tool.operations.some(candidate => candidate === operation))
   if (adapter) return canUseAdapter(role, adapter.id + '.' + operation)
   if (role === 'researcher' || role === 'reviewer') return false
-  if (provider === 'source') return ['list', 'read', 'search'].includes(operation) &&
+  if (provider === 'source') return ['directory', 'list', 'read', 'search'].includes(operation) &&
     (role !== 'reconnaissance' || operation !== 'read')
   if (role === 'web-analyst') return false
   if (provider === 'android') return operation === 'decompile' && role !== 'reconnaissance'

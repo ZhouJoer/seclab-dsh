@@ -2,12 +2,13 @@
 import { mkdtemp, mkdir, rm, writeFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { ArtifactStore } from '../src/workbench/artifacts.ts'
 import { importSource, SourceProvider, sourceManifestSchema } from '../src/workbench/source.ts'
 import { sourceAssetSchema } from '../src/workbench/model.ts'
 import type { AnalysisContext } from '../src/workbench/providers.ts'
+import { canObserve } from '../src/workbench/roles.ts'
 
 async function fixture(selection: 'directory' | 'file' = 'directory') {
   const root = await mkdtemp(join(tmpdir(), 'dsh-source-'))
@@ -32,6 +33,74 @@ async function fixture(selection: 'directory' | 'file' = 'directory') {
 const stringValue: unknown = expect.any(String)
 
 describe('immutable source', () => {
+  it('explains directory-first reverse engineering and scoped reads', () => {
+    expect(new SourceProvider().inputGuide).toMatchSnapshot('directory inspection guide')
+    for (const role of ['coordinator', 'reconnaissance', 'reverse-analyst', 'web-analyst'] as const)
+      expect(canObserve(role, 'source', 'directory')).toBe(true)
+    for (const role of ['researcher', 'reviewer'] as const)
+      expect(canObserve(role, 'source', 'directory')).toBe(false)
+  })
+  it('lists immediate directories without reading their files and pages into selected children', async () => {
+    const { source, store, context, run } = await fixture()
+    await mkdir(join(source, 'app', 'data'), { recursive: true })
+    await mkdir(join(source, 'images'))
+    await writeFile(join(source, 'app', 'entry.js'), 'load data\n')
+    await writeFile(join(source, 'app', 'data', 'store.DB'), Buffer.from([0, 1]))
+    await writeFile(join(source, 'images', 'logo.png'), Buffer.from([0, 2, 3]))
+    const artifact = await importSource(store, source, [source], { entries: 20, bytes: 65536 })
+    context.asset = sourceAssetSchema.parse({ ...context.asset, artifact })
+    const reads = vi.spyOn(store, 'read')
+    const first: unknown = JSON.parse(Buffer.from((await run('directory', { limit: 1 })).bytes).toString())
+    expect(first).toMatchObject({ items: [{ kind: 'directory', path: 'app', fileCount: 2, bytes: 12, excludedCount: 0 }],
+      nextOffset: 1, hasMore: true })
+    expect(reads.mock.calls).toEqual([[artifact]])
+    const rest = JSON.parse(Buffer.from((await run('directory', { offset: 1 })).bytes).toString()) as { items: { path: string }[] }
+    expect(rest.items.map((item: { path: string }) => item.path)).toEqual(['binary.dat', 'images', 'main.py'])
+    const child: unknown = JSON.parse(Buffer.from((await run('directory', { path: 'app/data' })).bytes).toString())
+    expect(child).toMatchObject({ items: [{ kind: 'file', path: 'app/data/store.DB', extension: '.db', text: false }], hasMore: false })
+    expect(reads.mock.calls).toEqual([[artifact], [artifact], [artifact]])
+  })
+  it('searches only the selected subtree and reads only the selected file', async () => {
+    const { source, store, context, run } = await fixture()
+    for (const directory of ['app', 'app-copy']) {
+      await mkdir(join(source, directory))
+      for (let index = 0; index < 12; index++) await writeFile(join(source, directory, `${index}.js`), 'needle\n')
+    }
+    const artifact = await importSource(store, source, [source], { entries: 40, bytes: 65536 })
+    context.asset = sourceAssetSchema.parse({ ...context.asset, artifact })
+    const reads = vi.spyOn(store, 'read')
+    const all: unknown = JSON.parse(Buffer.from((await run('search', { query: 'absent' })).bytes).toString())
+    expect(all).toMatchObject({ items: [] })
+    expect(reads).toHaveBeenCalledTimes(26)
+    reads.mockClear()
+    const scoped = JSON.parse(Buffer.from((await run('search', { query: 'needle', directory: 'app' })).bytes).toString()) as { items: { path: string }[] }
+    expect(scoped.items).toHaveLength(12)
+    expect(scoped.items.every((item: { path: string }) => item.path.startsWith('app/'))).toBe(true)
+    expect(reads).toHaveBeenCalledTimes(13)
+    reads.mockClear()
+    await run('read', { path: 'app/0.js' })
+    expect(reads).toHaveBeenCalledTimes(2)
+    await expect(run('directory', { path: 'missing' })).rejects.toThrow('Directory is absent')
+    await expect(run('search', { query: 'needle', directory: 'app/0.js' })).rejects.toThrow('Directory is absent')
+    expect(() => run('directory', { path: '../app' })).toThrow()
+    expect(() => run('search', { query: 'needle', directory: 'app', path: 'app/0.js' })).toThrow('Choose an exact')
+  })
+  it('includes excluded children without traversing links', async () => {
+    const { source, store, context, run } = await fixture()
+    await mkdir(join(source, 'app'))
+    await symlink(source, join(source, 'app', 'linked'), process.platform === 'win32' ? 'junction' : 'dir')
+    const artifact = await importSource(store, source, [source], { entries: 10, bytes: 65536 })
+    context.asset = sourceAssetSchema.parse({ ...context.asset, artifact })
+    const root: unknown = JSON.parse(Buffer.from((await run('directory', {})).bytes).toString())
+    expect(root).toMatchObject({ items: [
+      { kind: 'directory', path: 'app', fileCount: 0, excludedCount: 1 },
+      { kind: 'file', path: 'binary.dat' }, { kind: 'file', path: 'main.py' },
+    ] })
+    const child: unknown = JSON.parse(Buffer.from((await run('directory', { path: 'app' })).bytes).toString())
+    expect(child).toMatchObject({ items: [{ kind: 'excluded', path: 'app/linked', reason: 'Not a regular file or directory' }] })
+    context.maxOutputBytes = 1
+    await expect(run('directory', {})).rejects.toThrow('exceeds the output budget')
+  })
   it('retains measured lines when the live source changes and exposes continuation', async () => {
     const { source, run } = await fixture()
     await writeFile(join(source, 'main.py'), 'changed')

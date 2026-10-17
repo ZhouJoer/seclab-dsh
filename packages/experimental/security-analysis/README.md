@@ -212,6 +212,8 @@ Installations are configured once per environment. An explicit adapter binding t
 
 Directory imports retain a source snapshot and automatically register its binary members as file assets, including their parent identity. Existing tasks can use `security_command` action `import-member` with the source asset ID and exact manifest path. This reads the verified stored bytes, without copying files or widening `importRoots`; omitted members and foreign projects remain inaccessible. The returned file asset is usable by binary and specialist providers. Source text remains available through line reads and searches. A model must not retry unchanged configuration failures or treat a successful identity check as completed analysis.
 
+Directory analysis starts with `source.directory` and `path: ""`: each page contains immediate children, descendant file counts and byte sizes. File rows retain hashes, text flags and extension hints; these hints do not verify formats. The operation reads only the manifest, without opening member contents. Enter relevant subdirectories, select exact files for `source.read` or binary/specialist analysis, and constrain `source.search` with `directory` or an exact `path` (mutually exclusive). Search without either selector retains whole-snapshot behavior. `source.list` retains flat manifest paging. Snapshot creation still reads imported bytes; directory inspection does not establish analysis coverage for those files. Empty directories are absent from the stored file manifest.
+
 | Environment | Semantic interfaces | Preparation and diagnostics |
 |---|---|---|
 | Local | Static adapters, Ghidra queries, ADB queries, Wi-Fi/BLE offline analysis | Configure CLI installations; bind a Ghidra program or Android device when needed. |

@@ -15,4 +15,4 @@ export type { SecurityCommand } from './workbench/commands.ts'
 export type { ToolboxDirectory, ToolboxInventory, ToolboxTool, ToolboxAdapter, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles, ToolboxInstallation } from './toolbox-types.ts'
 
 export type { ToolCatalogSnapshot, ToolPackPreview } from './tool-catalog.ts'
-export type { ToolDefinition, ToolPack, ToolPreferences } from './tool-definitions.ts'
+export type { ToolDefinition, ToolPack, ToolPreferences, ToolPreferenceOptions } from './tool-definitions.ts'

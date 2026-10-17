@@ -4,24 +4,24 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ToolPreferences as Preferences } from '@deepseek-ai/dsh-experimental-security-analysis/client'
-import { builtinToolPack } from '../../security-analysis/src/builtin-tools.ts'
+import { preferenceOptions } from './preference-options.client.ts'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { AnalysisStart, type AnalysisStartProps } from '../src/client/AnalysisStart.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
-it('starts with automatic selection after failed checks while preserving the objective', async () => {
+it('starts with the previous settings after failed checks while preserving the objective', async () => {
   const initial: Preferences = { toolIds: [], collectionIds: [], tags: [] }
   const pending = Promise.withResolvers<Preferences>()
   const preferences = vi.fn(async (_id: SessionId, input?: string) =>
-    input && (JSON.parse(input) as Preferences).collectionIds.length ? pending.promise : initial)
+    input && (JSON.parse(input) as Preferences).toolIds.length ? pending.promise : initial)
   const prepare = vi.fn(async () => {}), send = vi.fn(async () => {})
   render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} taskContextMaxBytes={4096}
     environments={[{ id: 'host', label: 'Host', kind: 'local' }]} limits={{ bytes: 1024, entries: 10 }}
     prepare={prepare} send={send} continueInChat={() => {}} started={() => {}}
     toolPreferences={{ sessionId: SessionId('session'), toolPreferences: preferences,
-      toolCatalog: async () => ({ editable: false, revision: '', packs: [builtinToolPack], tools: builtinToolPack.tools, collections: builtinToolPack.collections }) }} />)
+      toolPreferenceOptions: async () => preferenceOptions }} />)
   fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Compare firmware and traffic' } })
   const options = screen.getByText(zh.analysisOptions).closest('details')!
   options.open = true
@@ -35,10 +35,10 @@ it('starts with automatic selection after failed checks while preserving the obj
   fireEvent.click(start)
   expect(send).not.toHaveBeenCalled()
   await act(async () => { pending.reject(new Error('Save unavailable')); await pending.promise.catch(() => {}) })
-  await screen.findByText(zh.toolPreferenceFallback, { exact: false })
+  await screen.findByText(zh.toolPreferenceFailed, { exact: false })
   expect(start.disabled).toBe(false)
   expect(screen.getByLabelText<HTMLTextAreaElement>(zh.analysisRequest).value).toBe('Compare firmware and traffic')
-  expect(preferences).toHaveBeenLastCalledWith('session', JSON.stringify(initial))
+  expect(preferences).toHaveBeenCalledTimes(2)
   fireEvent.click(start)
   await waitFor(() => { expect(send).toHaveBeenCalledWith('Compare firmware and traffic') })
   expect(prepare).toHaveBeenCalledOnce()

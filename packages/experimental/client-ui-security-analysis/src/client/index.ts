@@ -84,7 +84,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.slots.inject('sidebar.panellist', () => scoped.slots.register({ name: 'sidebar.panellist', id: panel, order: 30, label: () => scoped.locale.bind(NS)('title'), locale: NS }, ProjectIcon))
     const actions: WorkbenchActions = {
       openChild: (address) => { scoped.uiWorkspace.openSession(address) },
-      toolCatalog: projectActions.toolCatalog,
+      toolPreferenceOptions: id => unwrap(remote.toolPreferenceOptions(id)),
       toolPreferences: (id, input) => unwrap(remote.toolPreferences(id, input)),
       followActivity: (id, signal) => remote.followActivity(id, signal),
       activityDetails: (id, checkpoint, offset, through) => unwrap(remote.activityDetails(id, checkpoint, offset, through)),
