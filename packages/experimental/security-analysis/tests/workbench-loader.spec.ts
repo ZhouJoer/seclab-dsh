@@ -354,6 +354,28 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('activates a coordinator with a scope-local advisor while retaining role enforcement', async () => {
+    const { ctx, shell } = await load()
+    const consult = vi.fn(async () => true)
+    const forbidden = vi.fn(async () => true)
+    const { agent } = await ctx.agents.create({
+      sessionId: SessionId('coordinator-with-advisor'),
+      setup(agentCtx) {
+        independentTool(agentCtx, 'advisor', consult)
+        independentTool(agentCtx, 'unlisted-local', forbidden)
+      },
+      agentOptions: { provider: 'fixture', model: 'fixture' },
+    })
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('advisor')
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('shell')
+    await execute(ctx, agent, 'advisor')
+    expect(consult).toHaveBeenCalledOnce()
+    await execute(ctx, agent, 'shell')
+    expect(shell).not.toHaveBeenCalled()
+    expect((await execute(ctx, agent, 'unlisted-local')).isError).toBe(true)
+    expect(forbidden).not.toHaveBeenCalled()
+  })
+
   it('injects optional background on the first Web request without creating a task or interpreting its URL as a target', async () => {
     const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
     model.scopeCalls = 0

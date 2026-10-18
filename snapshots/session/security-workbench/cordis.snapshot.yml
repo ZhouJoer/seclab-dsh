@@ -46,6 +46,10 @@
       Verify your work by running the code or tests. Keep answers brief and factual.
 
 - insert:
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: true
     - id: llm-replay
       name: '@deepseek-ai/dsh-llm-replay'
       config:

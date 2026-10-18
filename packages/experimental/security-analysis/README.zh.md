@@ -183,6 +183,8 @@ Cookie、Bearer、Basic 和表单/JSON 登录身份保存在 Host credentials �
 <details>
 <summary>实现细节</summary>
 
+角色工具筛选处理继承的工具，包括全局工具和预设工具。`advisor` 等会话专属工具保留在所属作用域中；执行守卫对每次工具调用检查角色能力集，包括这些会话专属工具。
+
 <a id="provider-design"></a>
 ### Provider 设计
 

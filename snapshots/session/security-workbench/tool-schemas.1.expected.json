@@ -1,4 +1,34 @@
 {
-  "initial": [],
+  "initial": [
+    {
+      "name": "advisor",
+      "description": "Consult the configured advanced model when you are stuck or need expert diagnosis after initial reconnaissance. Complete initial reconnaissance yourself without consulting advisor. Supply the concrete problem, evidence, and attempted approaches. The adviser can read files but cannot modify them. Wait for its advice, then continue the task yourself. Do not repeat an unchanged question.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why expert help is needed."
+          },
+          "question": {
+            "type": "string",
+            "description": "A self-contained question for the adviser."
+          },
+          "context": {
+            "type": "string",
+            "description": "Relevant evidence, file paths, constraints, and excerpts; the adviser does not see this conversation."
+          },
+          "attempts": {
+            "type": "string",
+            "description": "Approaches already tried and their observed results."
+          }
+        },
+        "required": [
+          "reason",
+          "question"
+        ]
+      }
+    }
+  ],
   "changes": []
 }

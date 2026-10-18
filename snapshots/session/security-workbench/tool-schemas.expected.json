@@ -1,6 +1,35 @@
 {
   "initial": [
     {
+      "name": "advisor",
+      "description": "Consult the configured advanced model when you are stuck or need expert diagnosis after initial reconnaissance. Complete initial reconnaissance yourself without consulting advisor. Supply the concrete problem, evidence, and attempted approaches. The adviser can read files but cannot modify them. Wait for its advice, then continue the task yourself. Do not repeat an unchanged question.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why expert help is needed."
+          },
+          "question": {
+            "type": "string",
+            "description": "A self-contained question for the adviser."
+          },
+          "context": {
+            "type": "string",
+            "description": "Relevant evidence, file paths, constraints, and excerpts; the adviser does not see this conversation."
+          },
+          "attempts": {
+            "type": "string",
+            "description": "Approaches already tried and their observed results."
+          }
+        },
+        "required": [
+          "reason",
+          "question"
+        ]
+      }
+    },
+    {
       "name": "bash",
       "description": "Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of using `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Provide `description` before `command` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.",
       "parameters": {

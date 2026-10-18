@@ -183,6 +183,8 @@ One versioned HTTP artifact stores observations and skipped-step reasons under s
 <details>
 <summary>Implementation details</summary>
 
+Role masks select inherited tools, including global tools and preset tools. Session-local tools such as `advisor` remain registered in their owning scope; the execution guard applies the role capability set to every tool call, including those local tools.
+
 <a id="provider-design"></a>
 ### Provider design
 

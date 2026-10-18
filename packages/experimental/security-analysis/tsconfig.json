@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../core/scope" },
     { "path": "../../session/session-projection" },
     { "path": "../../credentials/credentials" },
     { "path": "../../util/http-proxy" },

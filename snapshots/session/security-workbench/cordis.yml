@@ -33,5 +33,9 @@
   name: '@deepseek-ai/dsh-attachment-local'
 
 - insert:
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: true
     - id: security-workbench-fixture
       name: './fixture.mjs'

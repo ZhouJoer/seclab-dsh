@@ -21,6 +21,7 @@ import type { AnalysisScript } from './analysis-script-types.ts'
 import { randomUUID } from 'node:crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
@@ -763,8 +764,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
         await (await this.ready).bindDelegationChild(pending.delegationId, agent.id)
       }
       const names = ctx.tools
-        .schemas(agent)
-        .filter(tool => tool.name !== 'structured_output' && toolsForRole(this.controller?.binding(agent.id)?.role).includes(tool.name))
+        .schemas(scopeParentOf(agent))
+        .filter(tool => toolsForRole(this.controller?.binding(agent.id)?.role).includes(tool.name))
         .map(tool => tool.name)
       ctx.effect(() => agent.ctx.tools.restrict({ allow: names }))
     })
