@@ -16,8 +16,14 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-subagent-codex'
 import type { SubagentActivation, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { helperProjection } from './projection.ts'
-import type { HelperCall, HelperMode, HelperSettings, HelperState } from './types.ts'
+import { AutomaticConsultationFailure } from './failure.ts'
+export { AutomaticConsultationFailure } from './failure.ts'
+import type { AutomaticHelperCall, ConsultationId, ConsultationQuestion, HelperCall, HelperMode, HelperSettings, HelperState } from './types.ts'
 export type { HelperSettings, HelperCall, HelperState, HelperMode } from './types.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { helper: Helper }
+}
 
 const READ_TOOLS = new Set(['read', 'glob', 'grep', 'read_image'])
 const CONSULTATION_CHECKPOINT = 'Before another attempt or a blocked final answer, assess progress on the current obstacle. After roughly three materially different approaches produce no actionable evidence or progress, consult advisor before continuing to retry, asking the user for more information, or declaring the task blocked. Assess approaches by strategy, grouping related searches or variations together. Repeated errors, more guesses, or a larger search with no new lead do not establish progress. Consult even if you believe the adviser may also be unable to solve the problem. After advice, verify the smallest recommended step and continue; consult again only when new evidence or a new question warrants it.'
@@ -208,10 +214,32 @@ export class Helper extends TypertRemoteService {
   cancelLogin(loginId: string): Promise<void> { return this.codex().cancelLogin(loginId) }
 
   private async consult(
-    args: { reason: string; question: string; context?: string; attempts?: string }, exec: ToolRunContext,
+    args: ConsultationQuestion, exec: ToolRunContext,
   ): Promise<string> {
     const agent = exec.agent
     if (agent === undefined) throw new Error('Advisor requires a session')
+    return this.runConsultation(args, agent, exec.signal, { callId: exec.callId, rootCallId: exec.rootCallId })
+  }
+
+  /**
+   * Consult the configured adviser from a Host plugin in an enabled proactive session.
+   * Failures reject after child cleanup; callers must not retry an unknown outcome.
+   * @param args Self-contained question and evidence.
+   * @param agent Top-level owner of the consultation and its log.
+   * @param signal Cancellation owned by the caller, including plugin disposal.
+   * @param consultationId Unique identity, allocated before invoking this operation.
+   * @returns Final advice after the child has been released and the result logged.
+   */
+  consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string> {
+    if (this.state(agent).mode !== 'proactive') throw new Error('Automatic Advisor requires proactive mode')
+    return this.runConsultation(args, agent, signal, { consultationId })
+  }
+
+  private async runConsultation(
+    args: ConsultationQuestion, agent: Agent, signal: AbortSignal,
+    identity: Pick<HelperCall, 'callId' | 'rootCallId'> | { consultationId: ConsultationId },
+  ): Promise<string> {
+    signal.throwIfAborted()
     if (agent.session.header.origin === 'subagent' || !this.state(agent).enabled) {
       throw new Error('Advisor is disabled for this session')
     }
@@ -219,10 +247,15 @@ export class Helper extends TypertRemoteService {
     const api = settings.backend === 'api'
     const model = api ? settings.model : settings.codexModel
     const effort = api ? settings.reasoningEffort : settings.codexReasoningEffort
-    const record: HelperCall = { callId: exec.callId, backend: settings.backend, model,
-      rootCallId: exec.rootCallId,
-      ...effort === '' ? {} : { reasoningEffort: effort }, startedAt: Date.now(), status: 'running' }
-    agent.session.append('helper/start', record)
+    const automatic = 'consultationId' in identity
+    if (this.state(agent).calls.some(call => call.status === 'running' && (automatic || 'consultationId' in call))) {
+      throw new Error('Advisor consultation is already running')
+    }
+    const record = { backend: settings.backend, model,
+      ...effort === '' ? {} : { reasoningEffort: effort }, startedAt: Date.now(), status: 'running' } satisfies Omit<HelperCall, 'callId'>
+    if (automatic) agent.session.append('helper/auto-start', { ...record, ...identity, question: args })
+    else agent.session.append('helper/start', { ...record, ...identity })
+    let answer: string | undefined
     let run: SubagentActivation | undefined
     let result: SubagentResult | undefined
     let failure: unknown
@@ -238,25 +271,30 @@ export class Helper extends TypertRemoteService {
       if (!model || (api && !settings.provider)) throw new Error('Configure the advisor model before using it')
       const options = { model, ...effort === '' ? {} : { reasoningEffort: ReasoningEffortId(effort) },
         ...api ? { provider: settings.provider } : {} }
-      if (api) await this.ctx.llm.resolveCallConfig({ ...options, provider: settings.provider }, exec.signal)
+      if (api) await this.ctx.llm.resolveCallConfig({ ...options, provider: settings.provider }, signal)
       const allow = [...READ_TOOLS].filter(name => agent.ctx.tools.get(name, agent) !== undefined)
       if (childId !== undefined) this.consultations.set(childId, { metrics, allow, defaultEffort: effort === '' })
       run = await this.ctx.subagents.startActivation({
-        provider: api ? 'helper-api' : 'helper-codex', signal: exec.signal, label: args.reason, delivery: 'caller',
+        provider: api ? 'helper-api' : 'helper-codex', signal, label: args.reason, delivery: 'caller',
         ...childId === undefined ? {} : { childId },
         request: { parent: agent, agentOptions: options,
           prompt: [{ type: 'text', text: `${api ? PERSONA : CODEX_PERSONA}\n\nReason: ${args.reason}\nQuestion: ${args.question}\nAttempts: ${args.attempts ?? ''}\nContext: ${args.context ?? ''}` }],
           ...api ? { maxDepth: 1 } : {},
         },
       })
-      exec.signal.addEventListener('abort', cancel, { once: true })
-      if (exec.signal.aborted) cancel()
+      signal.addEventListener('abort', cancel, { once: true })
+      if (signal.aborted) cancel()
       result = await run.result
       if (result.stopReason !== 'completed') throw new Error(result.diagnostic ?? `Helper ended: ${result.stopReason}`)
-      return result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
-    } catch (error) { failure = error; throw error }
+      answer = result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+      return answer
+    } catch (error) {
+      failure = error
+      if (automatic) throw new AutomaticConsultationFailure(error)
+      throw error
+    }
     finally {
-      exec.signal.removeEventListener('abort', cancel)
+      signal.removeEventListener('abort', cancel)
       try { await (cancellation ?? run?.dispose()) }
       catch (error) {
         if (failure !== undefined) throw new AggregateError([failure, error], 'Helper failed and could not release its child')
@@ -266,14 +304,18 @@ export class Helper extends TypertRemoteService {
       finally {
         if (childId !== undefined) this.consultations.delete(childId)
         const observed = api ? metrics : result
-        agent.session.append('helper/end', {
-          ...record, status: exec.signal.aborted ? 'aborted' : failure ? 'error' : 'completed',
+        const settled = {
+          ...record, status: signal.aborted ? 'aborted' : failure ? 'error' : 'completed',
           elapsedMs: Math.max(0, Date.now() - record.startedAt),
           ...api && run !== undefined ? { childSessionId: run.childId } : {},
           ...observed?.model === undefined ? {} : { model: observed.model },
           ...observed?.reasoningEffort === undefined ? {} : { reasoningEffort: observed.reasoningEffort },
           ...observed?.usage === undefined ? {} : { usage: observed.usage },
-        })
+        } satisfies Omit<HelperCall, 'callId'>
+        if (automatic) agent.session.append('helper/auto-end', {
+          ...settled, ...identity, question: args, ...answer === undefined ? {} : { answer },
+        } satisfies AutomaticHelperCall)
+        else agent.session.append('helper/end', { ...settled, ...identity })
       }
     }
   }

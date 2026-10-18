@@ -237,6 +237,7 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/experimental/advisor-jev" },
     { "path": "./packages/subagent/helper" },
     { "path": "./packages/experimental/security-profile" },
     { "path": "./packages/experimental/security-web-profile" },

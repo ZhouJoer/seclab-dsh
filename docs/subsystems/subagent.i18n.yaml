@@ -5,6 +5,9 @@
 /subagents:
   en: 9d48a27a49585a3d
   zh: 89da32c8a16c290a
+/subagents/advisor-consultations:
+  en: bc9d53d5f24f4cc8
+  zh: c0e4222a00ad94d8
 /subagents/capabilities-and-activation-requests:
   en: 8c92b131f67997f6
   zh: c2dc606a0859420c

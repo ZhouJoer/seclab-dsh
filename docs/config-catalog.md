@@ -835,6 +835,49 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-deepseek-account-platform -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-advisor-jev -->
+<a id="deepseek-aidsh-experimental-advisor-jev"></a>
+
+## `@deepseek-ai/dsh-experimental-advisor-jev`
+
+- `inject`: `helper` · `sessionProjections`
+- `source`: [`packages/experimental/advisor-jev/src/config.ts:6`](../packages/experimental/advisor-jev/src/config.ts)
+
+```ts config-catalog
+/** All bounds apply before an automatic consultation is admitted. */
+export interface Config {
+  /** Enable progress assessments and automatic consultations. */
+  enabled: boolean
+  /** TypeSafe systemone URL; HTTPS except for loopback test servers. */
+  endpoint: string
+  /** Bearer credential, never included in Session events. */
+  apiKey: string
+  /** Explicit Jev model version sent with every assessment. */
+  model: string
+  /** Completed tool-bearing steps required before the first assessment. */
+  minToolSteps: number
+  /** Additional tool-bearing steps between assessments. */
+  checkEverySteps: number
+  /** Maximum automatic consultations admitted within one turn. */
+  maxConsultationsPerTurn: number
+  /** Minimum probability assigned to consult_advisor. */
+  probabilityThreshold: number
+  /** Minimum provider confidence required for consultation. */
+  confidenceThreshold: number
+  /** Deadline in milliseconds, including response-body consumption. */
+  timeoutMs: number
+  /** Maximum UTF-8 bytes in the complete serialized Jev request. */
+  maxRequestBytes: number
+  /** Maximum response bytes accepted before JSON parsing. */
+  maxResponseBytes: number
+  /** Maximum retained calls, evicting the oldest first. */
+  maxEvidenceCalls: number
+  /** Maximum UTF-16 code units per evidence field, including its truncation marker. */
+  maxFieldChars: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-advisor-jev -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team -->
 <a id="deepseek-aidsh-experimental-agent-team"></a>
 
@@ -1187,7 +1230,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:84`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:85`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
@@ -1677,7 +1720,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `subagents` · `llm` · `systemPrompt` · `sessionProjections`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/subagent/helper/src/index.ts:28`](../packages/subagent/helper/src/index.ts)
+- `source`: [`packages/subagent/helper/src/index.ts:34`](../packages/subagent/helper/src/index.ts)
 
 ```ts config-catalog
 /** Live settings; each consultation captures one complete selection. */

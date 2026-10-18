@@ -1,3 +1,4 @@
+import { startJevFixture } from '../../packages/experimental/advisor-jev/tests/http-fixture.ts'
 /**
  * Keyless snapshot coverage for the TypeScript SDK path: each scenario spawns
  * the real `dsh --profile sdk` or `sdk-minimal` runtime through
@@ -646,6 +647,9 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     ...resumeReplayFile === undefined ? {} : { DSH_SNAPSHOT_OVERRIDE: resumeReplayFile },
   }
 
+  const jev = scenario.name === 'advisor-jev' ? await startJevFixture() : undefined
+  if (jev) env.DSH_JEV_FIXTURE_URL = jev.url
+
   const createHarness = (): DeepSeekHarness => new DeepSeekHarness({
     profile: scenario.manifest.profile,
     patches,
@@ -777,9 +781,14 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
       ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
     })
+    if (jev) {
+      expect(jev.requests).toHaveLength(1)
+      expect(logs.some(log => log.content.includes('helper/auto-end'))).toBe(true)
+    }
     return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd }
   } finally {
     await harness.close()
+    await jev?.close()
     await rm(cwd, { recursive: true, force: true })
   }
 }

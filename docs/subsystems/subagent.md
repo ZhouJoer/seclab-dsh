@@ -4,6 +4,10 @@ English | [中文](subagent.zh.md)
 
 The unified activation API manages local conversations and external executions.
 
+## Advisor consultations
+
+`ctx.helper` runs read-only consultations using the selected `HelperSettings`. Host callers supply a `ConsultationQuestion` containing the reason, question, optional context and attempted approaches, plus a branded `ConsultationId` for automatic calls. Automatic calls require an enabled proactive parent, log their question and answer, and settle after child cleanup. See the [Helper package](../../packages/subagent/helper/README.md) for policy and provider configuration.
+
 ## Capabilities and activation requests
 
 Every backend uses startActivation. Capability flags validate request options; prepareContinuable selects local Agent creation, while start selects one external execution. The model-facing tool uses parent delivery. Workflow and code mode consumers can await caller results without injecting another parent message. Historical children with unavailable descriptors remain discoverable as `mode: 'unknown'` without granting continuation capabilities; the [package README](../../packages/subagent/subagent/README.md) defines catalog persistence.
@@ -441,6 +445,59 @@ async cancelLogin(loginId: string): Promise<void>
 ```
 
 Source: [`packages/subagent/subagent-codex/src/consultation.ts`](../../packages/subagent/subagent-codex/src/consultation.ts)
+
+<a id="ctxhelper--helper"></a>
+
+### `ctx.helper` — `Helper`
+
+Helper runtime, authenticated native-account methods and scoped tool ownership.
+
+```ts cordis-catalog
+/**
+ * Read the currently configured helper selection.
+ * @returns Detached settings without credentials.
+ */
+@Remote settings(): HelperSettings
+
+/**
+ * Read native ChatGPT login state.
+ * @returns Public account fields.
+ */
+@Remote account(): Promise<{ loggedIn: boolean; email?: string; planType?: string; login?: { loginId: string; status: 'pending' | 'completed' | 'failed'; error?: string } }>
+
+/**
+ * Read native model choices.
+ * @returns Model ids and supported reasoning efforts.
+ */
+@Remote codexModels(): Promise<Array<{ id: string; name: string; efforts: string[] }>>
+
+/**
+ * Begin official browser login.
+ * @returns Login link and cancellation id.
+ */
+@Remote login(): Promise<{ authUrl: string; loginId: string }>
+
+/**
+ * Cancel pending login.
+ * @param loginId Id from login.
+ */
+@Remote cancelLogin(loginId: string): Promise<void>
+
+/**
+ * Consult the configured adviser from a Host plugin in an enabled proactive session.
+ * Failures reject after child cleanup; callers must not retry an unknown outcome.
+ * @param args Self-contained question and evidence.
+ * @param agent Top-level owner of the consultation and its log.
+ * @param signal Cancellation owned by the caller, including plugin disposal.
+ * @param consultationId Unique identity, allocated before invoking this operation.
+ * @returns Final advice after the child has been released and the result logged.
+ */
+consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>
+```
+
+Types: [Agent](core.md)
+
+Source: [`packages/subagent/helper/src/index.ts`](../../packages/subagent/helper/src/index.ts)
 
 <a id="ctxsubagentmodelselection--subagentmodelselectionconfig"></a>
 

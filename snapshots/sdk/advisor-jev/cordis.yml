@@ -1,0 +1,25 @@
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+
+- insert:
+    - id: helper
+      name: '@deepseek-ai/dsh-helper'
+      config:
+        enabled: true
+        mode: proactive
+        backend: api
+        provider: deepseek-official
+        model: deepseek-v4-pro
+        reasoningEffort: high
+
+- insert:
+    - id: advisor-jev
+      name: '../../../packages/experimental/advisor-jev/lib/index.js'
+      config:
+        enabled: true
+        apiKey: fixture-only
+        endpoint: !!js process.env.DSH_JEV_FIXTURE_URL
+        minToolSteps: 1
+        checkEverySteps: 1

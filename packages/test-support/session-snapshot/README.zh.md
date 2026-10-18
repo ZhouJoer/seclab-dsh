@@ -99,6 +99,8 @@ Headless/ACP 与 SDK 适配器在规范化之前，将原始目录中的子创�
 
 -----
 
+自动 Advisor 咨询与 Jev 评估的时钟会被规范化，其决策、建议和用量保持可见。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

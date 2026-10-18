@@ -4,6 +4,10 @@
 
 统一的 activation API 管理本地会话和外部执行。
 
+## Advisor 咨询
+
+`ctx.helper` 使用所选 `HelperSettings` 执行只读咨询。Host 调用方提供 `ConsultationQuestion`，包含原因、问题、可选上下文及已尝试的方法，并为自动调用提供带品牌的 `ConsultationId`。自动调用要求父代理已启用积极模式，记录问题和答案，并在子代理清理完成后结束。策略与提供方配置见 [Helper 包](../../packages/subagent/helper/README.zh.md)。
+
 ## 能力与 activation 请求
 
 所有后端都使用 startActivation。能力标记校验请求选项；prepareContinuable 选择本地 Agent 创建，start 选择一次外部执行。面向模型的工具采用 parent 回传。Workflow 与 code mode 消费者可以等待 caller 结果，不额外向父代理注入消息。历史子会话的 descriptor 不可用时，以 `mode: 'unknown'` 保持可发现性，但不授予继续执行能力；[包 README](../../packages/subagent/subagent/README.zh.md) 定义目录持久化语义。
@@ -443,6 +447,59 @@ async cancelLogin(loginId: string): Promise<void>
 ```
 
 Source: [`packages/subagent/subagent-codex/src/consultation.ts`](../../packages/subagent/subagent-codex/src/consultation.ts)
+
+<a id="ctxhelper--helper"></a>
+
+### `ctx.helper` — `Helper`
+
+Helper runtime, authenticated native-account methods and scoped tool ownership.
+
+```ts cordis-catalog
+/**
+ * Read the currently configured helper selection.
+ * @returns Detached settings without credentials.
+ */
+@Remote settings(): HelperSettings
+
+/**
+ * Read native ChatGPT login state.
+ * @returns Public account fields.
+ */
+@Remote account(): Promise<{ loggedIn: boolean; email?: string; planType?: string; login?: { loginId: string; status: 'pending' | 'completed' | 'failed'; error?: string } }>
+
+/**
+ * Read native model choices.
+ * @returns Model ids and supported reasoning efforts.
+ */
+@Remote codexModels(): Promise<Array<{ id: string; name: string; efforts: string[] }>>
+
+/**
+ * Begin official browser login.
+ * @returns Login link and cancellation id.
+ */
+@Remote login(): Promise<{ authUrl: string; loginId: string }>
+
+/**
+ * Cancel pending login.
+ * @param loginId Id from login.
+ */
+@Remote cancelLogin(loginId: string): Promise<void>
+
+/**
+ * Consult the configured adviser from a Host plugin in an enabled proactive session.
+ * Failures reject after child cleanup; callers must not retry an unknown outcome.
+ * @param args Self-contained question and evidence.
+ * @param agent Top-level owner of the consultation and its log.
+ * @param signal Cancellation owned by the caller, including plugin disposal.
+ * @param consultationId Unique identity, allocated before invoking this operation.
+ * @returns Final advice after the child has been released and the result logged.
+ */
+consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>
+```
+
+Types: [Agent](core.zh.md)
+
+Source: [`packages/subagent/helper/src/index.ts`](../../packages/subagent/helper/src/index.ts)
 
 <a id="ctxsubagentmodelselection--subagentmodelselectionconfig"></a>
 

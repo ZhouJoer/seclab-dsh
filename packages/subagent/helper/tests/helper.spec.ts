@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId, ReasoningEffortId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -10,7 +11,7 @@ import { defineContentToolFixture, type PostToolDecision } from '@deepseek-ai/ds
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import Helper from '../src/index.ts'
 import { helperProjection } from '../src/projection.ts'
-import type { HelperState } from '../src/types.ts'
+import type { ConsultationId, HelperState } from '../src/types.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -26,12 +27,36 @@ async function setup(script: ConstructorParameters<typeof MockAdapter>[0], enabl
   ctx.llm.registerAdapter(['mock'], adapter)
   const helper = await ctx.plugin(Helper, { enabled, backend: 'api', provider: 'mock', model: 'expert', reasoningEffort: effort })
   const parent = await ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'flash' }, { cwd: process.cwd() })
-  const invoke = (signal = new AbortController().signal) => parent.ctx.tools.execute({ name: 'advisor',
-    callId: ToolCallId('helper-1'), arguments: { reason: 'uncertain', question: 'Inspect evidence', attempts: 'read logs', context: 'README.md' }, agent: parent, signal })
+  const invoke = (signal = new AbortController().signal, callId = ToolCallId('helper-1')) => parent.ctx.tools.execute({ name: 'advisor',
+    callId, arguments: { reason: 'uncertain', question: 'Inspect evidence', attempts: 'read logs', context: 'README.md' }, agent: parent, signal })
   return { ctx, parent, adapter, invoke, helper }
 }
 
 describe('Helper consultations', () => {
+  it('preserves manual concurrency while refusing an overlapping automatic consultation', async () => {
+    const { ctx, parent, invoke } = await setup(['hang', textResponse('second advice')])
+    await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
+    const started = Promise.withResolvers<undefined>()
+    ctx.on('session/event', (session, event) => {
+      if (session.header.parentSession === parent.id && event.type === 'request/header') started.resolve(undefined)
+    })
+    const abort = new AbortController()
+    const pending = invoke(abort.signal)
+    try {
+      await started.promise
+      await expect(ctx.helper.consultAutomatically({ reason: 'stalled', question: 'Inspect.' }, parent,
+        abort.signal, brandString<ConsultationId>('automatic-overlap'))).rejects.toThrow('already running')
+      const second = await invoke(new AbortController().signal, ToolCallId('helper-2'))
+      expect(second.isError).not.toBe(true)
+      expect(second.content).toEqual([{ type: 'text', text: 'second advice' }])
+      expect(ctx.sessionProjections.stateOf(parent.session, 'helper')?.calls.map(call => call.status)).toEqual(['running', 'completed'])
+    } finally {
+      abort.abort()
+      await pending
+    }
+    expect(ctx.agents.list()).toHaveLength(1)
+  })
+
   it('starts disabled and persists session overrides independently of model defaults', async () => {
     const { ctx, parent, helper } = await setup([], false)
     parent.ctx.tools.register(defineContentToolFixture({ name: 'probe', description: 'probe', parameters: {},

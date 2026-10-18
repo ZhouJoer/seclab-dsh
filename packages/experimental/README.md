@@ -36,6 +36,7 @@ Promotion requires a named product role, documented public behavior and limitati
 
 | Package | Role | ctx key |
 |---|---|---|
+| [`advisor-jev`](advisor-jev/README.md) | Optional Jev stagnation assessment and automatic Advisor consultation | — |
 | [`tool-session-query`](tool-session-query/README.md) | Workspace-authorized model session search, trace, and event reads | — |
 | [`session-search`](session-search/README.md) | Optional experimental global session search tools | — |
 | [`ralph-bundle`](ralph-bundle/README.md) | Optional repeated delegation with an isolated workflow engine | — |

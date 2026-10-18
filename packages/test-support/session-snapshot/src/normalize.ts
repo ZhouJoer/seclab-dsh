@@ -625,7 +625,7 @@ function normalizeFeedbackClocks(record: Record<string, unknown>): void {
 
 /** Preserve consultation outcomes while removing Host wall-clock measurements. */
 function normalizeHelperClocks(record: Record<string, unknown>): void {
-  if (record.type !== 'helper/start' && record.type !== 'helper/end') return
+  if (!['helper/start', 'helper/end', 'helper/auto-start', 'helper/auto-end', 'advisor-jev/end'].includes(String(record.type))) return
   if (record.data === null || typeof record.data !== 'object') return
   const data = record.data as Record<string, unknown>
   if ('startedAt' in data) data.startedAt = 0

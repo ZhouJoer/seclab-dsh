@@ -1304,6 +1304,48 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'helper',
+    summary: 'Helper runtime, authenticated native-account methods and scoped tool ownership.',
+    description: 'Helper runtime, authenticated native-account methods and scoped tool ownership.',
+    methods: [
+      {
+        signature: '@Remote settings(): HelperSettings',
+        description: 'Read the currently configured helper selection.',
+        parameters: [],
+        returns: 'Detached settings without credentials.',
+      },
+      {
+        signature: '@Remote account(): Promise<{ loggedIn: boolean; email?: string; planType?: string; login?: { loginId: string; status: \'pending\' | \'completed\' | \'failed\'; error?: string } }>',
+        description: 'Read native ChatGPT login state.',
+        parameters: [],
+        returns: 'Public account fields.',
+      },
+      {
+        signature: '@Remote codexModels(): Promise<Array<{ id: string; name: string; efforts: string[] }>>',
+        description: 'Read native model choices.',
+        parameters: [],
+        returns: 'Model ids and supported reasoning efforts.',
+      },
+      {
+        signature: '@Remote login(): Promise<{ authUrl: string; loginId: string }>',
+        description: 'Begin official browser login.',
+        parameters: [],
+        returns: 'Login link and cancellation id.',
+      },
+      {
+        signature: '@Remote cancelLogin(loginId: string): Promise<void>',
+        description: 'Cancel pending login.',
+        parameters: [{ name: 'loginId', description: 'Id from login.' }],
+      },
+      {
+        signature: 'consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>',
+        description: 'Consult the configured adviser from a Host plugin in an enabled proactive session. Failures reject after child cleanup; callers must not retry an unknown outcome.',
+        parameters: [{ name: 'args', description: 'Self-contained question and evidence.' }, { name: 'agent', description: 'Top-level owner of the consultation and its log.' }, { name: 'signal', description: 'Cancellation owned by the caller, including plugin disposal.' }, { name: 'consultationId', description: 'Unique identity, allocated before invoking this operation.' }],
+        returns: 'Final advice after the child has been released and the result logged.',
+      },
+    ],
+  },
+  {
     key: 'hmr',
     summary: 'Hot reload service with Cordis-compatible module configuration and events.',
     description: 'Hot reload service with Cordis-compatible module configuration and events.',
@@ -5535,6 +5577,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ConnectionTrustRequest {\n    readonly headers: Headers | Readonly<Record<string, string | readonly string[] | undefined>>;\n}',
   },
   {
+    name: 'ConsultationId',
+    declaration: 'export type ConsultationId = Branded<\'Helper.ConsultationId\'>;',
+  },
+  {
+    name: 'ConsultationQuestion',
+    declaration: 'export interface ConsultationQuestion {\n    reason: string;\n    question: string;\n    context?: string;\n    attempts?: string;\n}',
+  },
+  {
     name: 'ContentBlockMap',
     declaration: 'export interface ContentBlockMap {\n    \'text\': TextBlock;\n    \'reasoning\': ReasoningBlock;\n    \'image\': ImageBlock;\n    \'file\': FileBlock;\n    \'tool-call\': ToolCallBlock;\n    \'tool-addition\': ToolAdditionBlock;\n    \'tool-removal\': ToolRemovalBlock;\n}',
   },
@@ -6025,6 +6075,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GrantRecord',
     declaration: 'export interface GrantRecord {\n    readonly kind: \'grant\';\n    readonly payload: unknown;\n}',
+  },
+  {
+    name: 'Helper',
+    declaration: 'export class Helper extends TypertRemoteService {\n    static inject;\n    static Config;\n    constructor(ctx: Context, private readonly config: Config);\n    @Remote\n    settings(): HelperSettings;\n    @Remote\n    account(): Promise<{\n        loggedIn: boolean;\n        email?: string;\n        planType?: string;\n        login?: {\n            loginId: string;\n            status: \'pending\' | \'completed\' | \'failed\';\n            error?: string;\n        };\n    }>;\n    @Remote\n    codexModels(): Promise<Array<{\n        id: string;\n        name: string;\n        efforts: string[];\n    }>>;\n    @Remote\n    login(): Promise<{\n        authUrl: string;\n        loginId: string;\n    }>;\n    @Remote\n    cancelLogin(loginId: string): Promise<void>;\n    consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>;\n}',
+  },
+  {
+    name: 'HelperMode',
+    declaration: 'export type HelperMode = \'normal\' | \'proactive\';',
+  },
+  {
+    name: 'HelperSettings',
+    declaration: 'export interface HelperSettings {\n    enabled: boolean;\n    mode: HelperMode;\n    backend: \'api\' | \'codex\';\n    provider: string;\n    model: string;\n    reasoningEffort: string;\n    codexModel: string;\n    codexReasoningEffort: string;\n}',
   },
   {
     name: 'HookBudget',

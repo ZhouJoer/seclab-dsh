@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.1/automatic-advisor/guide.md
+/:
+  en: 03883a7718385d9e
+  zh: f1c82b296809c3ee
+/automatic-advisor-session-readers:
+  en: a2337a556520b41e
+  zh: 5c3b55d8467e0dcf
+/automatic-advisor-session-readers/change:
+  en: 1b534542886e35af
+  zh: b17ff906863df7a8
+/automatic-advisor-session-readers/migration:
+  en: ff6432897ae2db31
+  zh: 00ec8209cfa7c3b7

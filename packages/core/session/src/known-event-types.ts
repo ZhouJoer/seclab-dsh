@@ -20,6 +20,8 @@
  * `.agents/notes/implemented/architecture/2026-08-30-retain-ignorable-external-session-events.md`.
  */
 export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'advisor-jev/end',
+  'advisor-jev/start',
   'agent-preset/selected',
   'agent/inbox/spliced',
   'approval/asked',
@@ -39,6 +41,8 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'feedback/message-put',
   'feedback/record',
   'goal/change',
+  'helper/auto-end',
+  'helper/auto-start',
   'helper/end',
   'helper/policy',
   'helper/start',

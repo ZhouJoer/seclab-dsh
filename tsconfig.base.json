@@ -28,6 +28,8 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-experimental-advisor-jev": ["./packages/experimental/advisor-jev/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-advisor-jev/types": ["./packages/experimental/advisor-jev/src/types.ts"],
       "@deepseek-ai/dsh-helper": ["./packages/subagent/helper/src/index.ts"],
       "@deepseek-ai/dsh-helper/types": ["./packages/subagent/helper/src/types.ts"],
       "@deepseek-ai/dsh-experimental-session-search": ["./packages/experimental/session-search/src/index.ts"],

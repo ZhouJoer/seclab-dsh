@@ -1,0 +1,10 @@
+version: 1
+scenario: advisor-jev
+profile: sdk
+composition: advisor-jev
+recording: authored
+header:
+  class: advisor-jev
+  pin: true
+  childSystemPrompts: [1]
+  childToolSchemas: [1]

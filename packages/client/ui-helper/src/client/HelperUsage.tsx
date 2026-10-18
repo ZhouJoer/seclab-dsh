@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { HelperCall, HelperMode } from '@deepseek-ai/dsh-helper/types'
+import type { HelperState, HelperMode } from '@deepseek-ai/dsh-helper/types'
 import type { HelperKey } from './locales.ts'
 import type { ToolCallPhaseProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import css from './Helper.module.css'
@@ -17,7 +17,7 @@ export interface UsageActions {
 
 const metrics = [['inputTokens', 'input'], ['outputTokens', 'output'], ['cacheReadTokens', 'cache'], ['cacheWriteTokens', 'cacheWrite'], ['reasoningTokens', 'reasoning']] as const
 
-function metricRows(calls: readonly HelperCall[], t: (key: HelperKey) => string): string[] {
+function metricRows(calls: Readonly<HelperState['calls']>, t: (key: HelperKey) => string): string[] {
   return metrics.map(([key, label]) => {
     const reported = calls.flatMap(call => call.usage?.[key] === undefined ? [] : [call.usage[key]])
     return `${t(label)}: ${reported.length === 0 ? t('unreported') : reported.reduce((a, b) => a + b, 0).toLocaleString() + (reported.length < calls.length ? ` · ${t('unreported')}: ${calls.length - reported.length}` : '')}`

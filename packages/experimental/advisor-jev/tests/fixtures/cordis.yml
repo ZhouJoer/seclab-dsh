@@ -1,0 +1,20 @@
+- name: cordis:llm
+- name: cordis:sessions
+- name: cordis:projections
+- name: cordis:system-prompt
+- name: cordis:tools
+- name: cordis:agents
+- name: cordis:fs
+- name: cordis:working-directory
+- name: cordis:subagents
+- name: cordis:helper
+  config:
+    enabled: true
+    mode: proactive
+    backend: api
+    provider: mock
+    model: expert
+    reasoningEffort: ''
+- name: cordis:agent-loop
+  config:
+    agents: []

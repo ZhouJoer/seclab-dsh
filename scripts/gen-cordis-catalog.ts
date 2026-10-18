@@ -126,6 +126,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   storageDomain: 'storage.md',
   subagentModelSelection: 'subagent.md',
   subagents: 'subagent.md',
+  helper: 'subagent.md',
   codexConsultation: 'subagent.md',
   subprocess: 'subprocess.md',
   systemPrompt: 'system-prompt.md',
@@ -287,6 +288,9 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  HelperSettings: 'subagent.md',
+  ConsultationId: 'subagent.md',
+  ConsultationQuestion: 'subagent.md',
   Principal: 'typert.md',
   PrincipalMap: 'typert.md',
   RemoteAccessResource: 'typert.md',

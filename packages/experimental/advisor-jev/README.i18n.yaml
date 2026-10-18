@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/advisor-jev/README.md
+/:
+  en: 230524faa1eee8b7
+  zh: 5a025e462113b324
+/deepseek-ai-dsh-experimental-advisor-jev:
+  en: c1b2b21c01e57767
+  zh: 229694f9db855ea4
+/deepseek-ai-dsh-experimental-advisor-jev/summary:
+  en: 29d0ea5b9d297b71
+  zh: a62bd77d07049757
+/deepseek-ai-dsh-experimental-advisor-jev/table-of-contents:
+  en: 122f0d41696980b1
+  zh: f366d2759fbb78b1
+/deepseek-ai-dsh-experimental-advisor-jev/use-this-package:
+  en: e045966aeabb8a03
+  zh: a983941d699faa39
+/deepseek-ai-dsh-experimental-advisor-jev/understand-the-implementation:
+  en: 952fcaf0115dbb69
+  zh: f4a3271baf819003
+/deepseek-ai-dsh-experimental-advisor-jev/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-advisor-jev/model-experience/automatic-consultation:
+  en: 10383929623aca64
+  zh: ce3a5e02cb4e74d2
+/deepseek-ai-dsh-experimental-advisor-jev/model-experience/automatic-consultation/what-the-model-sees:
+  en: 68eacfc5dd39c95b
+  zh: 674888332ea40721
+/deepseek-ai-dsh-experimental-advisor-jev/model-experience/automatic-consultation/token-effect:
+  en: 151cf099ac15270a
+  zh: efec90acbcf43c2f
+/deepseek-ai-dsh-experimental-advisor-jev/model-experience/automatic-consultation/kv-cache-effect:
+  en: d63b0567dec134ae
+  zh: 003869e6f0842663
+/deepseek-ai-dsh-experimental-advisor-jev/known-limitations-and-deferred-work:
+  en: f44ec7f5f92f48a0
+  zh: 61a32802f9685790
+/deepseek-ai-dsh-experimental-advisor-jev/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

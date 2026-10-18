@@ -1,0 +1,5 @@
+- insert:
+    - id: advisor-jev
+      name: '@deepseek-ai/dsh-experimental-advisor-jev'
+      config:
+        enabled: false

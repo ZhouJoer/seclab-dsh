@@ -44,6 +44,8 @@ The plugin composes the existing subagent lifecycle without changing the loop. I
 
 The session projection derives only from recorded policy, start and end events. A tool-call id joins its arguments and answer to the metrics, including PTC subcalls. No invariant companion is published: lifecycle ownership belongs to the subagent service and projection values are derived from their sole event source.
 
+Host plugins can call `consultAutomatically` in an enabled proactive session. Automatic calls use `helper/auto-start` and `helper/auto-end` with a consultation ID, question, final advice and the same metrics as tool calls. They share the read-only provider execution and cancellation path. Automatic consultations cannot overlap another consultation in the same parent. Provider failures reach the caller after child cleanup; cleanup failures remain terminal.
+
 </details>
 
 -----
@@ -55,7 +57,7 @@ The session projection derives only from recorded policy, start and end events. 
 
 #### What the model sees
 
-The main model completes initial reconnaissance without consulting Advisor. Normal mode describes when expert advice can help afterward and adds no progress reminders. Proactive mode asks the main model to consult after roughly three materially different strategies for the same obstacle produce no actionable evidence or progress. A short, logged progress reminder follows each top-level tool execution except `advisor`; child agents receive no reminder. The model assesses strategies, grouping related searches and variations together; Harness has no attempt counter or automatic consultation. Once stalled, the model consults before further retries, asking for more information or reporting the task blocked, even when it expects the adviser may also be unable to solve the problem. Repeated errors, additional guesses and larger searches without a new lead do not establish progress. The model supplies the problem, evidence, approaches and observed results, separating facts from assumptions. After advice, it verifies the smallest recommended step and continues; new evidence or a new question can warrant another consultation. The adviser receives the submitted materials and read-only instructions.
+The main model completes initial reconnaissance without consulting Advisor. Normal mode describes when expert advice can help afterward and adds no progress reminders. Proactive mode asks the main model to consult after roughly three materially different strategies for the same obstacle produce no actionable evidence or progress. A short, logged progress reminder follows each top-level tool execution except `advisor`; child agents receive no reminder. The model assesses strategies, grouping related searches and variations together; this service does not count attempts or initiate consultations on its own. Once stalled, the model consults before further retries, asking for more information or reporting the task blocked, even when it expects the adviser may also be unable to solve the problem. Repeated errors, additional guesses and larger searches without a new lead do not establish progress. The model supplies the problem, evidence, approaches and observed results, separating facts from assumptions. After advice, it verifies the smallest recommended step and continues; new evidence or a new question can warrant another consultation. The adviser receives the submitted materials and read-only instructions.
 
 #### Token effect
 

@@ -108,6 +108,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'helper',
+    pkg: 'helper',
+    title: 'Read-only Advisor consultations',
+    mode: 'core',
+    consumers: ['experimental-advisor-jev', 'ui-helper'],
+    note: 'Owns consultation policy, read-only child execution and usage records for model tools and automatic Host callers.',
+  },
+  {
     key: 'codexConsultation',
     pkg: 'subagent-codex',
     title: 'Native Codex account and consultation access',

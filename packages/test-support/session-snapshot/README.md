@@ -99,6 +99,8 @@ A scenario requiring a non-Windows host declares `posixOnly`, which skips its ru
 
 -----
 
+Automatic Advisor and Jev assessment clocks are normalized while their decisions, advice and usage remain visible.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

@@ -26,12 +26,12 @@ const ctx: NormalizeContext = {
   cwd: '/tmp/acp-snap-cwd-abc123',
 }
 
-it('normalizes Helper clocks while retaining status and reported token counts', () => {
-  const raw = JSON.stringify({ type: 'helper/end', data: {
+it.each(['helper/end', 'helper/auto-start', 'helper/auto-end', 'advisor-jev/end'])('normalizes %s clocks while retaining status and reported token counts', (type) => {
+  const raw = JSON.stringify({ type, data: {
     callId: 'helper-call', startedAt: 1700000000000, elapsedMs: 1200,
     status: 'completed', usage: { inputTokens: 42, outputTokens: 7 },
   } })
-  expect(JSON.parse(normalizeSessionLog(raw, ctx))).toMatchObject({ type: 'helper/end', data: {
+  expect(JSON.parse(normalizeSessionLog(raw, ctx))).toMatchObject({ type, data: {
     startedAt: 0, elapsedMs: 0, status: 'completed', usage: { inputTokens: 42, outputTokens: 7 },
   } })
 })

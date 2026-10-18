@@ -9,9 +9,12 @@
 
 ```mermaid
 flowchart LR
+  pkg_helper["helper"]
+  svc_helper["ctx.helper<br/>Read-only Advisor consultations"]
+  pkg_experimental_advisor_jev["experimental-advisor-jev"]
+  pkg_ui_helper["ui-helper"]
   pkg_subagent_codex["subagent-codex"]
   svc_codexConsultation["ctx.codexConsultation<br/>Native Codex account and consultation access"]
-  pkg_helper["helper"]
   pkg_experimental_client_ui_cot_translation["experimental-client-ui-cot-translation"]
   svc_cotTranslation["ctx.cotTranslation<br/>Reasoning translation Remote"]
   pkg_experimental_translator["experimental-translator"]
@@ -367,6 +370,7 @@ flowchart LR
   pkg_fs_sandbox --> svc_fs
   pkg_fs_ssh --> svc_fs
   pkg_goal --> svc_goals
+  pkg_helper --> svc_helper
   pkg_hmr --> svc_hmr
   pkg_host_directory_picker --> svc_directoryPicker
   pkg_host_directory_picker_browse --> svc_directoryPicker
@@ -501,6 +505,8 @@ flowchart LR
   svc_fileReferences --> pkg_api_session_controller
   svc_fileUploads --> pkg_api_session_controller
   svc_fs --> pkg_tool_fs
+  svc_helper --> pkg_experimental_advisor_jev
+  svc_helper --> pkg_ui_helper
   svc_hmr --> pkg_app_boot
   svc_jobs --> pkg_api_job_controller
   svc_jobs --> pkg_tool_bash
@@ -626,6 +632,7 @@ flowchart LR
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.helper` | `core` | [`helper`](../packages/subagent/helper) | - | [`experimental-advisor-jev`](../packages/experimental/advisor-jev), `ui-helper` | - | 负责模型工具与自动 Host 调用方的咨询策略、只读子代理执行及用量记录。 |
 | `ctx.codexConsultation` | `core` | [`subagent-codex`](../packages/subagent/subagent-codex) | - | [`helper`](../packages/subagent/helper) | - | 负责本机账号和模型发现，注册只读 Helper 提供方，不修改普通 Codex 偏好。 |
 | `ctx.cotTranslation` | `service` | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | - | - | 为展开的思考内容提供有界的 Session 翻译请求，不改变模型可见历史。 |
 | `ctx.translator` | `service` | [`experimental-translator`](../packages/experimental/translator) | - | [`experimental-client-ui-cot-translation`](../packages/experimental/client-ui-cot-translation) | - | 解析 Google 或 Bing 请求，并可选保留统一的实验性 Session 记录。 |
