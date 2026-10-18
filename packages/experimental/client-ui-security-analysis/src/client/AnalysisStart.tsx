@@ -14,6 +14,7 @@ import css from './Workbench.module.css'
 export interface AnalysisStartProps extends PropsLocale<typeof NS> {
   disabled: boolean
   environments: { id: string; label: string; kind: string }[]
+  workspaceEnvironmentIds?: readonly string[] | undefined
   limits: { bytes: number; entries: number } | undefined
   defaultTaskContext?: TaskContext | undefined
   taskContextMaxBytes: number | undefined
@@ -24,12 +25,36 @@ export interface AnalysisStartProps extends PropsLocale<typeof NS> {
     title: string
     objective: string
     environmentId: string
+    environmentIds: string[]
     taskContext: TaskContext | null
     target?: { origin: string; pathPrefix: string; allowedAddresses: string[] }
   }): Promise<void>
   send(objective: string): Promise<void>
   continueInChat(objective: string): void
   started(): void
+}
+
+/** Ordered environment selection for kind-aware defaults: the workspace's curated pool when set, every configured environment otherwise.
+ * @param props - configured environments and optional workspace selection.
+ * @returns environments in preference order.
+ */
+function preferenceOrder(props: AnalysisStartProps): AnalysisStartProps['environments'] {
+  const pool = props.workspaceEnvironmentIds
+  if (!pool?.length) return props.environments
+  return pool.flatMap((id) => {
+    const environment = props.environments.find(item => item.id === id)
+    return environment ? [environment] : []
+  })
+}
+
+/** Default the primary environment by task kind: HTTP targets prefer Docker, other work prefers local analysis.
+ * @param props - configured environments and optional workspace selection.
+ * @param webTarget - whether the operator declared an HTTP target for this task.
+ * @returns default primary environment, or undefined when none matches.
+ */
+function defaultEnvironment(props: AnalysisStartProps, webTarget: boolean): AnalysisStartProps['environments'][number] | undefined {
+  const order = preferenceOrder(props)
+  return (webTarget ? order.find(item => item.kind === 'docker') : undefined) ?? order.find(item => item.kind === 'local')
 }
 
 /** Render the material, objective and start flow, retaining a prepared task on send failure.
@@ -49,7 +74,9 @@ export function AnalysisStart(props: AnalysisStartProps) {
   const [contextOverride, setContextOverride] = useState<TaskContext | null>()
   const taskContext = contextOverride === undefined ? props.defaultTaskContext ?? null : contextOverride
   const attempt = useRef<{ payload: string; operationId: string }>()
-  const environmentId = environment ?? props.environments.find(item => item.kind === 'local')?.id ?? ''
+  const environmentId = environment ?? defaultEnvironment(props, origin.trim() !== '')?.id ?? ''
+  const environmentIds = [...new Set([environmentId, preferenceOrder(props).find(item => item.kind === 'local')?.id]
+    .filter((id): id is string => !!id))]
   const locked = props.disabled || busy || prepared
   const cannotStart = props.disabled || busy || selecting || !preferencesReady || !objective.trim()
     || !props.environments.some(item => item.id === environmentId)
@@ -65,7 +92,7 @@ export function AnalysisStart(props: AnalysisStartProps) {
     try {
       if (!prepared) {
         const input = { ...selection, title: selection?.title ?? objective.trim().split('\n').slice(0, 1).join(''),
-          objective: objective.trim(), environmentId, taskContext,
+          objective: objective.trim(), environmentId, environmentIds, taskContext,
           ...(origin.trim() ? { target: { origin: origin.trim(),
             pathPrefix, allowedAddresses: addresses.split(/\s+/u).filter(Boolean) } } : {}) }
         const payload = JSON.stringify(input)

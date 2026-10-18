@@ -91,5 +91,7 @@ function PreferenceEditor(props: Props) {
     {error && <p role="alert">{selection && t('toolPreferenceFailed')} {error}</p>}
     {error && !selection && <button disabled={busy || props.disabled}
       onClick={() => { setRetry(value => value + 1) }}>{t('refresh')}</button>}
+    {error && selection && <button disabled={busy || props.disabled}
+      onClick={() => { void apply(selection) }}>{t('toolPreferenceRetry')}</button>}
   </details>
 }

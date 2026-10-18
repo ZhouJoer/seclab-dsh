@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Choose material, describe an objective and start an analysis with the local environment selected. Tasks and submitted findings, evidence and reports persist across restarts. Chat responses and generated files enter these lists only after explicit collection or record submission. The optional panel retains ordinary conversation and tool cards; detailed assets, checks, environments and review controls are available when needed. The security domain checks authority for every action. Configure local external tools from the Toolbox page.
+Choose material, describe an objective and start an analysis. The start form prefers local analysis, or the workspace's first Docker environment for declared HTTP targets, and includes the local environment when available. Tasks and submitted findings, evidence and reports persist across restarts. Chat responses and generated files enter these lists only after explicit collection or record submission. The optional panel retains ordinary conversation and tool cards; detailed assets, checks, environments and review controls are available when needed. The security domain checks authority for every action. Configure local external tools from the Toolbox page.
 
 ## Table of Contents
 

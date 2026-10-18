@@ -129,6 +129,37 @@ export function modelToolInventory(inventory: ToolboxInventory,
   }) }
 }
 
+/** Reduce one measured text field to its first line within a fixed width.
+ * @param text - complete measured field.
+ * @returns first line, trimmed to 160 characters.
+ */
+function firstLine(text: string): string {
+  return text.split(/\r?\n/u, 1).join('').slice(0, 160)
+}
+
+/**
+ * Compact a measured inventory to environment health and per-tool identity when
+ * the complete projection exceeds the model output budget. Launch
+ * configuration, locations and sources stay reachable through narrowed
+ * toolId or toolIds queries, which return one tool's full row.
+ * @param inventory - Operator installation observations.
+ * @returns budget-stable projection keeping kind, runtime, workdir and each
+ *   tool's id, status, dependency, version line and failure detail.
+ */
+export function compactToolInventory(inventory: ToolboxInventory): object {
+  return {
+    environmentId: inventory.environmentId, kind: inventory.kind, runtime: inventory.runtime,
+    detail: firstLine(inventory.detail), checkedAt: inventory.checkedAt, workdir: inventory.workdir,
+    ...(inventory.containerId === undefined ? {} : { containerId: inventory.containerId }),
+    compact: 'The complete inventory exceeded the output budget; query toolId or toolIds for each tool\'s full entry and launch configuration',
+    tools: inventory.tools.map(tool => ({
+      id: tool.id, status: tool.status, ...(tool.dependency === undefined ? {} : { dependency: tool.dependency }),
+      version: firstLine(tool.version),
+      ...(tool.status === 'available' ? {} : { detail: firstLine(tool.detail) }),
+    })),
+  }
+}
+
 /** Match a registered adapter tool without interpreting model command text.
  * @param name - DSH tool name.
  * @returns catalog identity, or undefined for other tools.

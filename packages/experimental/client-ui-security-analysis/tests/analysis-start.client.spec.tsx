@@ -156,3 +156,30 @@ it('explains a missing service environment without offering an empty selector', 
   expect(prepare).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
 })
+
+it('prefers a Docker environment for a declared HTTP target and adds the local base to the task resources', async () => {
+  const api = setup()
+  const targets = screen.getByText(zh.httpTargets).closest('details')!
+  targets.open = true
+  fireEvent.change(screen.getByLabelText(zh.httpOrigin), { target: { value: 'http://127.0.0.1:18082/' } })
+  fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Capture the flags' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.startAnalysis }))
+  await waitFor(() => { expect(api.started).toHaveBeenCalledOnce() })
+  expect(api.prepare.mock.calls[0]?.[0]).toMatchObject({ environmentId: 'container', environmentIds: ['container', 'host'] })
+})
+
+it('orders Docker defaults by the workspace resource selection', async () => {
+  const prepare = vi.fn<AnalysisStartProps['prepare']>(async () => {})
+  const send = vi.fn(async () => {})
+  render(<AnalysisStart t={makeTranslate(zh, commonZh)} disabled={false} taskContextMaxBytes={4096}
+    environments={[{ id: 'mining', label: 'Mining builds', kind: 'docker' }, { id: 'kali', label: 'Kali attack', kind: 'docker' },
+      { id: 'host', label: 'Host', kind: 'local' }]} workspaceEnvironmentIds={['kali', 'host']}
+    limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} continueInChat={() => {}} started={() => {}} />)
+  const targets = screen.getByText(zh.httpTargets).closest('details')!
+  targets.open = true
+  fireEvent.change(screen.getByLabelText(zh.httpOrigin), { target: { value: 'http://127.0.0.1:18082/' } })
+  fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Capture the flags' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.startAnalysis }))
+  await waitFor(() => { expect(send).toHaveBeenCalledOnce() })
+  expect(prepare.mock.calls[0]?.[0]).toMatchObject({ environmentId: 'kali', environmentIds: ['kali', 'host'] })
+})

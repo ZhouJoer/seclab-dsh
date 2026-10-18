@@ -75,6 +75,7 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
           }} />}
       </details>}
       <AnalysisStart t={t} disabled={!configuration || maxAttempts === undefined || saving}
+        workspaceEnvironmentIds={workspace?.environmentIds}
         defaultTaskContext={workspace?.taskContext} taskContextMaxBytes={configuration?.taskContextMaxBytes}
         toolPreferences={{ sessionId, toolPreferenceOptions: props.toolPreferenceOptions, toolPreferences: props.toolPreferences }}
         environments={configuration?.environments ?? []} limits={configuration?.materialLimits}
@@ -89,7 +90,7 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
               environmentId: input.environmentId, label: input.title } : undefined,
 
             title: input.title, objective: input.objective, taskContext: input.taskContext,
-            resources: { environmentIds: [input.environmentId], maxAttempts },
+            resources: { environmentIds: input.environmentIds, maxAttempts },
           }))
           if (generationAtStart !== generation.current) throw new Error(t('analysisSessionChanged'))
         }}

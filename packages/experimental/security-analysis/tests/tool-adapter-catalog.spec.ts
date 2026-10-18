@@ -1,6 +1,6 @@
 /** Model discovery projects fixed interfaces rather than operator launcher configuration. @module */
 import { expect, it } from 'vitest'
-import { modelToolDefinition, modelToolInventory, toolAdapters } from '../src/tool-adapter-catalog.ts'
+import { compactToolInventory, modelToolDefinition, modelToolInventory, toolAdapters } from '../src/tool-adapter-catalog.ts'
 import { parseToolDefinition } from '../src/tool-definitions.ts'
 
 it.each(toolAdapters)('publishes the $id adapter independently of imported launcher instructions', ({ id, operations, toolName }) => {
@@ -49,4 +49,26 @@ it('preserves the measured Kali launcher and Docker context, and exposes advance
   expect(modelToolInventory(inventory, { externalContainer: true })).toEqual(inventory)
   expect(modelToolInventory(inventory, { native: true })).toEqual(inventory)
   expect(modelToolInventory(inventory)).toMatchObject({ tools: [{ toolName: 'security_radare2' }] })
+})
+
+it('compacts an oversized inventory to identity and health without launcher fields', () => {
+  const row = (id: string, status: 'available' | 'error') => ({ id, category: 'web' as const, status,
+    command: 'docker', prefixArgs: ['--context', 'remote', 'exec', '-i', '--workdir', '/workspace', 'kali', id],
+    installation: { command: id, prefixArgs: [] },
+    version: 'tool ' + id + ' 9.9.9\ncompiled with options that span many lines', location: '/usr/bin/' + id,
+    source: 'Container', detail: status === 'error' ? 'probe failed\nsecond line' : '', installUrl: '', invocation: 'shell' as const })
+  const inventory = { environmentId: 'kali', kind: 'docker' as const, runtime: 'ready' as const, checkedAt: 1,
+    detail: '', workdir: '/workspace', containerId: 'kali', tools: [row('ffuf', 'available'), row('nmap', 'error')] }
+  const compact = compactToolInventory(inventory) as { compact: string; tools: object[] }
+  expect(compact).toMatchObject({ environmentId: 'kali', kind: 'docker', runtime: 'ready', workdir: '/workspace', containerId: 'kali' })
+  expect(compact.compact).toContain('toolId or toolIds')
+  expect(compact.tools).toEqual([{ id: 'ffuf', status: 'available', version: 'tool ffuf 9.9.9' },
+    { id: 'nmap', status: 'error', version: 'tool nmap 9.9.9', detail: 'probe failed' }])
+  const text = JSON.stringify(compact)
+  expect(text).not.toContain('--context')
+  expect(text).not.toContain('exec')
+  expect(text).not.toContain('/usr/bin/')
+  expect(text).not.toContain('installation')
+  expect(text).not.toContain('prefixArgs')
+  expect(text).not.toContain('second line')
 })

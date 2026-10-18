@@ -49,7 +49,7 @@ import { TOOL_DISCOVERY_GUIDANCE } from './analysis-tools.ts'
 import { ToolCatalog, type ToolCatalogSnapshot, type ToolPackPreview } from './tool-catalog.ts'
 import { discoverTools, toolPreferencesSchema, type ToolPreferences, type ToolPreferenceOptions } from './tool-definitions.ts'
 import { LocalToolConfiguration, browseToolFiles, toolConfigurationInput } from './tool-configuration.ts'
-import { modelToolDefinition, modelToolInventory, toolAdapters } from './tool-adapter-catalog.ts'
+import { compactToolInventory, modelToolDefinition, modelToolInventory, toolAdapters } from './tool-adapter-catalog.ts'
 import { ToolAdapterProvider, type ToolAdapterLimits } from './tool-adapter-provider.ts'
 import { registerToolAdapters } from './tool-adapter-tools.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
@@ -475,8 +475,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
           }
-          return json(modelToolInventory(inventory, { native: args.native ?? false, adapterOnly: this.adapterPreferences(exec.agent.id),
-            externalContainer: environment.externalContainer !== undefined }))
+          const rendered = modelToolInventory(inventory, { native: args.native ?? false,
+            adapterOnly: this.adapterPreferences(exec.agent.id),
+            externalContainer: environment.externalContainer !== undefined })
+          if (Buffer.byteLength(JSON.stringify(rendered)) <= config.modelResultBytes) return json(rendered)
+          return json(compactToolInventory(inventory))
         },
       }),
     )
