@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/security-workbench.md
 /security-workbench:
-  en: 6a30622348a922cc
-  zh: e82f8c717bd32a64
+  en: 488b977023d7cf24
+  zh: 8b524c391cb5340f
 /security-workbench/durable-records:
   en: a3ce517813eca804
   zh: d730a2073e222026

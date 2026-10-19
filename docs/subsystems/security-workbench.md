@@ -4,6 +4,8 @@ English | [中文](security-workbench.zh.md)
 
 The experimental [security domain](../../packages/experimental/security-analysis/README.md) owns projects, measured assets, check dependencies, explicit Session roles and immutable plan approval. Analysis and environment providers register capabilities; tools and generated Remote methods share the domain controller.
 
+Task-owned module selections resolve to Agent skill scopes and tool admission inside the security plugin. Committed project and binding changes refresh live scopes; disposal removes their registrations. The controller checks the same selection for observations and plans, including generic provider requests. Fixed `analysis.*` operations declare evidence inputs, which the controller resolves within the caller’s visible asset before artifact reads. Derived results retain input evidence IDs, script hashes, diagnostics and inherited incompleteness in `security-tool-result-v1`.
+
 ## Durable records
 
 `WorkbenchConfiguration` is the object returned by `configuration` and `configureWorkspace`. It includes material limits, projects, providers, environments and the knowledge interval. Its workspace value is null without a workspace; the attempt limit is absent until configured. The [configuration types](../../packages/experimental/security-analysis/src/workbench-configuration-types.ts) define the browser-safe fields.

@@ -67,7 +67,7 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
       operator,
     )
   await send(
-    { kind: 'create', title: 'Lab', objective: 'Inspect an owned sample', environmentIds: ['local'], maxAttempts: 3 },
+    { kind: 'create', title: 'Lab', objective: 'Inspect an owned sample', moduleSelection: { mode: 'manual', modules: ['reverse.android', 'reverse.native', 'web', 'iot'], reason: 'Provider lifecycle fixture' }, environmentIds: ['local'], maxAttempts: 3 },
     true,
   )
   const path = join(root, 'sample.exe')
@@ -79,6 +79,26 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
 }
 
 describe('security workbench', () => {
+  it('rejects derived inputs belonging to another asset before reading them or running the provider', async () => {
+    const { controller, assetId, root, send } = await harness()
+    controller.providers.register(new BinaryProvider())
+    const evidence = await controller.observe('parent', { provider: 'binary', operation: 'hex', assetId,
+      environmentId: 'local', parameters: { offset: 0, length: 1 }, impact: 'observe' }, 'input-hex', new AbortController().signal)
+    if (evidence.kind !== 'evidence') throw new Error('Missing evidence')
+    const path = join(root, 'second.exe')
+    await writeFile(path, Buffer.from('MZ another asset'))
+    await send({ kind: 'import', path, label: 'second' })
+    const other = controller.view('parent').records.find(record => record.kind === 'asset' && record.value.id !== assetId)
+    if (other?.kind !== 'asset') throw new Error('Missing second asset')
+    const run = vi.fn(async () => ({ bytes: Buffer.from('{}'), mediaType: 'application/json', summary: '', incomplete: false, toolVersion: 'fixture' }))
+    controller.providers.register({ id: 'tool-adapter', operations: ['analysis.native-triage'], resolve: request => request,
+      inputEvidenceIds: () => [evidence.value.id], run })
+    await expect(controller.observe('parent', { provider: 'tool-adapter', operation: 'analysis.native-triage', assetId: other.value.id,
+      environmentId: 'local', parameters: { evidenceIds: [evidence.value.id] }, impact: 'observe' }, 'cross-asset', new AbortController().signal))
+      .rejects.toThrow('asset scope')
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('consumes single-execution approval once across concurrent starts and durable retries', async () => {
     const { controller, send, assetId, journal } = await harness()
     let requests = 0

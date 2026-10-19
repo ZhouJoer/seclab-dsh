@@ -47,7 +47,7 @@
           "type": "tool-call",
           "id": "observe-outside-sample",
           "name": "security_static",
-          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":1000000,\\\"length\\\":1}\"}"
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":1000000,\\\"length\\\":1}\"}"
         }
       },
       {
@@ -146,7 +146,7 @@
           "type": "tool-call",
           "id": "identity-invalid-path",
           "name": "security_static",
-          "arguments": "{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"path\\\":\\\"sample.bin\\\"}\"}"
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"path\\\":\\\"sample.bin\\\"}\"}"
         }
       },
       {
@@ -179,7 +179,7 @@
           "type": "tool-call",
           "id": "identity-corrected",
           "name": "security_static",
-          "arguments": "{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{}\"}"
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"identity\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{}\"}"
         }
       },
       {
@@ -212,7 +212,7 @@
           "type": "tool-call",
           "id": "adapter-functions",
           "name": "security_radare2",
-          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"operation\":\"functions\"}"
+          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"operation\":\"functions\"}"
         }
       },
       {
@@ -244,7 +244,7 @@
         "block": {
           "id": "adapter-device-packages",
           "name": "security_adb",
-          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"operation\":\"packages\"}",
+          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"operation\":\"packages\"}",
           "type": "tool-call"
         }
       },
@@ -278,7 +278,7 @@
           "type": "tool-call",
           "id": "progress-overdue",
           "name": "security_static",
-          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":0,\\\"length\\\":1}\"}"
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":0,\\\"length\\\":1}\"}"
         }
       },
       {
@@ -344,7 +344,7 @@
           "type": "tool-call",
           "id": "resume-after-progress",
           "name": "security_static",
-          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000007\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":0,\\\"length\\\":1}\"}"
+          "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":0,\\\"length\\\":1}\"}"
         }
       },
       {

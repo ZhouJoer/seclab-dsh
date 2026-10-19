@@ -4,9 +4,9 @@ profile: headless
 composition: security-workbench
 recording: authored
 header:
-  class: security-workbench
-  systemPromptSource: security-workbench
-  toolSchemasSource: security-workbench
+  class: security-observation-failure
+  pin: true
+  changes: 1
 replay:
   override: true
 environment:

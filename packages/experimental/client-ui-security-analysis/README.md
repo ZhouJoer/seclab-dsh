@@ -23,6 +23,8 @@ Choose **Add materials** in the task overview to upload files or a folder, paste
 
 The Toolbox selects installations per configured local or managed Docker environment and optionally pins an execution environment per adapter. Local installations offer a Host file picker; Docker installations accept container paths. Save checks the installation before applying it and reports completion through the shared notification surface. Inspection may start a configured managed container without installing software or pulling an image. Research-direction cards show total counts, confirmed and unverified tool identities, and execution status; expand the calls to read linked evidence.
 
+Task creation and task details offer automatic or manual analysis-module selection. The editor shows active modules, selection reasons and associated skills, scripts and tools without starting an Agent or probing installations. Manual selections use revision-checked project updates; failed saves retain the draft and display the error. Returning to automatic mode clears the manual set for the coordinator to reassess.
+
 -----
 
 <a id="use-this-package"></a>

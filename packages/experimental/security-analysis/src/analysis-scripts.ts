@@ -21,6 +21,13 @@ const dynamic: AnalysisScriptParameter[] = [
   { flag: '--output', required: true, value: '<new absolute script path>' },
   { flag: '--max-events', required: true, value: '<event limit>' },
 ]
+const reverse: AnalysisScriptParameter[] = [
+  { flag: '--operation', required: true, value: '<fixed analysis operation>' },
+  { flag: '--input', required: false, value: '<adapter evidence JSON; defaults to stdin>' },
+  { flag: '--output', required: false, value: '<new result path; defaults to stdout>' },
+  { flag: '--max-items', required: true, value: '<candidate count limit>' },
+  { flag: '--max-output-bytes', required: true, value: '<result byte limit>' },
+]
 const offlineExample = ' --input "<capture>" --output "<analysisDirectory>/outputs/<run>.json" --tshark "<tshark>" --timeout 30 --max-packets 10000 --max-output-bytes 65536 --max-decode-bytes 16777216'
 
 /**
@@ -33,6 +40,10 @@ export function analysisScripts(): AnalysisScript[] {
     extra?: AnalysisScriptParameter[]
     template?: string
   }> = [
+    { id: 'analysis.android-fingerprint', kind: 'androidFingerprint', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
+    { id: 'analysis.android-api', kind: 'androidApi', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
+    { id: 'analysis.kotlin-names', kind: 'kotlinNames', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
+    { id: 'analysis.native-triage', kind: 'nativeTriage', category: 'reverse', skill: 'security-native', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
     { id: 'tshark.wireless', kind: 'wirelessCapture', category: 'tshark', skill: 'security-packet-analysis', relativePath: 'tshark/wireless.py', toolIds: ['python', 'tshark'], extra: [
       { flag: '--protocol', required: true, value: '<wifi|ble>' }, { flag: '--mode', required: true, value: '<summary|packets>' },
     ] },
@@ -50,11 +61,13 @@ export function analysisScripts(): AnalysisScript[] {
   return entries.map(({ extra = [], template, ...entry }) => ({
     ...entry, id: brandString<AnalysisScriptId>(entry.id),
     path: fileURLToPath(new URL('../resources/analysis-scripts/' + entry.relativePath, import.meta.url)),
-    parameters: [...(template ? dynamic : offline), ...extra,
+    parameters: [...(entry.category === 'reverse' ? reverse : template ? dynamic : offline), ...extra,
       ...(entry.category === 'mqtt' ? [{ flag: '--mqtt-port' as const, required: false, value: '<TCP port; repeatable>' }] : [])].map(item => ({ ...item })),
-    example: template
-      ? 'python "<resourceBase>/dynamic/prepare.py" ' + template + ' --output "<analysisDirectory>/scripts/<run>.js" --max-events 100'
+    example: entry.category === 'reverse'
+      ? 'security_analysis ' + JSON.stringify({ assetId: '<asset ID>', operation: entry.id.slice('analysis.'.length), evidenceIds: ['<saved evidence ID>'] })
+      : template
+        ? 'python "<resourceBase>/dynamic/prepare.py" ' + template + ' --output "<analysisDirectory>/scripts/<run>.js" --max-events 100'
         + (template === 'function-trace' ? ' --module "<module>" --symbol "<export>" --stack-depth 8' : '')
-      : 'python "<resourceBase>/' + entry.relativePath + '"' + offlineExample + (entry.kind === 'wirelessCapture' ? ' --protocol wifi --mode summary' : ''),
+        : 'python "<resourceBase>/' + entry.relativePath + '"' + offlineExample + (entry.kind === 'wirelessCapture' ? ' --protocol wifi --mode summary' : ''),
   }))
 }

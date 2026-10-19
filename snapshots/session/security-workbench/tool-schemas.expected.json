@@ -281,35 +281,6 @@
       }
     },
     {
-      "name": "security_adb",
-      "description": "Inspect the operator-selected Android device and installed packages. Does not accept shell commands or change the device. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "device",
-              "packages",
-              "package-info"
-            ]
-          },
-          "packageName": {
-            "type": "string",
-            "description": "Package identity required for package-info."
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
       "name": "security_capabilities",
       "description": "Discover task-relevant tools by query, tags, collectionIds or toolIds. Default returns brief definitions without probing. Set details with toolIds or providerId to load selected invocation guides. Use offset and limit for bounded pages. Definitions do not establish installation or execution permission.",
       "parameters": {
@@ -386,7 +357,7 @@
     },
     {
       "name": "security_command",
-      "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
+      "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: modules, import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -584,50 +555,6 @@
       }
     },
     {
-      "name": "security_ghidra",
-      "description": "Query the managed Ghidra program bound to an imported sample. Database writes still require a validation plan. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "identity",
-              "functions",
-              "imports",
-              "exports",
-              "strings",
-              "decompile",
-              "disassemble",
-              "xrefs-to",
-              "xrefs-from"
-            ]
-          },
-          "address": {
-            "type": "string",
-            "description": "Function or reference hexadecimal address."
-          },
-          "offset": {
-            "type": "integer"
-          },
-          "limit": {
-            "type": "integer"
-          },
-          "filter": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
       "name": "security_help",
       "description": "Read the exact JSON command envelope used by security_command. Set action to the needed command kind, such as import-source, check or finding, to receive only its fields. Omit action only when the full command catalog is needed.",
       "parameters": {
@@ -641,226 +568,34 @@
       }
     },
     {
-      "name": "security_jadx",
-      "description": "Decompile an imported APK or DEX, optionally selecting one class. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "decompile"
-            ]
-          },
-          "className": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
-      "name": "security_nm",
-      "description": "List object symbols and their addresses. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "symbols"
-            ]
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
-      "name": "security_objdump",
-      "description": "Inspect object headers or disassemble a bounded address range. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "headers",
-              "disassemble"
-            ]
-          },
-          "startAddress": {
-            "type": "string"
-          },
-          "endAddress": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
-      "name": "security_packet_capture",
-      "description": "Decode Wi-Fi or BLE records from an imported PCAP/PCAPNG. Never opens a live interface. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "summary",
-              "packets"
-            ]
-          },
-          "protocol": {
-            "type": "string",
-            "enum": [
-              "wifi",
-              "ble"
-            ]
-          },
-          "filter": {
-            "type": "string",
-            "description": "TShark display filter."
-          },
-          "maxPackets": {
-            "type": "integer"
-          },
-          "maxDecodeBytes": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "assetId",
-          "operation",
-          "protocol"
-        ]
-      }
-    },
-    {
-      "name": "security_r2ghidra",
-      "description": "Decompile one function at a hexadecimal virtual address. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "decompile"
-            ]
-          },
-          "address": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId",
-          "operation",
-          "address"
-        ]
-      }
-    },
-    {
-      "name": "security_radare2",
-      "description": "Inspect binary metadata, functions, references and bounded disassembly. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "identity",
-              "functions",
-              "imports",
-              "exports",
-              "symbols",
-              "strings",
-              "xrefs-to",
-              "xrefs-from",
-              "disassemble"
-            ]
-          },
-          "address": {
-            "type": "string",
-            "description": "Hexadecimal virtual address, for example 0x401000."
-          },
-          "count": {
-            "type": "integer",
-            "description": "Maximum instructions for disassembly."
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
-      "name": "security_readelf",
-      "description": "Inspect ELF headers and named tables. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "headers",
-              "sections",
-              "symbols",
-              "dynamic"
-            ]
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
       "name": "security_scope",
       "description": "Read brief project record pages or one revision-bound record detail. Use kind and recordId with byteOffset for details. Set kind http for HTTP step history, optionally filtered by assetId, method or query; read a step with security_evidence and stepId. Set kind http-identities with assetId for configured identity IDs and versions, never credentials.",
       "parameters": {
         "type": "object",
         "properties": {
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Record type: asset for materials, engagement for the task. Omit to list all types.",
+            "enum": [
+              "delegation",
+              "checkpoint",
+              "legacy",
+              "execution",
+              "engagement",
+              "asset",
+              "check",
+              "evidence",
+              "finding",
+              "review",
+              "report",
+              "laboratory",
+              "plan",
+              "binding",
+              "knowledge",
+              "knowledge-maintenance",
+              "http",
+              "http-identities"
+            ]
           },
           "offset": {
             "type": "integer",
@@ -977,45 +712,6 @@
               "ascii",
               "utf16le"
             ]
-          }
-        },
-        "required": [
-          "assetId",
-          "operation"
-        ]
-      }
-    },
-    {
-      "name": "security_tshark",
-      "description": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string",
-            "description": "Imported file asset ID."
-          },
-          "operation": {
-            "type": "string",
-            "enum": [
-              "summary",
-              "packets"
-            ]
-          },
-          "filter": {
-            "type": "string",
-            "description": "Wireshark display filter."
-          },
-          "fields": {
-            "type": "array",
-            "description": "Packet fields, such as frame.number, ip.src and tcp.port.",
-            "items": {
-              "type": "string"
-            }
-          },
-          "count": {
-            "type": "integer",
-            "description": "Maximum input packets decoded."
           }
         },
         "required": [

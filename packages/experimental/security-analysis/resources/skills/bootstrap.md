@@ -1,0 +1,11 @@
+# On-demand tool setup
+
+Check only the capability needed for the current analysis. A healthy adapter supporting the operation is the first choice: call it directly, without installing, upgrading or searching for another executable. Module discovery and workbench startup do not bootstrap tools.
+
+Distinguish a missing dependency from an unsupported operation. For missing dependencies, use the existing DSH Shell, environment and permission workflow to install only what is required in the selected adapter environment. Prefer a workspace-local portable installation or isolated Python environment; retain the resolved version and official download/package source. Do not modify global client/MCP settings, PATH, scheduled tasks or background services. Do not change the selected environment to evade an installation failure.
+
+Request security_capabilities with native:true, details:true and the relevant toolIds only when setup or an unsupported operation needs launch details. It reports the actual toolConfiguration path. In a source checkout, confirm package.json defines security:tools, then use pnpm security:tools set with the exact executable, interpreter arguments and --config path. Use the existing --environment option for a configured environment. On Windows register an interpreter executable rather than a .bat/.cmd/.ps1 launcher. A packaged deployment without this CLI needs the operator to register the installed path in Toolbox. Never overwrite configuration JSON directly or impersonate the operator Remote.
+
+After installation and configuration, recheck the affected dependency through security_environment and return to the original adapter. Installation failure or uncertain completion blocks dependent work; retain diagnostics and continue independent analysis. Do not pass shell output off as an adapter result.
+
+For an unsupported operation, first consider another existing adapter, then a bundled analysis operation, then a small task script under analysisDirectory/scripts. Save outputs separately, bound time and bytes, and capture committed calls with security_capture_analysis. These logs remain auxiliary evidence. Checked adapter-only preferences disable Shell and native workflows: report the blocker without circumventing them. Device changes and instrumentation retain their existing validation-plan requirements.

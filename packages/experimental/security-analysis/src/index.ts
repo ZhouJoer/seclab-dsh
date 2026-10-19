@@ -3,6 +3,8 @@ import './service.ts'
 import type { WorkbenchConfiguration } from './workbench-configuration-types.ts'
 import { uncheckedDevices } from './device-inventory.ts'
 import type { DeviceDirectory, DeviceInventory } from './device-types.ts'
+import { analysisModules, moduleAllowsDefinition, moduleAllowsTool, moduleAllowsOperation, resolveModuleSelection, moduleSelectionSchema } from './analysis-modules.ts'
+import { installModuleRuntime } from './module-runtime.ts'
 import { installSecurityMethods } from './methods.ts'
 import { openWorkspaceIntake, type WorkspaceIntakeStore } from './workspace-intake.ts'
 import { taskContextSchema, type TaskContext } from './task-context.ts'
@@ -21,7 +23,6 @@ import type { AnalysisScript } from './analysis-script-types.ts'
 import { randomUUID } from 'node:crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
@@ -65,12 +66,14 @@ import { SecuritySearchIndex } from './workbench/search.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
 import { securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
 import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from './toolbox-types.ts'
-import { operationSchema, childReportSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
+import { operationSchema, childReportSchema, recordSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
 import { refineKnowledge, refinementPrompt } from './workbench/knowledge.ts'
 import { synthesize } from './synthesis.ts'
 import { SecurityEvolution, evolutionConfig, type EvolutionConfig } from './evolution.ts'
 import { EvolutionStore } from './evolution-store.ts'
 import type { EvolutionView, EvolutionBundle } from './evolution-model.ts'
+
+const scopeKinds = [...recordSchema.options.map(option => option.shape.kind.value), 'http', 'http-identities']
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -294,8 +297,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
       () => this.catalog.read(config.environments.flatMap(item => item.tools)).tools,
       config.environments, config.toolAdapters.bindings)
     validateTaskIntake(config.taskIntake, config.environments.map(environment => environment.id))
-    ctx.inject(['skills'], (skillCtx) => { installSecurityMethods(skillCtx) })
     this.ready = this.initialize()
+    ctx.inject(['skills'], (skillCtx) => {
+      installSecurityMethods(skillCtx)
+    })
     registerToolAdapters(ctx, { ready: this.ready, settings: this.toolConfiguration, signal: this.shutdown.signal,
       maxItems: config.toolAdapters.maxItems, modelResultBytes: config.modelResultBytes, pending: this.pending })
     installReportExport(ctx, this.ready, config.exportMaxBytes)
@@ -341,12 +346,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
       defineTool({
         name: 'security_scope',
         description: 'Read brief project record pages or one revision-bound record detail. Use kind and recordId with byteOffset for details. Set kind http for HTTP step history, optionally filtered by assetId, method or query; read a step with security_evidence and stepId. Set kind http-identities with assetId for configured identity IDs and versions, never credentials.',
-        parameters: { kind: { type: 'string' }, offset: { type: 'integer', description: 'Nonnegative list continuation offset; default 0.' },
-          recordId: { type: 'string' }, byteOffset: { type: 'integer' }, expectedRevision: { type: 'integer' }, shared: { type: 'boolean' },
-          assetId: { type: 'string' }, method: { type: 'string' }, query: { type: 'string' } },
+        parameters: { kind: { type: 'string', enum: scopeKinds,
+          description: 'Record type: asset for materials, engagement for the task. Omit to list all types.' },
+        offset: { type: 'integer', description: 'Nonnegative list continuation offset; default 0.' },
+        recordId: { type: 'string' }, byteOffset: { type: 'integer' }, expectedRevision: { type: 'integer' }, shared: { type: 'boolean' },
+        assetId: { type: 'string' }, method: { type: 'string' }, query: { type: 'string' } },
         output,
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error('Security tools require a session')
+          if (args.kind !== undefined && !scopeKinds.includes(args.kind))
+            throw new Error('Unknown record kind; select one of: ' + scopeKinds.join(', '))
           const controller = await this.ready
           const view = args.shared
             ? { revision: controller.view(exec.agent.id).revision, records: controller.sharedKnowledge() }
@@ -407,11 +416,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const controller = await this.ready
           const binding = controller.binding(exec.agent.id)
           const catalog = this.toolCatalog()
+          const selection = controller.moduleSelection(exec.agent.id)
           if (args.details && !args.toolIds?.length && !args.providerId) throw new Error('Select toolIds before loading details')
           if (args.native && (!args.details || !args.toolIds?.length)) throw new Error('Select toolIds and details for native workflows')
           if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (args.providerId && !controller.providers.list().includes(args.providerId)) throw new Error('Unknown provider: ' + args.providerId)
           const matches = args.providerId && !args.toolIds?.length ? [] : discoverTools(catalog.tools, catalog.collections, args)
+            .filter(tool => moduleAllowsDefinition(tool, selection))
           const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
           const limit = z.number().int().positive().max(config.toolDiscoveryPageSize).parse(args.limit ?? config.toolDiscoveryPageSize)
           const page = matches.slice(offset, offset + limit)
@@ -422,7 +433,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
           return json({
             role: binding?.role ?? null,
             analysisDirectory: analysisDirectory(exec.agent.session.header.cwd, binding),
-            tools: toolsForRole(binding?.role),
+            tools: toolsForRole(binding?.role).filter(name => moduleAllowsTool(name, selection)),
+            modules: analysisModules,
+            moduleSelection: resolveModuleSelection(selection),
+            ...(args.native ? { toolConfiguration: {
+              path: this.toolConfiguration.path ?? null, editable: this.toolConfiguration.path !== undefined,
+            } } : {}),
             environments: config.environments.filter(env => project?.kind === 'engagement' && project.value.environmentIds.includes(env.id))
               .map(({ id, kind }) => ({ id, kind })),
             catalogRevision: catalog.revision,
@@ -436,7 +452,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
               ...(args.details && (args.providerId === id || page.some(tool => tool.provider === id))
                 ? { inputGuide: controller.providers.get(id).inputGuide } : {}),
               operations: controller.providers.get(id).operations.map(operation => ({ operation,
-                observationAllowed: binding !== undefined && canObserve(binding.role, id, operation) })),
+                observationAllowed: binding !== undefined && canObserve(binding.role, id, operation)
+                  && moduleAllowsOperation(id, operation, selection) })),
             })),
             readiness: this.adapterPreferences(exec.agent.id)
               ? 'Selected adapters were checked at preference save. Call them directly; sample and device access are checked during the operation.'
@@ -487,7 +504,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       defineTool({
         name: 'security_command',
         description:
-          'Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.',
+          'Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: modules, import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, report. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.',
         parameters: {
           command: {
             type: 'string',
@@ -748,6 +765,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     ctx.tools.guard((exec) => {
       if (!exec.agent || !toolsForRole(this.controller?.binding(exec.agent.id)?.role).includes(exec.name))
         return 'Tool is outside the security role capability set'
+      if (!moduleAllowsTool(exec.name, this.controller?.moduleSelection(exec.agent.id))) return 'Analysis module is not enabled'
       if (this.adapterPreferences(exec.agent.id) && ['bash', 'pwsh'].includes(exec.name))
         return 'Checked tool preferences require dedicated adapters. Shell execution is disabled; ask the operator to clear tool preferences for native workflows.'
       if (['bash', 'pwsh', 'write', 'edit', 'security_capture_analysis'].includes(exec.name)) {
@@ -766,11 +784,6 @@ export default class SecurityWorkbench extends TypertRemoteService {
         this.preferences.set(agent.id, structuredClone(pending.preferences))
         await (await this.ready).bindDelegationChild(pending.delegationId, agent.id)
       }
-      const names = ctx.tools
-        .schemas(scopeParentOf(agent))
-        .filter(tool => toolsForRole(this.controller?.binding(agent.id)?.role).includes(tool.name))
-        .map(tool => tool.name)
-      ctx.effect(() => agent.ctx.tools.restrict({ allow: names }))
     })
     ctx.on('session/event', (session, event) => {
       if (event.type === 'assistant/message') {
@@ -1098,6 +1111,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         timer.unref()
         return () =>{  clearInterval(timer) }
       })
+      installModuleRuntime(this.ctx, controller, this.journal)
       return controller
     } catch (error) {
       await this.evolution?.close()
@@ -1259,6 +1273,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       material: z.unknown().optional(), title: z.string().trim().min(1), objective: z.string().trim().min(1),
       target: z.unknown().optional(),
       taskContext: taskContextSchema.nullable().optional(),
+      moduleSelection: moduleSelectionSchema.optional(),
       resources: z.object({ environmentIds: z.array(z.string().min(1)).min(1),
         maxAttempts: z.number().int().positive() }).strict().optional(),
     }).strict().parse(JSON.parse(input))
@@ -1266,7 +1281,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const resources = request.resources ?? resolveTaskIntakeResources(config, agent.session.header.cwd)
     return controller.importMaterials(agent.id, { operationId: request.operationId, expectedRevision: request.expectedRevision,
       material: request.material, target: request.target, ...(resources ? { task: { title: request.title, objective: request.objective,
-        ...resources, taskContext: request.taskContext } } : {}) }, this.defaultTaskContext(agent))
+        ...resources, taskContext: request.taskContext, moduleSelection: request.moduleSelection } } : {}) },
+    this.defaultTaskContext(agent))
   }
 
   /** List persistent projects, including removed projects available for restoration.

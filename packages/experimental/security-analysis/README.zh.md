@@ -21,6 +21,10 @@ kind: "package-reference"
 
 经认证的操作者可导入粘贴的 UTF-8 文字、上传的文件或文件夹，以及明确选择的主机文件或目录。主机路径选择仅授权本次导入，模型工具仍受已配置的导入根目录限制。所有材料保存为不可变工件，并遵守配置的字节数和条目数上限。操作者导入 Remote 也接受不含材料的初始任务和明确选择的已配置环境 ID；创建任务不会保存工作区默认配置。操作者二次确认永久删除后，提交已删除任务的 ID 和所显示的修订号。它从历史提交中清除任务记录，删除调用记录和非共享的存储工件，并重建搜索；中断的清理在重新打开时继续。共享工件引用、原始素材、工作区文件和独立聊天保留。所属靶场必须先停止或重置，再永久删除。摘要和报告使用简体中文，标识和路径保持原样。项目移除可恢复：移除会停止执行、停用项目关联并从活动列表隐藏；恢复后仍保持停止状态，且不会自动重新关联会话。 仅供操作员使用的 projectSessions 返回有效协调会话引用，客户端按可访问且未归档的 Session 目录筛选。projectArtifact 先根据所选项目校验归属，再执行现有摘要校验和输出限长读取。这些读取不打开 Session，也不修改绑定或持久记录。
 
+任务通过可选 `moduleSelection` 保存 `mode`、`modules` 和 `reason`。缺省为自动模式，先提供公共调查能力。协调者通过带修订检查的 `modules` 动作选择 `reverse.android`、`reverse.native`、`web` 或 `iot`；手动选择只由操作者修改。活动专用技能按 Agent 注册，正文按需读取。模块选择同时约束专用工具和通用 provider 观察，不授予角色或执行审批。未知文件先使用公共身份检查，再选择模块。 使用 `security_scope` 的 `asset` 类型读取已导入材料，使用 `engagement` 读取任务；未知类型会报错，不会返回空页。
+
+`security_apk inventory` 返回有界 APK 成员清单；`security_jadx manifest` 解析 JADX 解码后的普通 XML。`security_analysis` 对同一资产已保存的适配器证据执行固定的 Android 指纹、API、Kotlin 名称及原生分诊分析，接收证据 ID，不接收可执行文件路径。健康适配器直接调用；缺少依赖时在原环境中配置后回到适配器。未覆盖操作可按工具偏好使用既有脚本或 Shell。Kotlin 候选不会重命名样本，部分反编译保留失败和不完整状态。上游固定版本及排除项见[适配审查](resources/skills/sources.md)。
+
 -----
 
 <a id="use-this-package"></a>
@@ -36,15 +40,15 @@ kind: "package-reference"
 
 分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好选择经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse` 与 `iot` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
 
-通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。方法不安装工具，也不授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
+通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX/JAR 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。技能可通过既有 Shell 和权限流程按需补齐依赖；加载技能本身不会安装工具或授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
 
-1. 在已配置工作区的 Web 对话中描述任务，或创建项目并指定目标和已配置环境。从部署的 `importRoots` 导入 PE、ELF、APK、DEX 文件，或不可变源码文件或目录。
+1. 在已配置工作区的 Web 对话中描述任务，或创建项目并指定目标和已配置环境。从部署的 `importRoots` 导入 PE、ELF、APK、DEX、JAR 文件，或不可变源码文件或目录。
 2. 根据每项资产的研究问题选择下一步分析和 provider。APK 导入会分别测量 DEX 和 native 库，并保存父子关系。
 3. 检查环境健康状态。在 `environments[].tools` 配置可执行文件；工具已安装不代表目标当前可访问。
 4. 使用实现材料评估假设。需要运行验证时，准备包含目标、脚本、预期观察、影响、时限及清理方式的计划。
 5. 在工作台检查并批准不可变计划。停止或撤销会阻止新执行，并等待活动 provider 清理。中断的检查必须先核对再重试。
 
-内置[分析脚本库](src/analysis-scripts.ts) 将可复用文件保存在 `resources/analysis-scripts/{tshark,mqtt,dynamic}/`。编写新分析代码前，加载 `security-packet-analysis`、`security-mqtt` 或 `security-dynamic` 获取分析思路、绝对资源目录、参数和示例。离线 Python 脚本使用明确选择的 TShark 可执行文件读取 pcap/pcapng，保留 MQTT 消息边界和重组信息，并返回有界 JSON，包含输入与脚本摘要、工具版本、参数和不完整原因。时间、帧数、解码字节和结果字节上限均为必填参数。输出路径必须是尚不存在的绝对路径，结果保存在任务的 `outputs/` 中。动态 `prepare.py` 在任务的 `scripts/` 中生成参数化 JavaScript，交给现有不可变 Frida 验证计划；准备工具不会附加进程。模板观察原生模块或导出函数，达到事件上限时证据标记为不完整。内置资源保持不变。脚本运行在本机 Host；不提供在线 MQTT、Android Java 模板或自定义目录导入。`scriptCatalog` 支持无需选择项目或环境的只读浏览。
+内置[分析脚本库](src/analysis-scripts.ts) 将可复用文件保存在 `resources/analysis-scripts/{tshark,mqtt,dynamic,reverse}/`。编写新分析代码前，加载 `security-packet-analysis`、`security-mqtt` 或 `security-dynamic` 获取分析思路、绝对资源目录、参数和示例。离线 Python 脚本使用明确选择的 TShark 可执行文件读取 pcap/pcapng，保留 MQTT 消息边界和重组信息，并返回有界 JSON，包含输入与脚本摘要、工具版本、参数和不完整原因。时间、帧数、解码字节和结果字节上限均为必填参数。输出路径必须是尚不存在的绝对路径，结果保存在任务的 `outputs/` 中。动态 `prepare.py` 在任务的 `scripts/` 中生成参数化 JavaScript，交给现有不可变 Frida 验证计划；准备工具不会附加进程。模板观察原生模块或导出函数，达到事件上限时证据标记为不完整。内置资源保持不变。脚本运行在本机 Host；不提供在线 MQTT、Android Java 模板或自定义目录导入。`scriptCatalog` 支持无需选择项目或环境的只读浏览。
 
 自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。若已认证请求仅含一个 IP 字面量 HTTP(S) 地址且只选择一个本机或 Docker HTTP 环境，入口会按该字面地址登记 URL 的 origin 与路径；域名、多目标和多个可用环境仍需操作者显式登记。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件或批准执行。
 

@@ -12,7 +12,7 @@ const parameterLabels = {
   '--max-decode-bytes': 'scriptParamDecodeBytes', '--filter': 'scriptParamFilter', '--stream': 'scriptParamStream',
   '--mqtt-port': 'scriptParamMqttPort', '--field': 'scriptParamField', '--max-events': 'scriptParamEvents',
   '--module': 'scriptParamModule', '--symbol': 'scriptParamSymbol', '--stack-depth': 'scriptParamStack',
-  '--protocol': 'captureProtocol', '--mode': 'captureOperation',
+  '--operation': 'captureOperation', '--max-items': 'scriptParamItems', '--protocol': 'captureProtocol', '--mode': 'captureOperation',
 } as const
 
 /** Browse built-in scripts and their parameters without executing them.
@@ -46,6 +46,7 @@ export function ScriptLibrary({ scriptCatalog, t }: PropsLocale<typeof NS> & {
         <option value="">{t('toolAll')}</option>
         <option value="tshark">{t('scriptCategoryTshark')}</option>
         <option value="mqtt">{t('scriptCategoryMqtt')}</option>
+        <option value="reverse">{t('scriptCategoryReverse')}</option>
         <option value="dynamic">{t('scriptCategoryDynamic')}</option>
       </select></label>
     </div>
@@ -71,8 +72,8 @@ export function ScriptLibrary({ scriptCatalog, t }: PropsLocale<typeof NS> & {
           {' · '}{t(parameterLabels[parameter.flag])}
         </li>)}</ul></dd>
         <dt>{t('scriptExample')}</dt><dd><pre>{entry.example}</pre></dd>
-        <dt>{t('scriptOutputs')}</dt><dd>{t(entry.category === 'dynamic' ? 'scriptDynamicOutput' : 'scriptOfflineOutput')}</dd>
-        <dt>{t('scriptLimitations')}</dt><dd>{t(entry.category === 'dynamic' ? 'scriptDynamicLimits' : 'scriptOfflineLimits')}</dd>
+        <dt>{t('scriptOutputs')}</dt><dd>{t(entry.category === 'reverse' ? 'scriptReverseOutput' : entry.category === 'dynamic' ? 'scriptDynamicOutput' : 'scriptOfflineOutput')}</dd>
+        <dt>{t('scriptLimitations')}</dt><dd>{t(entry.category === 'reverse' ? 'scriptReverseLimits' : entry.category === 'dynamic' ? 'scriptDynamicLimits' : 'scriptOfflineLimits')}</dd>
       </dl>
     </details>)}
   </div>

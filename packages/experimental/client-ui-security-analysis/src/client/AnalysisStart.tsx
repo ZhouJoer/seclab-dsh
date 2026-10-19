@@ -5,6 +5,8 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { MaterialPanel, type MaterialSelection } from './MaterialPanel.tsx'
 import { ToolPreferences, type ToolPreferenceActions } from './ToolPreferences.tsx'
 import type { TaskContext } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import { ModuleSelectionFields } from './ModuleSelection.tsx'
+import { resolveModuleSelection, type ModuleSelection } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { TaskContextFields, taskContextIssue } from './TaskContextFields.tsx'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { NS } from './locales.ts'
@@ -27,6 +29,7 @@ export interface AnalysisStartProps extends PropsLocale<typeof NS> {
     environmentId: string
     environmentIds: string[]
     taskContext: TaskContext | null
+    moduleSelection: ModuleSelection
     target?: { origin: string; pathPrefix: string; allowedAddresses: string[] }
   }): Promise<void>
   send(objective: string): Promise<void>
@@ -72,6 +75,7 @@ export function AnalysisStart(props: AnalysisStartProps) {
   const [preferencesReady, setPreferencesReady] = useState(true)
   const [error, setError] = useState('')
   const [contextOverride, setContextOverride] = useState<TaskContext | null>()
+  const [moduleSelection, setModuleSelection] = useState(() => resolveModuleSelection())
   const taskContext = contextOverride === undefined ? props.defaultTaskContext ?? null : contextOverride
   const attempt = useRef<{ payload: string; operationId: string }>()
   const environmentId = environment ?? defaultEnvironment(props, origin.trim() !== '')?.id ?? ''
@@ -92,7 +96,7 @@ export function AnalysisStart(props: AnalysisStartProps) {
     try {
       if (!prepared) {
         const input = { ...selection, title: selection?.title ?? objective.trim().split('\n').slice(0, 1).join(''),
-          objective: objective.trim(), environmentId, environmentIds, taskContext,
+          objective: objective.trim(), environmentId, environmentIds, taskContext, moduleSelection,
           ...(origin.trim() ? { target: { origin: origin.trim(),
             pathPrefix, allowedAddresses: addresses.split(/\s+/u).filter(Boolean) } } : {}) }
         const payload = JSON.stringify(input)
@@ -116,6 +120,7 @@ export function AnalysisStart(props: AnalysisStartProps) {
     </fieldset></details>
     <label className={css.field}>{t('analysisRequest')}<textarea rows={3} value={objective} disabled={locked}
       placeholder={t('analysisRequestHint')} onChange={(event) => { setObjective(event.target.value) }} /></label>
+    <ModuleSelectionFields t={t} value={moduleSelection} onChange={setModuleSelection} disabled={locked} />
     <details><summary>{t('taskContextTitle')}</summary>
       <label className={css.resourceOption}><input type="checkbox" checked={contextOverride === undefined} disabled={locked}
         onChange={(event) => { setContextOverride(event.target.checked ? undefined : taskContext) }} />{t('taskContextUseDefaults')}</label>

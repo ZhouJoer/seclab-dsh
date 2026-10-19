@@ -26355,7 +26355,7 @@
         "packages/experimental/agent-team/src/types.ts:21",
         "packages/experimental/agent-team/src/types.ts:33",
         "packages/experimental/agent-team/src/types.ts:9",
-        "packages/experimental/security-analysis/src/workbench/model.ts:11",
+        "packages/experimental/security-analysis/src/workbench/model.ts:12",
         "packages/experimental/webhook/src/brand.ts:12",
         "packages/experimental/webhook/src/brand.ts:6",
         "packages/experimental/webhook/src/brand.ts:9",
@@ -26431,7 +26431,7 @@
       "digest": "509f1a030cb3b0e9295b35249bc40540af8408c07fea9e4fa1bc447b3b597649",
       "names": [],
       "sources": [
-        "packages/experimental/security-analysis/src/index.ts:80"
+        "packages/experimental/security-analysis/src/index.ts:83"
       ]
     },
     {

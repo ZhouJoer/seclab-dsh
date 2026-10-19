@@ -1,4 +1,6 @@
 /** Bundled security methods discovered and loaded through the shared skill service. @module */
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SkillDefinition } from '@deepseek-ai/dsh-skill'
 import { analysisScripts, ANALYSIS_SCRIPTS_DIRECTORY } from './analysis-scripts.ts'
@@ -24,6 +26,7 @@ function manualMethod(name: string, description: string, content: string): Skill
 
 const METHODS: readonly SkillDefinition[] = [
   ...scriptMethods(),
+  method('security-native', 'Use for PE, ELF and native shared-library triage, references and targeted decompilation.', ''),
   method(
     'security-investigation',
     'Use for evidence-driven security investigation, tool selection, bounded delegation, and review of findings.',
@@ -31,11 +34,11 @@ const METHODS: readonly SkillDefinition[] = [
 
 Use these methods as guidance for the current question, not a mandatory checklist. Work within the current task scope, available resources, and execution permissions. A skill or delegated assignment grants no additional authority. Stop affected work when the scope is narrowed.
 
-Choose methods from the available material and the unresolved question: security-web for source, captured requests or a permitted running application; security-firmware for images, extracted filesystems and native code; security-android for APK/DEX or an explicitly selected adb environment; security-iot-offline for captures, logs and protocol documents; security-cve-mining for rediscovering a memory-safety weakness in imported source with sanitizer builds. Combine methods when a data flow crosses components. A role defines responsibility and permissions, not a required sequence of methods. Do not force every task through reconnaissance, analysis, design and runtime validation.
+Choose methods from the available material and the unresolved question: security-web for source, captured requests or a permitted running application; security-native for PE, ELF and shared libraries; security-firmware for firmware images and extracted filesystems; security-android for APK, DEX, JAR or an explicitly selected adb environment; security-iot-offline for captures, logs and protocol documents; security-cve-mining for rediscovering a memory-safety weakness in imported source with sanitizer builds. Combine methods when a data flow crosses components. A role defines responsibility and permissions, not a required sequence of methods. Do not force every task through reconnaissance, analysis, design and runtime validation.
 
 For directory-based reverse engineering, first use the source provider's directory operation at path "" to see immediate children, file counts, byte sizes and filename extensions. Descend only into directories relevant to the task. Extensions and text flags are selection hints, not verified formats. Select candidate databases, data files, programs, libraries or resource bundles according to the question, then use targeted identity, text, hex or specialist queries. A directory snapshot is input storage, not a requirement to audit source. Do not recursively read, search, disassemble or decompile every file just because it was imported; expand scope only when an observation or the requested coverage requires it, and report remaining uninspected material.
 
-Before writing analysis code, load security-packet-analysis for offline captures, security-mqtt for MQTT captures, or security-dynamic for native-process observations. Prefer an applicable bundled script with explicit parameters; write new analysis logic only when the library cannot answer the question.
+For Android and JVM evidence transformations, load security-android; for static native triage, load security-native. Before writing other analysis code, load security-packet-analysis for offline captures, security-mqtt for MQTT captures, or security-dynamic for native-process observations. Prefer an applicable bundled script with explicit parameters; write new analysis logic only when the library cannot answer the question.
 
 For each useful lead, distinguish observed facts, a testable hypothesis, plausible alternative explanations, and the evidence that would distinguish them. Choose the smallest appropriate check that can resolve the current uncertainty. Preserve the original observation, target identity, conditions, and limitations with the conclusion.
 
@@ -91,18 +94,8 @@ Choose static inspection, emulation, or device observation according to the evid
   ),
   method(
     'security-android',
-    'Use for APK/DEX, Android app components, JNI and explicitly selected adb devices; adapt static analysis and runtime validation to available resources.',
-    `# Android application and adb analysis
-
-Apply security-investigation to the supplied application and permitted environment. Distinguish an APK/DEX-only task from observation of an explicitly selected, authorized adb device. Record the sample identity, package name, application version, target SDK and relevant ABI when evidence supports them. For device observations, also retain device identity, OS/API level and installed package identity; establish whether the installed application matches the supplied sample before transferring conclusions between them.
-
-Choose the relevant entry point from the manifest and implementation: exported activities, services, receivers, content providers, deep links or other IPC. Trace caller identity, permissions, input transformations and reachable sensitive operations. Select only the components needed for the hypothesis; an exported declaration, requested permission or decompiler warning alone does not establish a vulnerability. Follow WebView navigation, content and JavaScript bridges with security-web when relevant; follow JNI into native code with security-firmware. Keep decompiled approximations distinct from observed instructions and behavior.
-
-Use available static tools for APK/DEX and native-library questions. Use security_environment and security_capabilities to check an adb environment before observation. The android provider's device, packages and package-info operations collect read-only state; decompile reads the supplied APK/DEX. Device connection or package inventory is not a runtime validation result. Missing USB authorization, tooling, a matching package or a compatible device blocks only the dependent observation: continue relevant static or public-reference work and record the missing prerequisite. Do not infer that an emulator reproduces a physical device's ABI, system services or security settings.
-
-Runtime hypotheses require the coordinator's approved validation workflow, a named package/device and an observation that distinguishes the claim from normal behavior. Installation, app launches, state changes and instrumentation are not implied by read-only adb access; do not bypass approval with arbitrary shell commands. Record setup, expected and actual behavior, relevant application state and cleanup requirements. Keep tests sharing a device or app state sequential; independent manifest, WebView or native-code questions may be delegated against shared immutable artifacts when the benefit justifies the handoff.
-
-Resolve Android API, platform-version or library uncertainty with public primary sources under the investigation method's research guidance. Check applicability to the observed OS, target SDK, package and ABI instead of treating a public advisory as target evidence. Report static conclusions, device observations and approved runtime results separately, with remaining assumptions.`,
+    'Use for APK, DEX and JAR, Android app components, JNI and explicitly selected adb devices; prefer structured adapters and saved evidence.',
+    '',
   ),
   method(
     'security-iot-offline',
@@ -168,11 +161,31 @@ ${script.example}
 /**
  * Register the bundled methods in the calling plugin's skill scope.
  * @param ctx - Plugin context with the skills service declared as an injection.
+ * @param active - specialist names for an Agent; omitted installs common and user-explicit entries.
  * @returns Disposer for these registrations; plugin disposal also removes them.
  */
-export function installSecurityMethods(ctx: Context): () => void {
-  const disposers = METHODS.map(definition => ctx.skills.register(definition))
-  return () => {
-    for (const dispose of disposers) dispose()
-  }
+export function installSecurityMethods(ctx: Context, active?: readonly string[]): () => void {
+  const definitions = METHODS.filter(definition => active === undefined || active.includes(definition.name))
+    .map(definition => ({ ...definition, invocation: { ...definition.invocation,
+      modelInvocable: definition.invocation.modelInvocable && (active !== undefined || definition.name === 'security-investigation') } }))
+  const skills = ctx.get('skills')
+  if (!skills) throw new Error('Security methods require the skills service')
+  return skills.registerProvider(() => ({
+    name: 'security-analysis',
+    list: () => Promise.resolve(definitions.map(({ content: _content, ...definition }) => ({
+      ...definition, rank: 20, locator: definition.name,
+    }))),
+    get: async (candidate, options) => {
+      const definition = definitions.find(item => item.name === candidate.name)
+      if (!definition) return undefined
+      const resource = definition.name === 'security-android' ? 'android.md' : definition.name === 'security-native' ? 'native.md' : undefined
+      if (resource) return { ...definition,
+        resourceBase: { kind: 'directory', path: fileURLToPath(new URL('../resources/skills/', import.meta.url)) },
+        content: await readFile(new URL('../resources/skills/' + resource, import.meta.url), { encoding: 'utf8', signal: options.signal }) }
+      const routing = definition.name === 'security-investigation'
+        ? 'Before specialist work, read security_capabilities modules and moduleSelection. In auto mode, choose the smallest module set supported by the objective and imported material using security_command action modules with selection {mode:"auto",modules:[...],reason:"..."}. Reassess when the question changes. Unknown input needs common identity inspection first. Manual mode is operator-owned. Delegated agents ask the coordinator for missing modules.\n\n'
+        : 'Check the active analysis modules before using this method. Explicit skill invocation does not enable tools. In auto mode ask the coordinator to select the relevant module; in manual mode request an operator adjustment.\n\n'
+      return { ...definition, content: routing + definition.content }
+    },
+  }))
 }

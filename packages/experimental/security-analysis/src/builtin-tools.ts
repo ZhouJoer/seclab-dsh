@@ -6,6 +6,11 @@ export const builtinToolPack = parseToolPack({
   'id': 'builtin',
   'label': 'Built-in tools',
   'tools': [
+    { id: 'apk', label: 'APK inventory', category: 'reverse', tags: ['android', 'reverse'], invocation: 'provider',
+      provider: 'tool-adapter', skills: ['security-android'], guide: 'Use security_apk inventory with an imported APK asset.' },
+    { id: 'analysis', label: 'Reverse analysis scripts', category: 'reverse', tags: ['android', 'reverse'], invocation: 'provider',
+      provider: 'tool-adapter', dependencies: ['python'], skills: ['security-android', 'security-native'],
+      guide: 'Use security_analysis with same-asset adapter evidenceIds and a fixed operation; Python executes packaged scripts only.' },
     {
       id: 'packet-capture', label: 'Wi-Fi / BLE capture analysis', category: 'reverse',
       description: 'Offline Wi-Fi and BLE packet observations / 离线无线数据包分析',

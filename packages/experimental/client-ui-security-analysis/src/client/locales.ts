@@ -1,4 +1,5 @@
 /** Security workbench dictionaries. @module */
+import { moduleZh, moduleEn } from './module-locales.ts'
 import { httpZh, httpEn } from './http-locales.ts'
 import { taskContextZh, taskContextEn } from './task-context-locales.ts'
 /** Locale namespace for the security workbench. */
@@ -6,6 +7,7 @@ export const NS = 'security-workbench'
 /** Chinese operator-facing security copy. */
 export const zh = {
   ...taskContextZh,
+  ...moduleZh,
   ...httpZh,
   exportEvidence: '导出证据包', exportPreparing: '正在准备导出', exportStarted: '已开始下载证据包',
   exportFailed: '无法导出，请检查证据是否完整及导出大小限制',
@@ -543,6 +545,7 @@ export type SecurityKey = keyof typeof zh
 /** English operator-facing security copy. */
 export const en: Record<SecurityKey, string> = {
   ...taskContextEn,
+  ...moduleEn,
   ...httpEn,
   exportEvidence: 'Export evidence archive', exportPreparing: 'Preparing export', exportStarted: 'Evidence download started',
   exportFailed: 'Export failed. Check evidence availability and the archive size limit.',

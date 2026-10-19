@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
+import { moduleSelectionSchema, moduleAllowsOperation } from '../analysis-modules.ts'
 import { taskContextSchema, resolveTaskContext, type TaskContext } from '../task-context.ts'
 import {
   engagementSchema,
@@ -444,6 +445,7 @@ export class SecurityController {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       action: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal('rename'), title: text }).strict(),
+        z.object({ kind: z.literal('modules'), selection: moduleSelectionSchema }).strict(),
         z.object({ kind: z.literal('task-context'), taskContext: taskContextSchema.nullable().optional() }).strict(),
         z.object({ kind: z.literal('archive') }).strict(),
         z.object({ kind: z.literal('restore') }).strict(),
@@ -460,6 +462,7 @@ export class SecurityController {
     }
     await this.journal.commit(request.operationId, request.expectedRevision, { projectId, request }, (view) => {
       const project = this.project(view, projectId)
+      if (request.action.kind === 'modules') return [{ kind: 'engagement', value: { ...project, moduleSelection: request.action.selection } }]
       if (request.action.kind === 'task-context') {
         const taskContext = resolveTaskContext(request.action.taskContext === undefined ? project.taskContext : request.action.taskContext,
           this.options.taskContextMaxBytes)
@@ -605,6 +608,28 @@ export class SecurityController {
     return this.view(sessionId)
   }
 
+  /** Read the selected task's module state without activating a Session.
+   * @param sessionId - bound Session identity.
+   * @returns saved selection, or absence for an unbound or historical task.
+   */
+  moduleSelection(sessionId: string): import('../analysis-modules.ts').ModuleSelection | undefined {
+    const binding = this.binding(sessionId)
+    if (!binding) return undefined
+    const view = this.journal.view()
+    const selection = this.project(view, binding.engagementId).moduleSelection
+    if (!selection || binding.role === 'coordinator') return selection
+    const assets = view.records.filter(record => record.kind === 'asset' && binding.assetIds.includes(record.value.id))
+    const relevant = new Set<string>()
+    for (const record of assets) {
+      if (record.kind !== 'asset') continue
+      const asset = record.value
+      if ('format' in asset && ['apk', 'dex', 'jar'].includes(asset.format)) relevant.add('reverse.android')
+      else if ('format' in asset && ['pe', 'elf'].includes(asset.format)) relevant.add('reverse.native')
+      else for (const id of selection.modules) relevant.add(id)
+    }
+    return { ...selection, modules: selection.modules.filter(id => relevant.has(id)) }
+  }
+
   private createRecords(sessionId: string, action: Extract<SecurityCommand['action'], { kind: 'create' }>): SecurityRecord[] {
     const taskContext = resolveTaskContext(action.taskContext, this.options.taskContextMaxBytes)
     if (action.environmentIds.some(id => !this.options.environments.some(env => env.id === id)))
@@ -622,6 +647,7 @@ export class SecurityController {
       id: randomUUID(),
       stopped: false,
       ...(taskContext ? { taskContext } : {}),
+      ...(action.moduleSelection ? { moduleSelection: action.moduleSelection } : {}),
     })
     const records: SecurityRecord[] = [
       { kind: 'engagement', value: project },
@@ -712,6 +738,12 @@ export class SecurityController {
           }
         }
         switch (action.kind) {
+          case 'modules': {
+            if (!operator && (project.moduleSelection?.mode === 'manual' || action.selection.mode !== 'auto'))
+              throw new Error('Manual module selection can only be changed by the operator')
+            if (!operator && !action.selection.reason) throw new Error('Explain the module selection')
+            return [{ kind: 'engagement', value: { ...project, moduleSelection: action.selection } }]
+          }
           case 'external-web-target': {
             const environment = this.options.environments.find(item => item.id === action.environmentId)
             if (!supportsExternalHttp(environment)) throw new Error('External HTTP targets require a configured Host or Docker environment')
@@ -1019,6 +1051,8 @@ export class SecurityController {
             if (action.durationMs > this.options.maxDurationMs)
               throw new Error('Plan duration exceeds deployment limit')
             let operation = action.operation
+            if (!moduleAllowsOperation(operation.provider, operation.operation, project.moduleSelection))
+              throw new Error('Analysis module is not enabled')
             if (operation.provider === 'external-web' && operation.parameters.replayOf) {
               const replay = z.object({ evidenceId: text, stepId: text.optional() }).strict().parse(operation.parameters.replayOf)
               const original = scoped('evidence', replay.evidenceId)
@@ -1372,6 +1406,8 @@ export class SecurityController {
       combined.throwIfAborted()
       await this.journal.commit(operationId + ':start', expectedRevision, { sessionId, planId }, (view) => {
         const project = this.project(view, binding.engagementId)
+        if (!moduleAllowsOperation(plan.operation.provider, plan.operation.operation, project.moduleSelection))
+          throw new Error('Analysis module is not enabled')
         const current = view.records.find(item => item.kind === 'plan' && item.value.id === planId)
         if (
           project.stopped ||
@@ -1416,6 +1452,8 @@ export class SecurityController {
         durationMs: plan.durationMs,
         maxOutputBytes: this.options.maxOutputBytes,
       }
+      if (!moduleAllowsOperation(plan.operation.provider, plan.operation.operation, this.moduleSelection(sessionId)))
+        throw new Error('Analysis module is not enabled')
       const resolved = provider.resolve(plan.operation, context)
       if (JSON.stringify(resolved) !== JSON.stringify(plan.operation))
         throw new Error('Provider resolution changed; prepare a new plan')
@@ -1584,6 +1622,8 @@ export class SecurityController {
     if (sample?.kind !== 'asset') throw new Error('Asset is outside the session scope')
     if (!canObserve(binding.role, operation.provider, operation.operation))
       throw new Error('This role cannot collect the requested observation')
+    if (!moduleAllowsOperation(operation.provider, operation.operation, this.moduleSelection(sessionId)))
+      throw new Error('Analysis module is not enabled; select the module before collecting evidence')
     if (operation.script || !['binary', 'ghidra', 'android', 'source', 'packet-capture', 'tool-adapter'].includes(operation.provider))
       throw new Error('Use an approved plan for dynamic or programmable operations')
     const previous = view.records.find(item => item.kind === 'evidence' &&
@@ -1603,13 +1643,19 @@ export class SecurityController {
     try {
       combined.throwIfAborted()
       const snapshot = { ...environment, tools: structuredClone(environment.tools) }
-      const context = { environment: snapshot, asset: sample.value, artifacts: this.artifacts, signal: combined,
+      const inputEvidence = (provider.inputEvidenceIds?.(operation) ?? []).map((id) => {
+        const record = view.records.find(item => item.kind === 'evidence' && item.value.id === id)
+        if (record?.kind !== 'evidence' || record.value.assetId !== sample.value.id)
+          throw new Error('Input evidence is outside the session asset scope')
+        return record.value
+      })
+      const context = { environment: snapshot, asset: sample.value, artifacts: this.artifacts, signal: combined, inputEvidence,
         durationMs: this.options.maxDurationMs, maxOutputBytes: this.options.maxOutputBytes }
       const resolved = provider.resolve(operation, context)
       if (resolved.impact !== 'observe') throw new Error('Static observations cannot modify analysis state or targets')
       let result: AnalysisResult
       try { result = await this.runObserved(sessionId, callId, provider, resolved, context, async () => {
-        if (operation.provider === 'tool-adapter' && environment.kind === 'docker' && !environment.containerId) {
+        if (operation.provider === 'tool-adapter' && operation.operation !== 'apk.inventory' && environment.kind === 'docker' && !environment.containerId) {
           await this.environments.get('local').manager.start(environment, combined)
           if (environment.containerId) snapshot.containerId = environment.containerId
           if (environment.resolvedImageId) snapshot.resolvedImageId = environment.resolvedImageId

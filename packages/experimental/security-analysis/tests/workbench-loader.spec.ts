@@ -354,6 +354,82 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('rejects unknown scope kinds instead of presenting imported materials as absent', async () => {
+    const { ctx, agent } = await load()
+    for (const kind of ['assets', 'project']) {
+      const result = await execute(ctx, agent, 'security_scope', { kind })
+      expect(result.isError).toBe(true)
+    }
+    expect((await execute(ctx, agent, 'security_scope', { kind: 'asset' })).isError).not.toBe(true)
+    expect((await execute(ctx, agent, 'security_scope')).isError).not.toBe(true)
+  })
+
+  it('persists an operator module choice through the material-intake Remote', async () => {
+    const { ctx, agent, controller } = await load()
+    await ctx.securityWorkbench.importMaterials(agent, JSON.stringify({ operationId: 'create-with-modules', expectedRevision: 0,
+      title: 'Android task', objective: 'Read an APK', resources: { environmentIds: ['local'], maxAttempts: 3 },
+      moduleSelection: { mode: 'manual', modules: ['reverse.android'], reason: '' } }))
+    expect(controller.moduleSelection(agent.id)).toEqual({ mode: 'manual', modules: ['reverse.android'], reason: '' })
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('security_jadx')
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_ghidra')
+  })
+
+  it('selects Android through the model, loads its method and derives saved evidence with the fixed script', async () => {
+    const python = process.env.DSH_SECURITY_SCRIPT_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3')
+    const { agent, controller, model } = await load(false, 0, { skills: true, adapters: true,
+      bindings: { python: 'local', apk: 'local' }, installations: [{ id: 'python', command: python, prefixArgs: [], versionArgs: ['--version'], source: 'Test interpreter' }] })
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'APK triage', objective: 'Identify native libraries', environmentIds: ['local'], maxAttempts: 3 })
+    const path = join(agent.session.header.cwd!, 'sample.apk')
+    await writeFile(path, await readFile(new URL('./fixtures/apk/members.apk', import.meta.url)))
+    await send({ kind: 'import', path, label: 'APK' })
+    const asset = controller.view(agent.id).records.find(record => record.kind === 'asset' && 'format' in record.value && record.value.format === 'apk')
+    if (asset?.kind !== 'asset') throw new Error('Missing APK')
+    model.scopeCalls = 0
+    model.nativeCalls = [
+      { name: 'security_command', args: () => ({ command: JSON.stringify({ operationId: 'route-apk', expectedRevision: controller.view(agent.id).revision,
+        action: { kind: 'modules', selection: { mode: 'auto', modules: ['reverse.android'], reason: 'APK package inventory' } } }) }) },
+      { name: 'skill', args: { name: 'security-android' } },
+      { name: 'security_apk', args: { assetId: asset.value.id, operation: 'inventory' } },
+      { name: 'security_analysis', args: () => ({ assetId: asset.value.id, operation: 'android-fingerprint',
+        evidenceIds: controller.view(agent.id).records.filter(record => record.kind === 'evidence' && record.value.operation === 'apk.inventory')
+          .map(record => record.kind === 'evidence' ? record.value.id : '') }) },
+    ]
+    agent.followup(webPrompt('Identify libraries in this owned APK; use saved adapter evidence.'))
+    await agent.whenIdle()
+    const evidence = controller.view(agent.id).records.find(record => record.kind === 'evidence' && record.value.operation === 'analysis.android-fingerprint')
+    expect(evidence, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).toBeDefined()
+    if (evidence?.kind !== 'evidence') throw new Error('Missing fingerprint evidence')
+    expect(evidence.value.incomplete).toBe(false)
+    expect((await controller.artifacts.read(evidence.value.artifact)).toString()).toContain('arm64-v8a')
+    expect(model.requests[0]?.tools?.some(tool => tool.name === 'security_apk')).toBe(false)
+    expect(model.requests[1]?.tools?.some(tool => tool.name === 'security_apk')).toBe(true)
+    expect(model.requests[1]?.tools?.some(tool => tool.name === 'security_ghidra')).toBe(false)
+  }, 30_000)
+
+  it('refreshes module skills and tools after committed selection and keeps manual choices operator-owned', async () => {
+    const { ctx, agent, controller } = await load(false, 0, { skills: true })
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Modules', objective: 'Inspect JNI', environmentIds: ['local'], maxAttempts: 3 })
+    const active = async () => (await ctx.skills.list({ scope: agent }))
+      .filter(skill => skill.invocation.modelInvocable).map(skill => skill.name)
+    expect(await active()).toEqual(['security-investigation'])
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_jadx')
+    await controller.command(agent.id, { operationId: 'select-android', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'modules', selection: { mode: 'auto', modules: ['reverse.android'], reason: 'Imported APK' } } })
+    expect(await active()).toEqual(['security-android', 'security-investigation'])
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('security_jadx')
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_ghidra')
+    await send({ kind: 'modules', selection: { mode: 'manual', modules: ['reverse.native'], reason: 'Inspect library' } })
+    expect(await active()).toContain('security-native')
+    expect(await active()).not.toContain('security-android')
+    await expect(controller.command(agent.id, { operationId: 'override-manual', expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'modules', selection: { mode: 'auto', modules: ['web'], reason: 'Model choice' } } })).rejects.toThrow('operator')
+    expect((await execute(ctx, agent, 'security_jadx', { assetId: 'missing', operation: 'decompile' })).isError).toBe(true)
+    await send({ kind: 'modules', selection: { mode: 'auto', modules: [], reason: '' } })
+    expect(await active()).toEqual(['security-investigation'])
+  })
+
   it('activates a coordinator with a scope-local advisor while retaining role enforcement', async () => {
     const { ctx, shell } = await load()
     const consult = vi.fn(async () => true)
@@ -518,7 +594,7 @@ else if (args.includes('--output')) {
         { id: 'tshark', command: process.execPath, versionArgs: ['--version'], source: 'Fixture' },
       ] })
     const send = operator(controller, agent), root = roots[roots.length - 1]!
-    await send({ kind: 'create', title: 'Provider adapters', objective: 'Read owned inputs', environmentIds: ['local'], maxAttempts: 3 })
+    await send({ kind: 'create', title: 'Provider adapters', moduleSelection: { mode: 'manual', modules: [id === 'adb' ? 'reverse.android' : 'iot'], reason: 'Adapter fixture' }, objective: 'Read owned inputs', environmentIds: ['local'], maxAttempts: 3 })
     const path = join(root, 'input.pcap')
     await writeFile(path, Buffer.from('d4c3b2a1020004000000000000000000ffff000069000000', 'hex'))
     await send({ kind: 'import', path, label: 'Fixture capture' })
@@ -567,7 +643,7 @@ else if (args.includes('--output')) {
     const { ctx, agent, controller, model } = await load(false, 0, { adapters: true, bindings: { ghidra: 'local' },
       programs: [{ sha256, programId: '/fixture', token, baseUrl: 'http://127.0.0.1:' + String(address.port) }] })
     const send = operator(controller, agent), root = roots[roots.length - 1]!
-    await send({ kind: 'create', title: 'Ghidra adapter', objective: 'Read the bound program', environmentIds: ['local'], maxAttempts: 3 })
+    await send({ kind: 'create', title: 'Ghidra adapter', moduleSelection: { mode: 'manual', modules: ['reverse.native'], reason: 'Adapter fixture' }, objective: 'Read the bound program', environmentIds: ['local'], maxAttempts: 3 })
     const path = join(root, 'sample.bin'); await writeFile(path, bytes)
     await send({ kind: 'import', path, label: 'Owned sample' })
     const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
@@ -602,7 +678,7 @@ else if (args.includes('--output')) {
     expect(configuration.editable).toBe(false)
     expect(configuration.adapters?.find(item => item.id === 'radare2')).toMatchObject({ bindingSource: 'deployment', status: 'unchecked' })
     const send = operator(controller, agent)
-    await send({ kind: 'create', title: 'Deployment configuration', objective: 'Inspect a fixture', environmentIds: ['local'], maxAttempts: 2 })
+    await send({ kind: 'create', title: 'Deployment configuration', moduleSelection: { mode: 'manual', modules: ['reverse.native'], reason: 'Adapter fixture' }, objective: 'Inspect a fixture', environmentIds: ['local'], maxAttempts: 2 })
     const path = join(roots[roots.length - 1]!, 'sample.bin')
     await writeFile(path, 'fixture')
     await send({ kind: 'import', path, label: 'Fixture' })
@@ -647,7 +723,7 @@ else if (args.includes('--output')) {
     await writeFile(launcher, 'import fs from "node:fs"; const args=process.argv.slice(2); if(args.includes("-v")) console.log("radare2 fixture 1"); else { fs.appendFileSync(' + JSON.stringify(calls) + ', "run\\n"); console.log(JSON.stringify([{offset:4096,name:"main"},{offset:8192,name:"entry"}])) }')
     await writeFile(join(root, 'tools.json'), JSON.stringify({ radare2: { command: process.execPath, prefixArgs: [launcher], versionArgs: ['-v'] } }))
     const send = operator(controller, agent)
-    await send({ kind: 'create', title: 'Tool adapters', objective: 'Inspect an owned file', environmentIds: ['local'], maxAttempts: 3 })
+    await send({ kind: 'create', title: 'Tool adapters', moduleSelection: { mode: 'manual', modules: ['reverse.native'], reason: 'Adapter fixture' }, objective: 'Inspect an owned file', environmentIds: ['local'], maxAttempts: 3 })
     const input = join(root, 'owned sample.bin')
     await writeFile(input, 'owned input')
     await send({ kind: 'import', path: input, label: 'Input' })
@@ -742,7 +818,7 @@ else if (args.includes('--output')) {
       expect(diagnostics.inventory.checks.find(check => check.id === 'capture-validation')?.status).toBe('not-checked')
     }
     const send = operator(controller, agent)
-    await send({ kind: 'create', title: 'Wireless capture', objective: 'Inspect an owned recording', environmentIds: ['local'], maxAttempts: 1 })
+    await send({ kind: 'create', title: 'Wireless capture', moduleSelection: { mode: 'manual', modules: ['iot'], reason: 'Adapter fixture' }, objective: 'Inspect an owned recording', environmentIds: ['local'], maxAttempts: 1 })
     const capture = join(root, 'wireless.pcap')
     const original = Buffer.from('d4c3b2a1020004000000000000000000ffff000069000000', 'hex')
     await writeFile(capture, original)
@@ -830,7 +906,7 @@ else if (args.includes('--output')) {
     const installations = [{ id: 'radare2', command: '/tools/radare2', prefixArgs: ['--fixture'],
       versionArgs: ['-v'], source: 'Fixture configuration' }]
     const { ctx, agent, model, controller } = await load(false, 0, { adapters: true, installations })
-    await operator(controller, agent)({ kind: 'create', title: 'Binary analysis', objective: 'Inspect an owned ELF',
+    await operator(controller, agent)({ kind: 'create', title: 'Binary analysis', moduleSelection: { mode: 'manual', modules: ['reverse.native', 'reverse.android', 'web', 'iot'], reason: 'Cross-module catalog fixture' }, objective: 'Inspect an owned ELF',
       environmentIds: ['local'], maxAttempts: 2 })
     agent.followup(webPrompt('Inspect the supplied native binary.'))
     await agent.whenIdle()
@@ -1203,6 +1279,7 @@ else if (args.includes('--output')) {
     const send = operator(controller, agent)
     await send({ kind: 'check', check: { assetId: target.value.id, title: 'HTTP', phase: 'validation', criterion: 'Read one response', dependencies: [], evidenceIds: [] } })
     const check = controller.view(agent.id).records.find(item => item.kind === 'check')!
+    await send({ kind: 'modules', selection: { mode: 'auto', modules: ['web'], reason: 'Registered HTTP target' } })
     await send({ kind: 'plan', checkId: check.value.id, hypothesis: 'Authorized response', expectedObservation: '200', impact: 'Read', cleanup: 'Close', durationMs: 5000,
       operation: { provider: 'external-web', operation: 'sequence', environmentId: 'local', assetId: target.value.id, impact: 'observe', parameters: { steps: [{ id: 'read', label: 'Read', method: 'GET', path: '/', identityId: identity.id }] } } })
     const plan = controller.view(agent.id).records.find(item => item.kind === 'plan')!
@@ -1551,7 +1628,8 @@ else if (args.includes('--output')) {
   )
 
   it('logs the security method catalog and loaded instructions and removes methods on unload', async () => {
-    const { ctx, agent, model, shell } = await load(false, 0, { skills: true })
+    const { ctx, agent, model, shell, controller } = await load(false, 0, { skills: true })
+    await operator(controller, agent)({ kind: 'create', title: 'Methods', objective: 'Read Web and capture methods', environmentIds: ['local'], maxAttempts: 3, moduleSelection: { mode: 'manual', modules: ['web', 'iot'], reason: 'Method fixture' } })
     model.firstSkill = 'security-web'
     agent.followup(createUserMessage({
       content: [{ type: 'text', text: 'Load the method for checking Web authorization.' }], source: { kind: 'user' },
@@ -1563,7 +1641,7 @@ else if (args.includes('--output')) {
     const catalog = events.find(event => event.type === 'user/message' && event.data.source.kind === 'skill-catalog')
     if (catalog?.type !== 'user/message' || catalog.data.source.kind !== 'skill-catalog') throw new Error('Missing skill catalog')
     expect(catalog.data.source.entries.map(entry => entry.name).sort()).toEqual([
-      'security-android', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-packet-analysis', 'security-web',
+      'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-packet-analysis', 'security-web',
     ])
     const loaded = events.find(event => event.type === 'tool/result')
     if (loaded?.type !== 'tool/result') throw new Error('Missing loaded skill result')
@@ -1573,7 +1651,7 @@ else if (args.includes('--output')) {
     expect(text).toContain('expected authorization rule')
     expect(model.requests[1]?.messages).toContainEqual(loaded.data.message)
     const scripts = ctx.securityWorkbench.scriptCatalog()
-    expect(scripts).toHaveLength(7)
+    expect(scripts).toHaveLength(11)
     const packetMethod = await execute(ctx, agent, 'skill', { name: 'security-packet-analysis' })
     expect(packetMethod.isError).not.toBe(true)
     expect(JSON.stringify(packetMethod)).toContain('tshark/capture_summary.py')

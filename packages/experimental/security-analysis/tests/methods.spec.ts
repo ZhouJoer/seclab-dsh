@@ -3,10 +3,12 @@ import { Context } from '@deepseek-ai/cordis'
 import Skills, { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import { afterEach, describe, expect, it } from 'vitest'
 import { installSecurityMethods } from '../src/methods.ts'
+import { fileURLToPath } from 'node:url'
+import { createScope, scopeOf } from '@deepseek-ai/dsh-scope'
 import { ANALYSIS_SCRIPTS_DIRECTORY } from '../src/analysis-scripts.ts'
 
 const contexts: Context[] = []
-const names = ['security-android', 'security-cve-mining', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-packet-analysis', 'security-web']
+const names = ['security-android', 'security-cve-mining', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-native', 'security-packet-analysis', 'security-web']
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
@@ -28,6 +30,23 @@ const methodsPlugin = {
 }
 
 describe('security method skills', () => {
+  it('isolates active skills and restores global explicit-only entries on disposal', async () => {
+    const ctx = await createRegistry()
+    installSecurityMethods(ctx)
+    const android = createScope(ctx, { preset: 'android' })
+    const native = createScope(ctx, { preset: 'native' })
+    try {
+      const dispose = installSecurityMethods(android.ctx, ['security-android'])
+      installSecurityMethods(native.ctx, ['security-native'])
+      const active = async (scope: object) => (await ctx.skills.list({ scope }))
+        .filter(skill => skill.invocation.modelInvocable).map(skill => skill.name)
+      expect(await active(scopeOf(android.ctx)!)).toEqual(['security-android', 'security-investigation'])
+      expect(await active(scopeOf(native.ctx)!)).toEqual(['security-investigation', 'security-native'])
+      dispose()
+      expect(await active(scopeOf(android.ctx)!)).toEqual(['security-investigation'])
+    } finally { await android.dispose(); await native.dispose() }
+  })
+
   it('discovers summaries and loads the requested instruction bodies', async () => {
     const ctx = await createRegistry()
     await ctx.plugin(methodsPlugin)
@@ -41,12 +60,10 @@ describe('security method skills', () => {
         name,
         source: 'bundled',
         provider: 'security-analysis',
-        invocation: name === 'security-cve-mining'
-          ? { modelInvocable: false, userInvocable: true }
-          : { modelInvocable: true, userInvocable: true },
+        invocation: { modelInvocable: name === 'security-investigation', userInvocable: true },
       })
       if (!skill) throw new Error(`Missing security method: ${name}`)
-      expect(renderSkillContent(skill).replaceAll(ANALYSIS_SCRIPTS_DIRECTORY, '<analysis-scripts>')).toMatchSnapshot(name)
+      expect(renderSkillContent(skill).replaceAll(ANALYSIS_SCRIPTS_DIRECTORY, '<analysis-scripts>').replaceAll(fileURLToPath(new URL('../resources/skills/', import.meta.url)), '<security-skills>')).toMatchSnapshot(name)
     }
   })
 

@@ -14,6 +14,7 @@ import { AnalysisStart } from './AnalysisStart.tsx'
 import { WorkspaceResources } from './WorkspaceResources.tsx'
 import { MaterialPanel } from './MaterialPanel.tsx'
 import { ProjectManagement, projectLabel } from './ProjectManagement.tsx'
+import { ProjectModules } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { ActivityPanel, type ActivityActions } from './ActivityPanel.tsx'
@@ -314,6 +315,13 @@ export function Workbench(props: WorkbenchProps) {
               )}
               {busy > 0 && <p role="status">{t('loading')}</p>}
               <div className={css.body}>
+                {project?.kind === 'engagement' && <ProjectModules key={project.value.id + JSON.stringify(project.value.moduleSelection)}
+                  t={t} value={project.value.moduleSelection} disabled={busy > 0 || !!project.value.archived}
+                  save={async (selection) => {
+                    await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                      action: { kind: 'modules', selection } }))
+                    if (activeSession.current === sessionId) await load()
+                  }} />}
                 {project?.kind === 'engagement' && <ProjectTaskContext
                   key={project.value.id + JSON.stringify(project.value.taskContext)} t={t}
                   value={project.value.taskContext} maxBytes={configuration.taskContextMaxBytes}
@@ -437,7 +445,8 @@ export function Workbench(props: WorkbenchProps) {
                               operationId: input.operationId, expectedRevision: view.revision,
                               material: input.material, target: input.target ? { ...input.target,
                                 environmentId: input.environmentId, label: input.title } : undefined,
-                              title: input.title, objective: input.objective, taskContext: input.taskContext,
+                              title: input.title, objective: input.objective,
+                              taskContext: input.taskContext, moduleSelection: input.moduleSelection,
                               resources: { environmentIds: input.environmentIds, maxAttempts },
                             }))
                           }}

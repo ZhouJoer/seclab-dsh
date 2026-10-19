@@ -1,6 +1,39 @@
 /** Bounded APK member extraction without materializing archive paths. @module */
 import { fromBuffer, type Entry, type ZipFile } from 'yauzl'
 
+/** Enumerate package members without extracting or executing their contents.
+ * @param bytes - verified package bytes.
+ * @param maxMembers - maximum retained entries.
+ * @returns bounded archive metadata and whether entries were omitted.
+ */
+export async function apkInventory(bytes: Buffer, maxMembers: number): Promise<{
+  entries: { path: string; compressedBytes: number; bytes: number }[]
+  incomplete: boolean
+}> {
+  const zip = await new Promise<ZipFile>((resolve, reject) => {
+    fromBuffer(bytes, { lazyEntries: true, validateEntrySizes: true }, (error, value) => {
+      if (error) reject(error)
+      else resolve(value)
+    })
+  })
+  try {
+    return await new Promise((resolve, reject) => {
+      const entries: { path: string; compressedBytes: number; bytes: number }[] = []
+      const names = new Set<string>()
+      zip.on('error', reject)
+      zip.on('end', () => { resolve({ entries, incomplete: false }) })
+      zip.on('entry', (entry: Entry) => {
+        if (names.has(entry.fileName)) { reject(new Error('APK repeats a member')); return }
+        if (entries.length >= maxMembers) { resolve({ entries, incomplete: true }); return }
+        names.add(entry.fileName)
+        entries.push({ path: entry.fileName, compressedBytes: entry.compressedSize, bytes: entry.uncompressedSize })
+        zip.readEntry()
+      })
+      zip.readEntry()
+    })
+  } finally { zip.close() }
+}
+
 /** One APK member whose complete bytes passed the extraction budget. */
 export interface ApkMember {
   path: string

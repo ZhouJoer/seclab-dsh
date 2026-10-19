@@ -4,11 +4,11 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 /** Identifies a bundled script independently of its installation path. */
 export type AnalysisScriptId = Branded<'SecurityAnalysisScript'>
 /** Built-in scenarios with locale-owned descriptions. */
-export type AnalysisScriptKind = 'captureSummary' | 'extractPackets' | 'mqttSessions' | 'mqttTopics' | 'moduleWatch' | 'functionTrace' | 'wirelessCapture'
+export type AnalysisScriptKind = 'captureSummary' | 'extractPackets' | 'mqttSessions' | 'mqttTopics' | 'moduleWatch' | 'functionTrace' | 'wirelessCapture' | 'androidFingerprint' | 'androidApi' | 'kotlinNames' | 'nativeTriage'
 /** A CLI argument accepted by a bundled entry point. */
 export interface AnalysisScriptParameter {
   flag: '--input' | '--output' | '--tshark' | '--timeout' | '--max-packets' | '--max-output-bytes' | '--max-decode-bytes'
-    | '--filter' | '--stream' | '--field' | '--mqtt-port' | '--max-events' | '--module' | '--symbol' | '--stack-depth' | '--protocol' | '--mode'
+    | '--filter' | '--stream' | '--field' | '--mqtt-port' | '--max-events' | '--module' | '--symbol' | '--stack-depth' | '--protocol' | '--mode' | '--operation' | '--max-items'
   required: boolean
   value: string
 }
@@ -16,7 +16,7 @@ export interface AnalysisScriptParameter {
 export interface AnalysisScript {
   id: AnalysisScriptId
   kind: AnalysisScriptKind
-  category: 'tshark' | 'mqtt' | 'dynamic'
+  category: 'tshark' | 'mqtt' | 'dynamic' | 'reverse'
   skill: string
   relativePath: string
   path: string

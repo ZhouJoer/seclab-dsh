@@ -1,5 +1,7 @@
 /** Browser-safe security workbench types and stateless task-context formatting. @module */
 export { renderTaskContext, resolveTaskContext, taskContextBytes } from './task-context.ts'
+export { analysisModules, resolveModuleSelection } from './analysis-modules.ts'
+export type { AnalysisModule, AnalysisModuleId, ModuleSelection } from './analysis-modules.ts'
 export type { TaskContext } from './task-context.ts'
 export type { WorkbenchConfiguration } from './workbench-configuration-types.ts'
 export type { HttpIdentityDescription, HttpIdentityId, HttpStepId, HttpStep, HttpSequence, HttpHistoryItem, HttpHistoryPage, HttpExchangePage } from './http-model.ts'

@@ -1,5 +1,6 @@
 /** Validated security commands shared by Host execution and browser consumers. @module */
 import { z } from 'zod'
+import { moduleSelectionSchema } from '../analysis-modules.ts'
 import { taskContextSchema } from '../task-context.ts'
 import {
   checkSchema,
@@ -37,10 +38,12 @@ const actions = z.discriminatedUnion('kind', [
       maxAttempts: z.number().int().positive(),
       target: externalTargetInput.optional(),
       taskContext: taskContextSchema.nullable().optional(),
+      moduleSelection: moduleSelectionSchema.optional(),
     })
     .strict(),
   z.object({ kind: z.literal('select'), engagementId: text }).strict(),
   z.object({ kind: z.literal('leave') }).strict(),
+  z.object({ kind: z.literal('modules'), selection: moduleSelectionSchema }).strict(),
   z.object({ kind: z.literal('checkpoint'), id: text.optional(), phase: phaseSchema,
     title: text.max(100), reason: z.string().max(300), summary: z.string().max(300), next: z.string().max(300),
     evidenceIds: z.array(text), findingIds: z.array(text),

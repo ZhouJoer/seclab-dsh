@@ -10,11 +10,11 @@ import { analysisScripts } from '../src/analysis-scripts.ts'
 
 it('ships every catalog resource and returns independent metadata', async () => {
   const entries = analysisScripts()
-  expect(new Set(entries.map(entry => entry.id)).size).toBe(7)
+  expect(new Set(entries.map(entry => entry.id)).size).toBe(11)
   for (const entry of entries) {
     expect(isAbsolute(entry.path)).toBe(true)
     await access(entry.path)
-    expect(entry.parameters.some(parameter => parameter.flag === '--output' && parameter.required)).toBe(true)
+    expect(entry.parameters.some(parameter => parameter.flag === '--output' && (entry.category === 'reverse' || parameter.required))).toBe(true)
   }
   entries[0]!.parameters[0]!.value = 'changed'
   expect(analysisScripts()[0]!.parameters[0]!.value).not.toBe('changed')
@@ -47,6 +47,12 @@ it('bounds initial module callbacks and detaches its observer', async () => {
     { event: 'limit', incomplete: true, observed: 1 },
   ])
   expect(detach).toHaveBeenCalledOnce()
+})
+
+it('extracts located reverse candidates without promoting heuristics to conclusions', async () => {
+  const python = process.env.DSH_SECURITY_SCRIPT_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3')
+  const { stderr } = await promisify(execFile)(python, ['-B', fileURLToPath(new URL('./reverse_analysis_test.py', import.meta.url)), '-v'], { timeout: 30_000 })
+  expect(stderr).toContain('OK')
 })
 
 it('records bounded backtraces and stops hooks at the event limit', async () => {

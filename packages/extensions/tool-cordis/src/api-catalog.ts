@@ -5142,7 +5142,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisContext',
-    declaration: 'export interface AnalysisContext {\n    environment: SecurityEnvironment;\n    asset: Asset;\n    artifacts: ArtifactStore;\n    signal: AbortSignal;\n    durationMs: number;\n    maxOutputBytes: number;\n}',
+    declaration: 'export interface AnalysisContext {\n    inputEvidence?: readonly Evidence[];\n    environment: SecurityEnvironment;\n    asset: Asset;\n    artifacts: ArtifactStore;\n    signal: AbortSignal;\n    durationMs: number;\n    maxOutputBytes: number;\n}',
   },
   {
     name: 'AnalysisOperation',
@@ -5150,7 +5150,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisProvider',
-    declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    activityTools?(request: AnalysisOperation): string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
+    declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    inputEvidenceIds?(request: AnalysisOperation): readonly string[];\n    activityTools?(request: AnalysisOperation): string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
   },
   {
     name: 'AnalysisResult',
@@ -5158,7 +5158,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisScript',
-    declaration: 'export interface AnalysisScript {\n    id: AnalysisScriptId;\n    kind: AnalysisScriptKind;\n    category: \'tshark\' | \'mqtt\' | \'dynamic\';\n    skill: string;\n    relativePath: string;\n    path: string;\n    toolIds: string[];\n    parameters: AnalysisScriptParameter[];\n    example: string;\n}',
+    declaration: 'export interface AnalysisScript {\n    id: AnalysisScriptId;\n    kind: AnalysisScriptKind;\n    category: \'tshark\' | \'mqtt\' | \'dynamic\' | \'reverse\';\n    skill: string;\n    relativePath: string;\n    path: string;\n    toolIds: string[];\n    parameters: AnalysisScriptParameter[];\n    example: string;\n}',
   },
   {
     name: 'AnalysisScriptId',
@@ -5166,11 +5166,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisScriptKind',
-    declaration: 'export type AnalysisScriptKind = \'captureSummary\' | \'extractPackets\' | \'mqttSessions\' | \'mqttTopics\' | \'moduleWatch\' | \'functionTrace\' | \'wirelessCapture\';',
+    declaration: 'export type AnalysisScriptKind = \'captureSummary\' | \'extractPackets\' | \'mqttSessions\' | \'mqttTopics\' | \'moduleWatch\' | \'functionTrace\' | \'wirelessCapture\' | \'androidFingerprint\' | \'androidApi\' | \'kotlinNames\' | \'nativeTriage\';',
   },
   {
     name: 'AnalysisScriptParameter',
-    declaration: 'export interface AnalysisScriptParameter {\n    flag: \'--input\' | \'--output\' | \'--tshark\' | \'--timeout\' | \'--max-packets\' | \'--max-output-bytes\' | \'--max-decode-bytes\' | \'--filter\' | \'--stream\' | \'--field\' | \'--mqtt-port\' | \'--max-events\' | \'--module\' | \'--symbol\' | \'--stack-depth\' | \'--protocol\' | \'--mode\';\n    required: boolean;\n    value: string;\n}',
+    declaration: 'export interface AnalysisScriptParameter {\n    flag: \'--input\' | \'--output\' | \'--tshark\' | \'--timeout\' | \'--max-packets\' | \'--max-output-bytes\' | \'--max-decode-bytes\' | \'--filter\' | \'--stream\' | \'--field\' | \'--mqtt-port\' | \'--max-events\' | \'--module\' | \'--symbol\' | \'--stack-depth\' | \'--protocol\' | \'--mode\' | \'--operation\' | \'--max-items\';\n    required: boolean;\n    value: string;\n}',
   },
   {
     name: 'AnonymousTranslationProvider',
@@ -5919,6 +5919,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EveryScheduleRecord',
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
+  },
+  {
+    name: 'Evidence',
+    declaration: 'export type Evidence = z.infer<typeof evidenceSchema>;',
   },
   {
     name: 'EvidenceId',

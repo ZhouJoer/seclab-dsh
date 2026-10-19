@@ -61,7 +61,7 @@
         "block": {
           "type": "tool-call",
           "id": "load-android-method",
-          "arguments": "{\"name\":\"security-android\"}",
+          "arguments": "{\"name\":\"security-investigation\"}",
           "name": "skill"
         }
       },

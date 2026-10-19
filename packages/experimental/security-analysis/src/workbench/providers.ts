@@ -1,6 +1,6 @@
 /** Environment and analysis providers used by the security service. @module */
 import type { ArtifactStore } from './artifacts.ts'
-import type { AnalysisOperation, Asset } from './model.ts'
+import type { AnalysisOperation, Asset, Evidence } from './model.ts'
 import type { ToolboxInventory } from '../toolbox-types.ts'
 import type { HttpSummary } from '../http-model.ts'
 
@@ -102,6 +102,8 @@ export interface AnalysisResult {
 }
 /** One admitted operation's resources and cancellation lifetime. */
 export interface AnalysisContext {
+  /** Scoped, same-asset evidence requested by the provider; never arbitrary artifact paths. */
+  inputEvidence?: readonly Evidence[]
   environment: SecurityEnvironment
   asset: Asset
   artifacts: ArtifactStore
@@ -113,6 +115,11 @@ export interface AnalysisContext {
 export interface AnalysisProvider {
   id: string
   operations: readonly string[]
+  /** Declare retained inputs before execution; the controller validates visibility and asset identity.
+   * @param request - proposed semantic operation.
+   * @returns evidence identities required by this operation.
+   */
+  inputEvidenceIds?(request: AnalysisOperation): readonly string[]
   /** Identify the analysis tools, excluding launchers and health probes.
    * @param request - resolved operation.
    * @returns catalog tool identities attributed to this request.

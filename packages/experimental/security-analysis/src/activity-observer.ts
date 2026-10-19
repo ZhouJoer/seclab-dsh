@@ -22,7 +22,7 @@ const background = z.object({ kind: z.literal('background'), jobId: z.string() }
  */
 export function analysisToolCandidates(command: string, catalog: readonly ToolDefinition[] = toolboxCatalog): string[] {
   const words = new Set(command.toLowerCase().split(/[^a-z0-9_-]+/u))
-  const tools = catalog.filter(tool => tool.category !== 'runtime' && tool.id !== 'docker'
+  const tools = catalog.filter(tool => tool.category !== 'runtime' && tool.id !== 'docker' && tool.invocation !== 'provider'
     && [tool.id, ...tool.commands, ...(tool.probe.kind === 'python-module' ? [tool.probe.module.split('.')[0] ?? ''] : [])]
       .some(name => words.has(name.toLowerCase()))).map(tool => tool.id)
   return tools.length ? tools : ['script']

@@ -5,6 +5,10 @@ import type { SecurityEnvironment } from './workbench/providers.ts'
 
 /** Each adapter accepts task parameters, never an executable or command program. */
 export const staticToolAdapters = [
+  { id: 'apk', operations: ['inventory'], description: 'List bounded APK members without extracting them.', parameters: {} },
+  { id: 'analysis', operations: ['android-fingerprint', 'android-api', 'kotlin-names', 'native-triage'],
+    description: 'Derive located candidates from saved same-asset adapter evidence using bundled scripts.',
+    parameters: { evidenceIds: { type: 'array', items: { type: 'string' }, required: true } } },
   { id: 'radare2', operations: ['identity', 'functions', 'imports', 'exports', 'symbols', 'strings', 'xrefs-to', 'xrefs-from', 'disassemble'],
     description: 'Inspect binary metadata, functions, references and bounded disassembly.',
     parameters: { address: { type: 'string', description: 'Hexadecimal virtual address, for example 0x401000.' },
@@ -15,7 +19,7 @@ export const staticToolAdapters = [
     parameters: { filter: { type: 'string', description: 'Wireshark display filter.' },
       fields: { type: 'array', items: { type: 'string' }, description: 'Packet fields, such as frame.number, ip.src and tcp.port.' },
       count: { type: 'integer', description: 'Maximum input packets decoded.' } } },
-  { id: 'jadx', operations: ['decompile'], description: 'Decompile an imported APK or DEX, optionally selecting one class.',
+  { id: 'jadx', operations: ['decompile', 'manifest'], description: 'Inspect an imported APK, DEX or JAR; manifest decodes APK resources only.',
     parameters: { className: { type: 'string' } } },
   { id: 'file', operations: ['identity'], description: 'Identify an imported file using its contents.', parameters: {} },
   { id: 'strings', operations: ['strings'], description: 'Read printable strings with byte offsets.',
@@ -44,9 +48,9 @@ export interface ToolAdapterDefinition {
 /** Existing providers retain their own output formats, role checks and execution lifetime. */
 export const toolAdapters = [
   ...staticToolAdapters.map(adapter => ({ ...adapter, toolName: 'security_' + adapter.id, provider: 'tool-adapter' as const,
-    bindingId: adapter.id === 'r2ghidra' ? 'radare2' : adapter.id,
-    installationIds: [adapter.id === 'r2ghidra' ? 'radare2' : adapter.id],
-    probeIds: adapter.id === 'r2ghidra' ? ['radare2', 'r2ghidra'] : [adapter.id],
+    bindingId: adapter.id === 'r2ghidra' ? 'radare2' : adapter.id === 'analysis' ? 'python' : adapter.id,
+    installationIds: adapter.id === 'apk' ? [] : [adapter.id === 'r2ghidra' ? 'radare2' : adapter.id === 'analysis' ? 'python' : adapter.id],
+    probeIds: adapter.id === 'apk' ? [] : adapter.id === 'analysis' ? ['python'] : adapter.id === 'r2ghidra' ? ['radare2', 'r2ghidra'] : [adapter.id],
     environmentKinds: ['local', 'docker'] as const, requiresDevice: false })),
   { id: 'ghidra', toolName: 'security_ghidra', provider: 'ghidra', bindingId: 'ghidra',
     operations: ['identity', 'functions', 'imports', 'exports', 'strings', 'decompile', 'disassemble', 'xrefs-to', 'xrefs-from'],
@@ -82,7 +86,7 @@ export function supportsAdapterEnvironment(adapter: ToolAdapterDefinition, envir
  */
 export function adapterInstallation(id: string): string {
   if (!staticToolAdapters.some(tool => tool.id === id)) throw new Error('Unknown static tool adapter: ' + id)
-  return id === 'r2ghidra' ? 'radare2' : id
+  return id === 'r2ghidra' ? 'radare2' : id === 'analysis' ? 'python' : id
 }
 
 /** Project task-facing capabilities without executable discovery or launcher configuration.
@@ -177,7 +181,7 @@ export function canUseAdapter(role: string, operation: string): boolean {
   const [id, action] = operation.split('.')
   const tool = toolAdapters.find(item => item.id === id)
   if (!tool || !tool.operations.some(item => item === action) || ['researcher', 'reviewer'].includes(role)) return false
-  if (id === 'packet-capture') return true
+  if (id === 'packet-capture' || id === 'apk' || id === 'analysis') return role !== 'web-analyst' || id === 'packet-capture'
   if (role === 'web-analyst') return id === 'tshark'
   if (id === 'adb') return true
   if (role !== 'reconnaissance') return true

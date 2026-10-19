@@ -89,7 +89,7 @@ export function DashboardSession(props: PropsRuntime<'security.workbench.session
             material: input.material, target: input.target ? { ...input.target,
               environmentId: input.environmentId, label: input.title } : undefined,
 
-            title: input.title, objective: input.objective, taskContext: input.taskContext,
+            title: input.title, objective: input.objective, taskContext: input.taskContext, moduleSelection: input.moduleSelection,
             resources: { environmentIds: input.environmentIds, maxAttempts },
           }))
           if (generationAtStart !== generation.current) throw new Error(t('analysisSessionChanged'))

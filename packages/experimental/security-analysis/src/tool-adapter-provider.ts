@@ -2,6 +2,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
+import { apkInventory } from './workbench/apk.ts'
+import { runReverseAnalysis } from './reverse-analysis.ts'
+import { manifestItems } from './android-manifest.ts'
 import { AndroidProvider } from './android-provider.ts'
 import { inspectToolbox } from './toolbox.ts'
 import { toolboxCatalog } from './toolbox.ts'
@@ -31,6 +34,7 @@ const argsSchema = z.object({ address: address.optional(), startAddress: address
   fields: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_.-]*$/u)).min(1).max(64).optional(),
   className: z.string().regex(/^[a-zA-Z0-9_.$]+$/u).optional(), minLength: count.max(1024).optional(),
   encoding: z.enum(['ascii', 'utf16le']).optional(),
+  evidenceIds: z.array(z.string().min(1)).min(1).optional(),
 }).strict()
 const operationParts = (operation: string) => {
   const adapter = staticToolAdapters.find(tool => tool.operations.some(action => tool.id + '.' + action === operation))
@@ -49,10 +53,13 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
     'radare2.xrefs-to': ['address'], 'radare2.xrefs-from': ['address'],
     'radare2.disassemble': ['address', 'count'], 'r2ghidra.decompile': ['address'],
     'tshark.summary': ['filter', 'fields', 'count'], 'tshark.packets': ['filter', 'fields', 'count'],
+    'analysis.android-fingerprint': ['evidenceIds'], 'analysis.android-api': ['evidenceIds'],
+    'analysis.kotlin-names': ['evidenceIds'], 'analysis.native-triage': ['evidenceIds'],
     'jadx.decompile': ['className'], 'strings.strings': ['minLength', 'encoding'],
     'objdump.disassemble': ['startAddress', 'endAddress'],
   }
   const args = argsSchema.parse(parameters)
+  if (operation.startsWith('analysis.') && !args.evidenceIds) throw new Error('Analysis requires evidenceIds')
   for (const key of Object.keys(args)) if (!fields[operation]?.includes(key))
     throw new Error('Unsupported parameter for ' + operation + ': ' + key)
   return args
@@ -92,6 +99,8 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
       return ['-d', '--start-address=' + args.startAddress, '--stop-address=' + args.endAddress, '--', path]
     }
     case 'nm': return ['-P', '-n', '--', path]
+    case 'apk':
+    case 'analysis': throw new Error('Bundled analysis does not accept external command arguments')
     case 'jadx': throw new Error('JADX execution belongs to the Android provider')
   }
 }
@@ -169,13 +178,20 @@ export class ToolAdapterProvider implements AnalysisProvider {
   readonly operations = staticToolAdapters.flatMap(tool => tool.operations.map(action => tool.id + '.' + action))
   readonly inputGuide = 'Use the dedicated security_<tool> tools with an imported asset and semantic parameters. Environment selection and installation belong to operator settings.'
   constructor(private readonly ctx: Context, private readonly limits: ToolAdapterLimits, private readonly maxFiles: number) {}
+  inputEvidenceIds(request: AnalysisOperation): readonly string[] {
+    return parseAdapterParameters(request.operation, request.parameters).evidenceIds ?? []
+  }
   activityTools(request: AnalysisOperation): string[] { return [operationParts(request.operation).adapter.id] }
   resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation {
     const { adapter, action } = operationParts(request.operation)
     if (request.script || context.environment.externalContainer || context.environment.kind === 'android')
       throw new Error('Static tool adapters require local or managed Docker execution without a script')
     const asset = fileAsset(context.asset)
-    if (adapter.id === 'jadx' && !['apk', 'dex'].includes(asset.format)) throw new Error('JADX requires APK or DEX input')
+    if (adapter.id === 'jadx' && !['apk', 'dex', 'jar'].includes(asset.format)) throw new Error('JADX requires APK, DEX or JAR input')
+    if (adapter.id === 'apk' && asset.format !== 'apk') throw new Error('APK inventory requires an APK asset')
+    if (adapter.id === 'jadx' && action === 'manifest' && asset.format !== 'apk') throw new Error('Manifest requires an APK asset')
+    if (adapter.id === 'analysis' && !(action === 'native-triage' ? ['pe', 'elf'] : ['apk', 'dex', 'jar']).includes(asset.format))
+      throw new Error('Asset format does not support this analysis operation')
     const parameters = parseAdapterParameters(request.operation, request.parameters)
     if (adapter.id === 'radare2' && action === 'disassemble') parameters.count = Math.min(parameters.count ?? this.limits.maxInstructions, this.limits.maxInstructions)
     if (adapter.id === 'tshark') {
@@ -186,11 +202,21 @@ export class ToolAdapterProvider implements AnalysisProvider {
     if (adapter.id === 'objdump' && action === 'disassemble' && parameters.startAddress && parameters.endAddress
       && BigInt(parameters.endAddress) - BigInt(parameters.startAddress) > BigInt(context.maxOutputBytes))
       throw new Error('Disassembly range exceeds the configured byte budget')
-    if (adapter.id !== 'jadx') adapterArguments(request.operation, parameters, 'input')
+    if (!['jadx', 'analysis', 'apk'].includes(adapter.id)) adapterArguments(request.operation, parameters, 'input')
     return { ...request, impact: 'observe', parameters: z.record(z.string(), z.json()).parse(parameters) }
   }
   async run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult> {
     const { adapter } = operationParts(request.operation)
+    if (adapter.id === 'apk') {
+      const asset = fileAsset(context.asset)
+      const inventory = await apkInventory(await context.artifacts.read(asset.artifact), this.limits.maxItems)
+      const retained = retainAdapterResult({ format: 'security-tool-result-v1', tool: 'apk', operation: request.operation,
+        environmentId: context.environment.id, toolVersion: 'dsh-apk-inventory-v1', inputSha256: asset.artifact.sha256,
+        items: inventory.entries, raw: null, diagnostics: '', incomplete: inventory.incomplete }, context.maxOutputBytes)
+      return { ...retained, mediaType: 'application/json', summary: 'APK member inventory',
+        toolVersion: 'dsh-apk-inventory-v1', method: 'static', observationKind: 'inventory' }
+    }
+    if (adapter.id === 'analysis') return runReverseAnalysis(this.ctx, request, context, this.limits.maxItems, this.limits.graceMs)
     if (!context.environment.tools.some(tool => tool.id === adapterInstallation(adapter.id)))
       throw new Error('Configure an installation for ' + adapterInstallation(adapter.id) + ' in tool settings')
     const asset = fileAsset(context.asset)
@@ -210,10 +236,14 @@ export class ToolAdapterProvider implements AnalysisProvider {
     let items: JsonValue[] = [], raw: JsonValue = null, diagnostics = '', incomplete = false, failure: string | undefined
     if (adapter.id === 'jadx') {
       const provider = new AndroidProvider(this.ctx, { graceMs: this.limits.graceMs, maxFiles: this.maxFiles })
-      const result = await provider.run({ ...request, provider: 'android', operation: 'decompile' }, { ...context, environment, maxOutputBytes: limits.maxOutputBytes })
+      const result = await provider.run({ ...request, provider: 'android', operation: operationParts(request.operation).action }, { ...context, environment, maxOutputBytes: limits.maxOutputBytes })
       const output = z.object({ files: z.array(z.object({ path: z.string(), text: z.string() })), diagnostics: z.string(), incomplete: z.boolean(), process: z.json() }).parse(JSON.parse(Buffer.from(result.bytes).toString('utf8')))
       items = output.files; raw = output; incomplete = result.incomplete; diagnostics = output.diagnostics
-      failure = result.failure
+      if (operationParts(request.operation).action === 'manifest') {
+        try { items = manifestItems(output.files) }
+        catch (error) { items = []; failure = String(error); incomplete = true }
+      }
+      failure ??= result.failure
     } else {
       if (adapter.id === 'tshark' && !isPacketCapture(await context.artifacts.read(asset.artifact))) throw new Error('TShark requires PCAP or PCAPNG input')
       const path = await context.artifacts.materialize(asset.artifact)

@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi, onTestFinished } from 'vitest'
 import { ToolAdapterProvider, adapterArguments, decodeAdapterOutput } from '../src/tool-adapter-provider.ts'
 import { adapterResultPage, adapterResultSchema, retainAdapterResult } from '../src/tool-adapter-results.ts'
 import { ArtifactStore } from '../src/workbench/artifacts.ts'
-import { fileAssetSchema, operationSchema } from '../src/workbench/model.ts'
+import { evidenceSchema, fileAssetSchema, operationSchema } from '../src/workbench/model.ts'
 import type { AnalysisContext } from '../src/workbench/providers.ts'
 import { canObserve } from '../src/workbench/roles.ts'
 import { LocalEnvironmentManager } from '../src/environment-local.ts'
@@ -162,4 +162,44 @@ it('starts one managed container from a local image and mounts the shared run di
     expect(command).toContain('type=bind,source=' + environment.exchangeRoot + ',target=/dsh-inputs')
     await expect(manager.start(environment, context.signal)).rejects.toThrow('already owns')
   } finally { await manager.stop(environment, context.signal) }
+})
+
+it('gives JADX a private JAR suffix and rejects APK-only manifest requests for a JAR', async () => {
+  const { provider, context, request, root } = await fixture('jadx', 'decompile')
+  context.asset = fileAssetSchema.parse({ ...context.asset, format: 'jar' })
+  vi.mocked(runProcess).mockImplementation(async (_ctx, _env, _tool, args) => {
+    if (args[0] !== '--output-dir') return { ...success, stdout: '1.5.6' }
+    expect(args.at(-1)).toMatch(/input\.jar$/u)
+    await writeFile(join(args[1]!, 'JarClass.java'), 'class JarClass {}')
+    return success
+  })
+  expect((await provider.run(provider.resolve(request, context), context)).incomplete).toBe(false)
+  expect(() => provider.resolve({ ...request, operation: 'jadx.manifest' }, context)).toThrow('APK')
+  expect(await readdir(join(root, 'runs'))).toEqual([])
+})
+
+it('reads complete structured evidence and propagates its incompleteness into derived candidates', async () => {
+  const { provider, context, request, artifact } = await fixture('analysis', 'android-api')
+  context.asset = fileAssetSchema.parse({ ...context.asset, format: 'jar' })
+  const input = retainAdapterResult({ format: 'security-tool-result-v1', tool: 'jadx', operation: 'jadx.decompile',
+    environmentId: 'host', toolVersion: '1', inputSha256: artifact.sha256, items: [{ path: 'A.java', text: 'https://sample.invalid' }],
+    raw: null, diagnostics: 'Limited source', incomplete: true }, 16000)
+  const evidence = evidenceSchema.parse({ id: 'input', engagementId: 'project', assetId: 'file', title: 'JADX', summary: '',
+    artifact: await context.artifacts.put(input.bytes, 'application/json'), provider: 'tool-adapter', operation: 'jadx.decompile',
+    toolVersion: '1', request: {}, source: { sessionId: 'session', callId: 'call' }, incomplete: true, createdAt: 0 })
+  context.inputEvidence = [evidence]
+  const operation = { ...request, parameters: { evidenceIds: ['input'] } }
+  vi.mocked(runProcess).mockResolvedValue({ ...success, stdout: JSON.stringify({ items: [], incomplete: false, diagnostics: 'No candidates' }) })
+  const result = await provider.run(provider.resolve(operation, context), context)
+  expect(result.incomplete).toBe(true)
+  const saved = adapterResultSchema.parse(JSON.parse(Buffer.from(result.bytes).toString()))
+  expect(saved.raw).toMatchObject({ inputEvidenceIds: ['input'] })
+  expect(saved.raw).toHaveProperty('scriptSha256', expect.stringMatching(/^[a-f0-9]{64}$/u))
+  expect(inspectToolbox).not.toHaveBeenCalled()
+  expect(runProcess).toHaveBeenCalledOnce()
+  context.inputEvidence = [{ ...evidence, provider: 'session-tool' }]
+  await expect(provider.run(provider.resolve(operation, context), context)).rejects.toThrow('structured adapter')
+  context.inputEvidence = [{ ...evidence, operation: 'jadx.manifest' }]
+  await expect(provider.run(provider.resolve(operation, context), context)).rejects.toThrow('does not match')
+  expect(runProcess).toHaveBeenCalledOnce()
 })

@@ -146,7 +146,7 @@ export class ArtifactStore {
 
 /** Recognize supported binary headers without executing the selected content.
  * @param bytes - original file bytes.
- * @param name - selected filename, used to distinguish APK archives.
+ * @param name - selected filename, used to distinguish APK and JAR archives.
  * @returns supported format or other for unidentified content.
  */
 export function detectFileFormat(bytes: Buffer, name: string): FileAsset['format'] {
@@ -154,6 +154,8 @@ export function detectFileFormat(bytes: Buffer, name: string): FileAsset['format
   if (bytes.subarray(0, 2).toString() === 'MZ') return 'pe'
   if (bytes.subarray(0, 4).toString() === 'dex\n') return 'dex'
   if (bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) && name.toLowerCase().endsWith('.apk')) return 'apk'
+  if ([0x04034b50, 0x06054b50].some(signature => bytes.length >= 4 && bytes.readUInt32LE(0) === signature)
+    && name.toLowerCase().endsWith('.jar')) return 'jar'
   return 'other'
 }
 

@@ -4,6 +4,8 @@
 
 实验性[安全领域服务](../../packages/experimental/security-analysis/README.zh.md)管理项目、实测资产、检查依赖、明确的 Session 角色和不可变计划授权。分析与环境 provider 注册能力；工具和生成的 Remote 方法共用领域控制器。
 
+任务持有的模块选择在安全插件内解析为 Agent 技能作用域和工具准入。项目或绑定提交后刷新活动作用域，卸载时撤销注册。控制器使用同一选择检查观察和计划，包括通用 provider 请求。固定 `analysis.*` 操作声明证据输入，控制器在读取制品前按调用者可见资产解析引用。派生结果以 `security-tool-result-v1` 保留输入证据 ID、脚本摘要、诊断及继承的不完整状态。
+
 ## 持久化记录
 
 `WorkbenchConfiguration` 是 `configuration` 与 `configureWorkspace` 返回的对象，包含材料限制、项目、provider、环境和经验整理间隔。没有工作区时，其 workspace 值为 null；尝试次数在配置前缺省。[配置类型](../../packages/experimental/security-analysis/src/workbench-configuration-types.ts)定义浏览器可用字段。

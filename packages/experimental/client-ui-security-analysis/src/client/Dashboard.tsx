@@ -10,6 +10,7 @@ import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@de
 import { CaptureControls } from './CaptureControls.tsx'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ProjectManagement } from './ProjectManagement.tsx'
+import { ProjectModules } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { Improvements, type ImprovementActions } from './Improvements.tsx'
 import { ProjectDeletion } from './ProjectDeletion.tsx'
@@ -322,6 +323,13 @@ export function Dashboard(props: Props) {
             }}>{t(stopping ? 'activityStopping' : 'stop')}</button><button className={css.primary} disabled={busy} onClick={() =>{  if (assistant) setAssistant(false); else void perform(() => connect(false)) }}>{t(assistant ? 'dashboardHideAssistant' : 'dashboardAssistant')}</button></>}
             {!project.archived && <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button>}
           </div>
+          <ProjectModules key={project.id + JSON.stringify(project.moduleSelection)} t={t} value={project.moduleSelection}
+            disabled={busy || !!project.archived} save={async (selection) => {
+              const current = generation.current
+              await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                action: { kind: 'modules', selection } }))
+              if (current === generation.current) await refresh()
+            }} />
           <ProjectTaskContext key={project.id + JSON.stringify(project.taskContext)} t={t}
             value={project.taskContext} maxBytes={contextSettings?.config.taskContextMaxBytes}
             workspace={contextSettings?.config.workspace ?? undefined} disabled={busy || !!project.archived} loading={busy}

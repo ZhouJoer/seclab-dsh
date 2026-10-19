@@ -150,7 +150,7 @@ it('explains a missing service environment without offering an empty selector', 
     limits={{ bytes: 1024, entries: 10 }} prepare={prepare} send={send} continueInChat={() => {}} started={() => {}} />)
   expect(screen.getByRole('alert').textContent).toBe(zh.noAnalysisEnvironment)
   expect(screen.getByText(zh.analysisRecordHint)).toBeDefined()
-  expect(screen.queryByRole('combobox')).toBeNull()
+  expect(screen.queryByRole('combobox', { name: zh.environment })).toBeNull()
   fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Analyze the APK' } })
   expect(screen.getByRole('button', { name: zh.startAnalysis }).hasAttribute('disabled')).toBe(true)
   expect(prepare).not.toHaveBeenCalled()
