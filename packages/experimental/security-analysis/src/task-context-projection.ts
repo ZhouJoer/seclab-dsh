@@ -65,7 +65,7 @@ export function installTaskContext(ctx: Context,
     const state = ctx.sessionProjections.stateOf(agent.session, 'securityTaskContext')
     const current = resolve(agent)
     const context = resolveTaskContext(current.context, maxBytes)
-    if (!context && !state?.latest) return undefined
+    if (!context && !state?.latest && !current.projectId) return undefined
     const text = renderTaskContext(context, Date.now())
     if (state?.retained !== null && state?.latest?.text === text && state.latest.projectId === current.projectId) return undefined
     return createUserMessage({ source: { kind: 'security-task-context', form: 'snapshot',

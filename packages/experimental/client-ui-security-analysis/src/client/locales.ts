@@ -6,6 +6,10 @@ import { taskContextZh, taskContextEn } from './task-context-locales.ts'
 export const NS = 'security-workbench'
 /** Chinese operator-facing security copy. */
 export const zh = {
+  skillUsageTitle: '技能使用', skillUsageRefresh: '刷新',
+  skillUsageFailed: '无法读取技能统计，请重试', skillUsagePartial: '统计不完整：无法读取的会话数 / 无法归属任务的读取数',
+  skillUsageEmpty: '暂无使用记录', skillUsageReads: '读取', skillUsageErrors: '失败',
+
   ...taskContextZh,
   ...moduleZh,
   ...httpZh,
@@ -544,6 +548,10 @@ export const zh = {
 export type SecurityKey = keyof typeof zh
 /** English operator-facing security copy. */
 export const en: Record<SecurityKey, string> = {
+  skillUsageTitle: 'Skill usage', skillUsageRefresh: 'Refresh',
+  skillUsageFailed: 'Could not read skill usage. Retry.', skillUsagePartial: 'Incomplete: unavailable Sessions / reads with unknown task attribution',
+  skillUsageEmpty: 'No usage yet', skillUsageReads: 'Reads', skillUsageErrors: 'Failed',
+
   ...taskContextEn,
   ...moduleEn,
   ...httpEn,

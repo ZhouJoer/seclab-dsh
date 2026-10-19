@@ -18,3 +18,4 @@ export type { ToolboxDirectory, ToolboxInventory, ToolboxTool, ToolboxAdapter, T
 
 export type { ToolCatalogSnapshot, ToolPackPreview } from './tool-catalog.ts'
 export type { ToolDefinition, ToolPack, ToolPreferences, ToolPreferenceOptions } from './tool-definitions.ts'
+export type { SecuritySkillUsage, SecuritySkillUsagePage } from './skill-usage.ts'

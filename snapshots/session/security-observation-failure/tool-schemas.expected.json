@@ -1216,7 +1216,9 @@
                 "android-fingerprint",
                 "android-api",
                 "kotlin-names",
-                "native-triage"
+                "native-triage",
+                "native-xref-paths",
+                "android-callchain"
               ]
             },
             "evidenceIds": {
@@ -1224,6 +1226,22 @@
               "items": {
                 "type": "string"
               }
+            },
+            "seed": {
+              "type": "string",
+              "description": "Exact method descriptor or hexadecimal virtual address for graph operations."
+            },
+            "direction": {
+              "type": "string",
+              "description": "Graph traversal direction.",
+              "enum": [
+                "callers",
+                "callees"
+              ]
+            },
+            "maxDepth": {
+              "type": "integer",
+              "description": "Maximum graph edges per path, required for graph operations."
             }
           },
           "required": [
@@ -1589,7 +1607,7 @@
       },
       {
         "name": "security_jadx",
-        "description": "Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
+        "description": "Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. callgraph exports resolved application method relations and JSON method details (requires JADX --call-graph support); external and dynamic calls are not complete. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1601,7 +1619,8 @@
               "type": "string",
               "enum": [
                 "decompile",
-                "manifest"
+                "manifest",
+                "callgraph"
               ]
             },
             "className": {

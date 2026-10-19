@@ -10,7 +10,7 @@ import { analysisScripts } from '../src/analysis-scripts.ts'
 
 it('ships every catalog resource and returns independent metadata', async () => {
   const entries = analysisScripts()
-  expect(new Set(entries.map(entry => entry.id)).size).toBe(11)
+  expect(new Set(entries.map(entry => entry.id)).size).toBe(13)
   for (const entry of entries) {
     expect(isAbsolute(entry.path)).toBe(true)
     await access(entry.path)

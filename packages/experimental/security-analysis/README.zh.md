@@ -25,6 +25,10 @@ kind: "package-reference"
 
 `security_apk inventory` 返回有界 APK 成员清单；`security_jadx manifest` 解析 JADX 解码后的普通 XML。`security_analysis` 对同一资产已保存的适配器证据执行固定的 Android 指纹、API、Kotlin 名称及原生分诊分析，接收证据 ID，不接收可执行文件路径。健康适配器直接调用；缺少依赖时在原环境中配置后回到适配器。未覆盖操作可按工具偏好使用既有脚本或 Shell。Kotlin 候选不会重命名样本，部分反编译保留失败和不完整状态。上游固定版本及排除项见[适配审查](resources/skills/sources.md)。
 
+`security_jadx callgraph` 使用 JADX 的 `--call-graph json` 和 JSON 方法输出，保留完整方法签名与源码位置；上游调用图排除未解析的外部调用，也不提供调用点偏移。`security_analysis android-callchain` 与 `native-xref-paths` 接受已保存的证据 ID、完整方法签名或十六进制起点、`direction`（`callers`／`callees`）和正整数 `maxDepth`。原生路径消费 radare2 函数范围及引用，区分调用、跳转和数据引用。结果保留每条边的证据、循环、待补证据与采集限制；每个节点只返回一条发现路径，不代表所有路径或运行时可达性。图分析不执行目标，也不接受命令。
+
+操作者通过 `skillUsage` 读取任务历史绑定会话中已提交的技能目录、模型成功读取、用户显式注入和读取失败记录。统计包含会话 ID、指令呈现内容哈希和事件位置，排除分叉继承前缀，重新加载不增加计数。缺失日志和无法确定历史任务归属的记录保持可见。即使没有额外上下文，任务上下文消息仍记录任务身份。读取技能不代表已遵循；后续工具调用或发现不会仅因时间顺序而归因给技能。
+
 -----
 
 <a id="use-this-package"></a>

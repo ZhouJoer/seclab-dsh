@@ -22,6 +22,8 @@ function actions(overrides: Partial<WorkbenchActions> = {}) {
     followActivity: async function* (_id: string, signal: AbortSignal) {
       if (!signal.aborted) await new Promise<void>((resolve) =>{  signal.addEventListener('abort', () =>{  resolve() }, { once: true }) })
     },
+
+    skillUsage: async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 }),
     activityDetails: vi.fn(async () => ({ items: [], next: null, through: 0 })), openChild: vi.fn(),
     sendAnalysis: vi.fn(async () => {}),
     openAnalysisChat: vi.fn(),

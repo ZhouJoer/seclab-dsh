@@ -25,11 +25,11 @@ export interface AnalysisModule {
 export const analysisModules: readonly AnalysisModule[] = [
   { id: 'reverse.android', description: 'APK, DEX and JAR: manifest, Java/Kotlin, API and JNI entry points.',
     skills: ['security-android'], tools: ['jadx', 'adb', 'apk', 'analysis'],
-    scripts: ['analysis.android-fingerprint', 'analysis.android-api', 'analysis.kotlin-names'] },
+    scripts: ['analysis.android-fingerprint', 'analysis.android-api', 'analysis.kotlin-names', 'analysis.android-callchain'] },
   { id: 'reverse.native', description: 'PE, ELF, shared libraries and firmware: native code and bounded process observations.',
     skills: ['security-native', 'security-firmware', 'security-dynamic'],
     tools: ['radare2', 'r2ghidra', 'ghidra', 'readelf', 'objdump', 'nm', 'analysis'],
-    scripts: ['analysis.native-triage', 'dynamic.module-watch', 'dynamic.function-trace'] },
+    scripts: ['analysis.native-triage', 'analysis.native-xref-paths', 'dynamic.module-watch', 'dynamic.function-trace'] },
   { id: 'web', description: 'Web source, HTTP APIs and authorized application behavior.',
     skills: ['security-web'], tools: [], scripts: [] },
   { id: 'iot', description: 'Offline captures, MQTT, wireless protocols and device logs.',
@@ -83,7 +83,7 @@ export function moduleAllowsDefinition(tool: { id: string; skills: readonly stri
 export function moduleAllowsOperation(provider: string, operation: string, selection?: ModuleSelection): boolean {
   const enabled = (id: AnalysisModuleId) => selection?.modules.includes(id) ?? false
   if (provider === 'tool-adapter') {
-    if (operation.startsWith('analysis.')) return enabled(operation === 'analysis.native-triage' ? 'reverse.native' : 'reverse.android')
+    if (operation.startsWith('analysis.')) return enabled(operation.startsWith('analysis.native-') ? 'reverse.native' : 'reverse.android')
     const tool = operation.split('.')[0] ?? ''
     return moduleAllowsTool('security_' + tool, selection)
   }

@@ -2,14 +2,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SecurityActivityFrame, SecurityActivityPage, SecurityDelegation, SecurityToolUsage, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { SecuritySkillUsagePage, SecurityActivityFrame, SecurityActivityPage, SecurityDelegation, SecurityToolUsage, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { NS } from './locales.ts'
 import { DelegationList } from './DelegationList.tsx'
+import { SkillUsage } from './SkillUsage.tsx'
 import css from './Dashboard.module.css'
 import { useProjectActivity, type ProjectActivity } from './useProjectActivity.ts'
 
 /** Project-scoped activity reads and child-history navigation shared by progress views. */
 export interface ActivityActions {
+  skillUsage(this: void, project: string): Promise<SecuritySkillUsagePage>
   /** Open the recorded one-shot child without continuing it.
    * @param address - committed direct-parent history address.
    */
@@ -77,6 +79,7 @@ export function ActivityTimeline(props: Props & { activity: ProjectActivity }) {
     <div className={css.timelineHeader}><h3>{t('activityTitle')}</h3><span className={css.connection} data-live={connected} role="status">{t(connected ? 'activityLive' : 'activityDisconnected')}</span>
       {!connected && <button onClick={() => { props.activity.retry() }}>{t('dashboardRetry')}</button>}</div>
     {(error || props.activity.error) && <p role="alert" className={css.error}>{error || props.activity.error}</p>}
+    <SkillUsage key={project} project={project} skillUsage={props.skillUsage} t={t} />
     {directions.map((direction, index) => {
       const tools = new Map<string, SecurityToolUsage & { confirmed: number; unverified: number }>()
       for (const item of usage.filter(item => item.checkpointId === direction.id)) {

@@ -6,9 +6,12 @@ import type { SecurityEnvironment } from './workbench/providers.ts'
 /** Each adapter accepts task parameters, never an executable or command program. */
 export const staticToolAdapters = [
   { id: 'apk', operations: ['inventory'], description: 'List bounded APK members without extracting them.', parameters: {} },
-  { id: 'analysis', operations: ['android-fingerprint', 'android-api', 'kotlin-names', 'native-triage'],
+  { id: 'analysis', operations: ['android-fingerprint', 'android-api', 'kotlin-names', 'native-triage', 'native-xref-paths', 'android-callchain'],
     description: 'Derive located candidates from saved same-asset adapter evidence using bundled scripts.',
-    parameters: { evidenceIds: { type: 'array', items: { type: 'string' }, required: true } } },
+    parameters: { evidenceIds: { type: 'array', items: { type: 'string' }, required: true },
+      seed: { type: 'string', description: 'Exact method descriptor or hexadecimal virtual address for graph operations.' },
+      direction: { type: 'string', enum: ['callers', 'callees'], description: 'Graph traversal direction.' },
+      maxDepth: { type: 'integer', description: 'Maximum graph edges per path, required for graph operations.' } } },
   { id: 'radare2', operations: ['identity', 'functions', 'imports', 'exports', 'symbols', 'strings', 'xrefs-to', 'xrefs-from', 'disassemble'],
     description: 'Inspect binary metadata, functions, references and bounded disassembly.',
     parameters: { address: { type: 'string', description: 'Hexadecimal virtual address, for example 0x401000.' },
@@ -19,7 +22,7 @@ export const staticToolAdapters = [
     parameters: { filter: { type: 'string', description: 'Wireshark display filter.' },
       fields: { type: 'array', items: { type: 'string' }, description: 'Packet fields, such as frame.number, ip.src and tcp.port.' },
       count: { type: 'integer', description: 'Maximum input packets decoded.' } } },
-  { id: 'jadx', operations: ['decompile', 'manifest'], description: 'Inspect an imported APK, DEX or JAR; manifest decodes APK resources only.',
+  { id: 'jadx', operations: ['decompile', 'manifest', 'callgraph'], description: 'Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. callgraph exports resolved application method relations and JSON method details (requires JADX --call-graph support); external and dynamic calls are not complete.',
     parameters: { className: { type: 'string' } } },
   { id: 'file', operations: ['identity'], description: 'Identify an imported file using its contents.', parameters: {} },
   { id: 'strings', operations: ['strings'], description: 'Read printable strings with byte offsets.',

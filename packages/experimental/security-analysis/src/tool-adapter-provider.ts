@@ -4,6 +4,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { apkInventory } from './workbench/apk.ts'
 import { runReverseAnalysis } from './reverse-analysis.ts'
+import { jadxCallgraphItems } from './android-callgraph.ts'
 import { manifestItems } from './android-manifest.ts'
 import { AndroidProvider } from './android-provider.ts'
 import { inspectToolbox } from './toolbox.ts'
@@ -29,7 +30,7 @@ export interface ToolAdapterLimits {
 }
 const address = z.string().regex(/^0x[0-9a-fA-F]{1,16}$/u)
 const count = z.number().int().positive()
-const argsSchema = z.object({ address: address.optional(), startAddress: address.optional(), endAddress: address.optional(),
+const argsSchema = z.object({ seed: z.string().min(1).max(1024).optional(), direction: z.enum(['callers', 'callees']).optional(), maxDepth: count.optional(), address: address.optional(), startAddress: address.optional(), endAddress: address.optional(),
   count: count.optional(), filter: z.string().max(4096).optional(),
   fields: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_.-]*$/u)).min(1).max(64).optional(),
   className: z.string().regex(/^[a-zA-Z0-9_.$]+$/u).optional(), minLength: count.max(1024).optional(),
@@ -55,11 +56,16 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
     'tshark.summary': ['filter', 'fields', 'count'], 'tshark.packets': ['filter', 'fields', 'count'],
     'analysis.android-fingerprint': ['evidenceIds'], 'analysis.android-api': ['evidenceIds'],
     'analysis.kotlin-names': ['evidenceIds'], 'analysis.native-triage': ['evidenceIds'],
+    'analysis.native-xref-paths': ['evidenceIds', 'seed', 'direction', 'maxDepth'],
+    'analysis.android-callchain': ['evidenceIds', 'seed', 'direction', 'maxDepth'],
     'jadx.decompile': ['className'], 'strings.strings': ['minLength', 'encoding'],
     'objdump.disassemble': ['startAddress', 'endAddress'],
   }
   const args = argsSchema.parse(parameters)
   if (operation.startsWith('analysis.') && !args.evidenceIds) throw new Error('Analysis requires evidenceIds')
+  if (['analysis.native-xref-paths', 'analysis.android-callchain'].includes(operation) && (!args.seed || !args.direction || !args.maxDepth))
+    throw new Error('Graph analysis requires seed, direction and maxDepth')
+  if (operation === 'analysis.native-xref-paths') address.parse(args.seed)
   for (const key of Object.keys(args)) if (!fields[operation]?.includes(key))
     throw new Error('Unsupported parameter for ' + operation + ': ' + key)
   return args
@@ -190,9 +196,10 @@ export class ToolAdapterProvider implements AnalysisProvider {
     if (adapter.id === 'jadx' && !['apk', 'dex', 'jar'].includes(asset.format)) throw new Error('JADX requires APK, DEX or JAR input')
     if (adapter.id === 'apk' && asset.format !== 'apk') throw new Error('APK inventory requires an APK asset')
     if (adapter.id === 'jadx' && action === 'manifest' && asset.format !== 'apk') throw new Error('Manifest requires an APK asset')
-    if (adapter.id === 'analysis' && !(action === 'native-triage' ? ['pe', 'elf'] : ['apk', 'dex', 'jar']).includes(asset.format))
+    if (adapter.id === 'analysis' && !(action.startsWith('native-') ? ['pe', 'elf'] : ['apk', 'dex', 'jar']).includes(asset.format))
       throw new Error('Asset format does not support this analysis operation')
     const parameters = parseAdapterParameters(request.operation, request.parameters)
+    if (parameters.maxDepth) parameters.maxDepth = Math.min(parameters.maxDepth, this.limits.maxItems)
     if (adapter.id === 'radare2' && action === 'disassemble') parameters.count = Math.min(parameters.count ?? this.limits.maxInstructions, this.limits.maxInstructions)
     if (adapter.id === 'tshark') {
       parameters.count = Math.min(parameters.count ?? this.limits.maxPackets, this.limits.maxPackets)
@@ -239,6 +246,10 @@ export class ToolAdapterProvider implements AnalysisProvider {
       const result = await provider.run({ ...request, provider: 'android', operation: operationParts(request.operation).action }, { ...context, environment, maxOutputBytes: limits.maxOutputBytes })
       const output = z.object({ files: z.array(z.object({ path: z.string(), text: z.string() })), diagnostics: z.string(), incomplete: z.boolean(), process: z.json() }).parse(JSON.parse(Buffer.from(result.bytes).toString('utf8')))
       items = output.files; raw = output; incomplete = result.incomplete; diagnostics = output.diagnostics
+      if (operationParts(request.operation).action === 'callgraph') {
+        try { items = jadxCallgraphItems(output.files); incomplete = true; diagnostics += '\nResolved application graph only; external, reflective and dynamic calls and call-site offsets are not covered.' }
+        catch (error) { items = []; failure = String(error); incomplete = true }
+      }
       if (operationParts(request.operation).action === 'manifest') {
         try { items = manifestItems(output.files) }
         catch (error) { items = []; failure = String(error); incomplete = true }
@@ -250,11 +261,20 @@ export class ToolAdapterProvider implements AnalysisProvider {
       try {
         const process = await runProcess(this.ctx, environment, adapter.id === 'r2ghidra' ? 'radare2' : adapter.id,
           adapterArguments(request.operation, request.parameters, path), limits)
-        raw = { ...process }; diagnostics = process.stderr; incomplete = process.truncated
+        raw = { ...process, parameters: request.parameters }; diagnostics = process.stderr; incomplete = process.truncated
         failure = adapterProcessFailure(process)
         if (!failure && !process.truncated) {
           try {
             items = decodeAdapterOutput(request.operation, process.stdout)
+            if (['radare2.functions', 'radare2.xrefs-to', 'radare2.xrefs-from'].includes(request.operation)) {
+              items = items.map((item) => {
+                const value = z.record(z.string(), z.json()).parse(item)
+                if (request.operation === 'radare2.functions') return { ...value, offset: value.offset ?? value.addr ?? null }
+                const field = request.operation === 'radare2.xrefs-to' ? 'to' : 'from'
+                return { ...value, [field]: value[field] ?? request.parameters.address ?? null,
+                  queryAddress: request.parameters.address ?? null }
+              })
+            }
             if (adapter.id === 'tshark' && (request.parameters.filter !== undefined
               || z.array(z.json()).parse(JSON.parse(process.stdout)).length >= Number(request.parameters.count)))
               incomplete = true

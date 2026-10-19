@@ -203,3 +203,17 @@ it('reads complete structured evidence and propagates its incompleteness into de
   await expect(provider.run(provider.resolve(operation, context), context)).rejects.toThrow('does not match')
   expect(runProcess).toHaveBeenCalledOnce()
 })
+
+it('normalizes radare2 version-specific addresses and retains the query supplying omitted endpoints', async () => {
+  const { provider, request, context } = await fixture()
+  vi.mocked(runProcess).mockResolvedValue({ ...success, stdout: '[{"addr":8192,"size":30,"name":"entry"}]' })
+  const functions = await provider.run(provider.resolve(request, context), context)
+  expect(adapterResultSchema.parse(JSON.parse(Buffer.from(functions.bytes).toString())).items[0])
+    .toMatchObject({ addr: 8192, offset: 8192 })
+  vi.mocked(runProcess).mockResolvedValue({ ...success, stdout: '[{"from":8100,"fcn_addr":8192,"type":"CALL"}]' })
+  const references = await provider.run(provider.resolve({ ...request, operation: 'radare2.xrefs-to',
+    parameters: { address: '0x1000' } }, context), context)
+  const saved = adapterResultSchema.parse(JSON.parse(Buffer.from(references.bytes).toString()))
+  expect(saved.items[0]).toEqual({ from: 8100, fcn_addr: 8192, type: 'CALL', to: '0x1000', queryAddress: '0x1000' })
+  expect(saved.raw).toMatchObject({ parameters: { address: '0x1000' }, stdout: '[{"from":8100,"fcn_addr":8192,"type":"CALL"}]' })
+})

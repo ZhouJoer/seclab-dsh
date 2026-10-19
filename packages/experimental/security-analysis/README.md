@@ -25,6 +25,10 @@ Tasks optionally persist `moduleSelection` with `mode`, `modules` and `reason`. 
 
 `security_apk inventory` lists bounded APK members; `security_jadx manifest` parses ordinary XML decoded by JADX. `security_analysis` runs fixed Android fingerprint, API, Kotlin name and native-triage transformations over saved same-asset adapter evidence. It accepts evidence IDs, not executable paths. Healthy adapters run directly; missing dependencies are configured in the same environment before returning to the adapter. Unsupported operations may use existing scripts or Shell subject to tool preferences. Kotlin candidates never rename samples; partial decompilation preserves its failure and incomplete status. See the [adaptation review](resources/skills/sources.md) for upstream versions and exclusions.
 
+`security_jadx callgraph` uses JADX's `--call-graph json` and JSON method output. It retains exact method descriptors and source locations; the upstream graph excludes unresolved external calls and does not supply call-site offsets. `security_analysis android-callchain` and `native-xref-paths` accept saved evidence IDs, an exact method descriptor or hexadecimal seed, `direction` (`callers`/`callees`) and positive `maxDepth`. Native paths consume radare2 function ranges and references, distinguishing calls, jumps and data references. Results retain evidence for each edge, cycles, missing-evidence frontiers and collection limits; they describe one discovery path per node, not all paths or runtime reachability. No graph operation runs a target or accepts a command.
+
+The operator `skillUsage` read folds committed skill catalogs, successful model reads, explicit user injections and failed reads across historical task bindings. Rows include Session IDs, instruction-render hashes and event positions. Fork prefixes are excluded; reload does not increment counts. Missing logs and ambiguous historical task attribution remain visible. Task-context messages record task identity even without extra context. Skill reads do not prove compliance, and no tool or finding is attributed to a skill merely because it ran afterwards.
+
 -----
 
 <a id="use-this-package"></a>

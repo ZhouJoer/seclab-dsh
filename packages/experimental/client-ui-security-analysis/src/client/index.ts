@@ -87,6 +87,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       toolPreferenceOptions: id => unwrap(remote.toolPreferenceOptions(id)),
       toolPreferences: (id, input) => unwrap(remote.toolPreferences(id, input)),
       followActivity: (id, signal) => remote.followActivity(id, signal),
+      skillUsage: id => unwrap(remote.skillUsage(id)),
       activityDetails: (id, checkpoint, offset, through) => unwrap(remote.activityDetails(id, checkpoint, offset, through)),
       sendAnalysis: async (id, objective) => {
         const session = scoped.sessions.binding(id)?.session
@@ -141,6 +142,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       ...projectActions,
       openChild: actions.openChild,
       followActivity: actions.followActivity,
+      skillUsage: actions.skillUsage,
       activityDetails: actions.activityDetails,
       projectArtifact: (id, hash) => unwrap(remote.projectArtifact(id, hash)),
       findSession: async (projectId) => {

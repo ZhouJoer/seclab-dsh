@@ -41,8 +41,8 @@ const argsSchema = z
 /** JADX supplies application code; adb never accepts an arbitrary shell command. */
 export class AndroidProvider implements AnalysisProvider {
   readonly id = 'android'
-  readonly inputGuide = 'manifest decodes APK resources only. decompile accepts optional className and requires an APK, DEX or JAR plus configured jadx. device and packages require {}; package-info requires packageName. Device queries require configured adb and an explicit environment deviceId. Missing root, USB authorization or server prerequisites are operator setup tasks.'
-  readonly operations = ['decompile', 'manifest', 'device', 'packages', 'package-info'] as const
+  readonly inputGuide = 'callgraph requires configured JADX with --call-graph json support and accepts APK, DEX or JAR without className. manifest decodes APK resources only. decompile accepts optional className and requires an APK, DEX or JAR plus configured jadx. device and packages require {}; package-info requires packageName. Device queries require configured adb and an explicit environment deviceId. Missing root, USB authorization or server prerequisites are operator setup tasks.'
+  readonly operations = ['decompile', 'manifest', 'callgraph', 'device', 'packages', 'package-info'] as const
   constructor(
     private readonly ctx: Context,
     private readonly config: Config,
@@ -54,10 +54,10 @@ export class AndroidProvider implements AnalysisProvider {
     const allowed = request.operation === 'decompile' ? ['className'] : request.operation === 'package-info' ? ['packageName'] : []
     for (const key of Object.keys(args)) if (!allowed.includes(key))
       throw new Error('Unsupported parameter for Android ' + request.operation + ': ' + key)
-    if (request.operation === 'decompile' && !['apk', 'dex', 'jar'].includes(fileAsset(context.asset).format))
+    if (['decompile', 'callgraph'].includes(request.operation) && !['apk', 'dex', 'jar'].includes(fileAsset(context.asset).format))
       throw new Error('JADX requires an APK, DEX or JAR asset')
     if (request.operation === 'manifest' && fileAsset(context.asset).format !== 'apk') throw new Error('Manifest requires an APK')
-    if (!['decompile', 'manifest'].includes(request.operation) && !context.environment.deviceId) throw new Error('Select an Android device')
+    if (!['decompile', 'manifest', 'callgraph'].includes(request.operation) && !context.environment.deviceId) throw new Error('Select an Android device')
     if (request.operation === 'package-info' && !args.packageName) throw new Error('Select the package name')
     return { ...request, parameters: operationSchema.shape.parameters.parse(args), impact: 'observe' }
   }
@@ -69,13 +69,13 @@ export class AndroidProvider implements AnalysisProvider {
       maxOutputBytes: context.maxOutputBytes,
       graceMs: this.config.graceMs,
     }
-    const tool = installation(context.environment, ['decompile', 'manifest'].includes(request.operation) ? 'jadx' : 'adb')
+    const tool = installation(context.environment, ['decompile', 'manifest', 'callgraph'].includes(request.operation) ? 'jadx' : 'adb')
     const version = await runProcess(this.ctx, context.environment, tool.id, tool.versionArgs, limits)
     requireProcessSuccess(version)
     if (version.truncated) throw new Error('Tool version output exceeded its limit')
     const toolVersion = (version.stdout || version.stderr).trim()
     if (!toolVersion) throw new Error('Tool did not report its version')
-    if (!['decompile', 'manifest'].includes(request.operation)) {
+    if (!['decompile', 'manifest', 'callgraph'].includes(request.operation)) {
       assert(context.environment.deviceId, 'Resolved Android operation requires a device')
       if (request.operation === 'package-info') assert(args.packageName, 'Resolved package query requires a package')
       const command =
@@ -109,7 +109,7 @@ export class AndroidProvider implements AnalysisProvider {
       await mkdir(output)
       const input = join(root, 'input.' + fileAsset(context.asset).format)
       await rename(path, input)
-      const command = ['--output-dir', output, ...(request.operation === 'manifest' ? ['--no-src'] : []), ...(args.className ? ['--single-class', args.className] : []), input]
+      const command = ['--output-dir', output, ...(request.operation === 'manifest' ? ['--no-src'] : request.operation === 'callgraph' ? ['--call-graph', 'json', '--output-format', 'json', '--no-res'] : []), ...(args.className ? ['--single-class', args.className] : []), input]
       const result = await runProcess(this.ctx, context.environment, 'jadx', command, limits)
       const failed = result.exitCode !== 0 || result.signal !== null || result.timedOut || result.cancelled
       const files: { path: string; text: string }[] = []

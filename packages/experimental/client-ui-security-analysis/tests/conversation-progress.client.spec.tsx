@@ -20,7 +20,9 @@ it('replaces the loading message with a retryable error when the Host stream is 
     openChild={vi.fn()}
     subscribeReset={() => () => {}} openDashboard={() => {}}
     followSessionView={vi.fn(() => { throw new Error('Remote method unavailable') })}
-    followActivity={async function* () {}} activityDetails={async () => ({ items: [], next: null, through: 0 })} />)
+    followActivity={async function* () {}}
+    skillUsage={async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 })}
+    activityDetails={async () => ({ items: [], next: null, through: 0 })} />)
   expect((await screen.findByRole('alert')).textContent).toContain('Remote method unavailable')
   expect(screen.queryByText(en.dashboardLoading)).toBeNull()
   expect(screen.getByRole('button', { name: en.dashboardRetry })).toBeTruthy()
@@ -48,6 +50,8 @@ it('shows newly linked task activity in the sidebar without extra conversation c
       ] }
       await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
     },
+
+    skillUsage: async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 }),
     activityDetails: vi.fn(async () => ({ items: [], next: null, through: 1 })),
     stopProject: vi.fn(async () => {}), resumeProject: vi.fn(async () => {}), openDashboard: vi.fn(),
   }
@@ -108,6 +112,8 @@ it('reconnects the selection stream and switches to the newly selected project',
       yield { type: 'snapshot' as const, cursor: 0, briefs: [], usage: [], view: project(id) }
       await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
     },
+
+    skillUsage: async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 }),
     activityDetails: async () => ({ items: [], next: null, through: 0 }),
     stopProject: vi.fn(), resumeProject: vi.fn(), openDashboard: vi.fn(),
   }

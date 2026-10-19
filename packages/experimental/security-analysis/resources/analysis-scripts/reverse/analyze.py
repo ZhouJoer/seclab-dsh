@@ -3,10 +3,108 @@ import argparse
 import json
 import re
 import sys
+from collections import defaultdict, deque
 
 
-def analyze(operation, sources, limit):
+def address(value):
+    """Keep address arithmetic exact; unsafe JSON numbers cannot identify instructions."""
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 9007199254740991:
+        return value
+    if isinstance(value, str) and re.fullmatch(r'0x[0-9a-fA-F]{1,16}', value):
+        return int(value, 16)
+    raise ValueError('Expected an exact hexadecimal address or safe integer')
+
+
+def graph_paths(operation, sources, limit, parameters):
+    """Traverse only retained static relations; missing neighbors remain explicit frontiers."""
+    native = operation == 'native-xref-paths'
+    seed = hex(address(parameters['seed'])) if native else parameters['seed']
+    reverse = parameters['direction'] == 'callers'
+    depth = parameters['maxDepth']
+    edges, details, functions, observations = [], defaultdict(list), [], []
+    incomplete = any(s['result']['incomplete'] for s in sources)
+    for source in sources:
+        for item in source['result']['items']:
+            if not isinstance(item, dict):
+                continue
+            observations.append((source, item))
+            if native and source['result']['operation'].endswith('.functions'):
+                start = address(item['offset'])
+                size = item.get('size', 0)
+                if not isinstance(size, int) or size < 0:
+                    raise ValueError('Invalid function size')
+                functions.append((start, start + size, item))
+
+    def owner(value):
+        hits = [f for f in functions if f[0] == value or f[0] <= value < f[1]]
+        return hex(hits[0][0]) if len(hits) == 1 else None
+
+    for source, item in observations:
+        evidence = source['evidenceId']
+        op = source['result']['operation']
+        if not native:
+            if item.get('kind') == 'call':
+                edges.append(dict(item, evidenceId=evidence, relation='call'))
+            elif item.get('kind') in ('method', 'method-detail'):
+                details[item['method']].append(dict(item, evidenceId=evidence))
+        elif op.endswith(('.xrefs-to', '.xrefs-from')):
+            origin, target = address(item['from']), address(item['to'])
+            kind = str(item.get('type', 'unknown')).upper()
+            relation = 'call' if kind == 'CALL' else 'jump' if kind in ('CODE', 'JUMP') else 'data' if kind in ('DATA', 'STRING') else 'unknown'
+            source_owner = hex(address(item['fcn_addr'])) if item.get('fcn_addr') is not None else owner(origin)
+            edges.append({'from': source_owner or hex(origin), 'to': hex(target), 'relation': relation,
+                          'callSite': hex(origin), 'targetAddress': hex(target), 'sourceFunction': source_owner,
+                          'evidenceId': evidence, 'observation': item, 'basis': op})
+        elif native and op.endswith(('.functions', '.strings', '.imports', '.exports', '.symbols')):
+            value = item.get('offset') if op.endswith('.functions') else item.get('vaddr', item.get('plt'))
+            if value is not None:
+                details[hex(address(value))].append({'evidenceId': evidence, 'observation': item})
+    adjacency = defaultdict(list)
+    seen_edges = set()
+    for edge in edges:
+        key = (edge['from'], edge['to'], edge['relation'], edge.get('callSite'), edge['evidenceId'])
+        if key not in seen_edges:
+            adjacency[edge['to'] if reverse else edge['from']].append(edge)
+            seen_edges.add(key)
+    queue = deque([(seed, [seed], [])])
+    items = []
+    visited = {seed}
+    while queue and len(items) < limit:
+        node, nodes, path = queue.popleft()
+        neighbors = adjacency[node]
+        if not neighbors:
+            incomplete = True
+            items.append({'kind': 'frontier', 'node': node, 'nodes': nodes, 'edges': path, 'seedDetails': details[seed],
+                          'reason': 'No further retained relations; not proof of an entry point or leaf',
+                          'nextOperation': ('radare2.xrefs-to' if reverse else 'radare2.xrefs-from') if native else 'jadx.callgraph'})
+            continue
+        for edge in neighbors:
+            if len(items) >= limit:
+                incomplete = True
+                break
+            target = edge['from'] if reverse else edge['to']
+            cycle = target in nodes
+            traversable = edge['relation'] == 'call' or (reverse and len(path) == 0 and edge['relation'] == 'data')
+            bounded = len(path) + 1 >= depth
+            items.append({'kind': 'xref-path' if native else 'api-call-path', 'nodes': nodes + [target],
+                          'edges': path + [edge], 'direction': parameters['direction'],
+                          'details': details[target], 'seedDetails': details[seed], 'cycle': cycle,
+                          'stop': 'cycle' if cycle else 'non-call-reference' if not traversable else 'depth-limit' if bounded else None})
+            if bounded or not traversable:
+                incomplete = True
+            elif not cycle and target not in visited:
+                visited.add(target)
+                queue.append((target, nodes + [target], path + [edge]))
+    if queue:
+        incomplete = True
+    return {'items': items, 'incomplete': incomplete,
+            'diagnostics': 'Static evidence paths only; one discovery path per node, not all possible paths. Calls do not prove runtime reachability. Unknown and external relations require further evidence.'}
+
+
+def analyze(operation, sources, limit, parameters=None):
     """Return located candidates; inherited incompleteness is never cleared."""
+    if operation in ('native-xref-paths', 'android-callchain'):
+        return graph_paths(operation, sources, limit, parameters)
     items = []
     incomplete = any(source['result']['incomplete'] for source in sources)
 
@@ -89,7 +187,7 @@ def analyze(operation, sources, limit):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--operation', required=True, choices=['android-fingerprint', 'android-api', 'kotlin-names', 'native-triage'])
+    parser.add_argument('--operation', required=True, choices=['android-fingerprint', 'android-api', 'kotlin-names', 'native-triage', 'native-xref-paths', 'android-callchain'])
     parser.add_argument('--input', default='-')
     parser.add_argument('--output', default='-')
     parser.add_argument('--max-items', type=int, required=True)
@@ -102,7 +200,7 @@ def main():
     else:
         with open(args.input, encoding='utf-8') as stream:
             payload = json.load(stream)
-    result = analyze(args.operation, payload['sources'], args.max_items)
+    result = analyze(args.operation, payload['sources'], args.max_items, payload.get('parameters'))
     encoded = json.dumps(result, ensure_ascii=True)
     while len(encoded.encode('utf-8')) > args.max_output_bytes and result['items']:
         result['items'].pop()

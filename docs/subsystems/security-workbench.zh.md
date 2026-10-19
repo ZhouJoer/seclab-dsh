@@ -274,6 +274,12 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote({ mode: 'stream' }) async *followActivity(projectId: string, signal: AbortSignal): AsyncIterable<SecurityActivityFrame>
 
+/** Read committed skill exposure and loads for current and historical task Sessions.
+ * @param projectId - existing task selected by the operator.
+ * @returns replay-safe usage; missing logs remain visible as unavailable Sessions.
+ */
+@Remote('skillUsage') async skillUsage(projectId: string): Promise<SecuritySkillUsagePage>
+
 /** Read invocation details within one research direction.
  * @param projectId - selected project.
  * @param checkpointId - direction identity, or empty for unclassified work.

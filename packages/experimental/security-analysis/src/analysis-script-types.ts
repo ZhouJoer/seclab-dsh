@@ -4,7 +4,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 /** Identifies a bundled script independently of its installation path. */
 export type AnalysisScriptId = Branded<'SecurityAnalysisScript'>
 /** Built-in scenarios with locale-owned descriptions. */
-export type AnalysisScriptKind = 'captureSummary' | 'extractPackets' | 'mqttSessions' | 'mqttTopics' | 'moduleWatch' | 'functionTrace' | 'wirelessCapture' | 'androidFingerprint' | 'androidApi' | 'kotlinNames' | 'nativeTriage'
+export type AnalysisScriptKind = 'captureSummary' | 'extractPackets' | 'mqttSessions' | 'mqttTopics' | 'moduleWatch' | 'functionTrace' | 'wirelessCapture' | 'androidFingerprint' | 'androidApi' | 'kotlinNames' | 'nativeTriage' | 'nativeXrefPaths' | 'androidCallchain'
 /** A CLI argument accepted by a bundled entry point. */
 export interface AnalysisScriptParameter {
   flag: '--input' | '--output' | '--tshark' | '--timeout' | '--max-packets' | '--max-output-bytes' | '--max-decode-bytes'

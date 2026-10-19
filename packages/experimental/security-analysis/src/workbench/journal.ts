@@ -19,6 +19,8 @@ const commitSchema = z
 export interface SecurityJournal {
   /** @returns the current committed snapshot. */
   view(): WorkbenchView
+  /** Read historical task bindings without reviving or granting authority to Sessions. */
+  sessionProjects(): Map<string, Set<string>>
   /** Subscribe to any committed task change; disposal removes the listener. */
   subscribeAll(listener: () => void): () => void
   /** Subscribe to successful project commits; the returned disposer removes the listener. */
@@ -114,6 +116,15 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
   const fingerprintOf = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex')
   return {
     view,
+    sessionProjects() {
+      const result = new Map<string, Set<string>>()
+      for (const [, commit] of table.entries()) for (const record of commit.records) {
+        if (record.kind !== 'binding') continue
+        const projects = result.get(record.value.sessionId) ?? new Set<string>()
+        projects.add(record.value.engagementId); result.set(record.value.sessionId, projects)
+      }
+      return result
+    },
     subscribeAll(listener) { allListeners.add(listener); return () => { allListeners.delete(listener) } },
     subscribe(project, listener) {
       const group = listeners.get(project) ?? new Set<() => void>()

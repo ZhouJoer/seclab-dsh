@@ -2363,6 +2363,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'baseline and project-scoped activity increments.',
       },
       {
+        signature: '@Remote(\'skillUsage\') async skillUsage(projectId: string): Promise<SecuritySkillUsagePage>',
+        description: 'Read committed skill exposure and loads for current and historical task Sessions.',
+        parameters: [{ name: 'projectId', description: 'existing task selected by the operator.' }],
+        returns: 'replay-safe usage; missing logs remain visible as unavailable Sessions.',
+      },
+      {
         signature: '@Remote(\'activityDetails\') async activityDetails(projectId: string, checkpointId: string, offset: number, through?: number): Promise<SecurityActivityPage>',
         description: 'Read invocation details within one research direction.',
         parameters: [{ name: 'projectId', description: 'selected project.' }, { name: 'checkpointId', description: 'direction identity, or empty for unclassified work.' }, { name: 'offset', description: 'page position.' }, { name: 'through', description: 'initial page cutoff, if continuing.' }],
@@ -5166,7 +5172,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisScriptKind',
-    declaration: 'export type AnalysisScriptKind = \'captureSummary\' | \'extractPackets\' | \'mqttSessions\' | \'mqttTopics\' | \'moduleWatch\' | \'functionTrace\' | \'wirelessCapture\' | \'androidFingerprint\' | \'androidApi\' | \'kotlinNames\' | \'nativeTriage\';',
+    declaration: 'export type AnalysisScriptKind = \'captureSummary\' | \'extractPackets\' | \'mqttSessions\' | \'mqttTopics\' | \'moduleWatch\' | \'functionTrace\' | \'wirelessCapture\' | \'androidFingerprint\' | \'androidApi\' | \'kotlinNames\' | \'nativeTriage\' | \'nativeXrefPaths\' | \'androidCallchain\';',
   },
   {
     name: 'AnalysisScriptParameter',
@@ -7522,7 +7528,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityJournal',
-    declaration: 'export interface SecurityJournal {\n    view(): WorkbenchView;\n    subscribeAll(listener: () => void): () => void;\n    subscribe(project: string, listener: () => void): () => void;\n    subscribeSelection(session: string, listener: () => void): () => void;\n    replay(operationId: string, input: unknown): WorkbenchView | undefined;\n    commit(operationId: string, expectedRevision: number | undefined, input: unknown, produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[]): Promise<WorkbenchView>;\n    purge(operationId: string, expectedRevision: number, projectId: string, plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<WorkbenchView>;\n    pendingPurges(): {\n        projectId: string;\n        artifacts: string[];\n    }[];\n    finishPurge(projectId: string): Promise<void>;\n    close(): Promise<void>;\n}',
+    declaration: 'export interface SecurityJournal {\n    view(): WorkbenchView;\n    sessionProjects(): Map<string, Set<string>>;\n    subscribeAll(listener: () => void): () => void;\n    subscribe(project: string, listener: () => void): () => void;\n    subscribeSelection(session: string, listener: () => void): () => void;\n    replay(operationId: string, input: unknown): WorkbenchView | undefined;\n    commit(operationId: string, expectedRevision: number | undefined, input: unknown, produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[]): Promise<WorkbenchView>;\n    purge(operationId: string, expectedRevision: number, projectId: string, plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<WorkbenchView>;\n    pendingPurges(): {\n        projectId: string;\n        artifacts: string[];\n    }[];\n    finishPurge(projectId: string): Promise<void>;\n    close(): Promise<void>;\n}',
   },
   {
     name: 'SecurityProjectSummary',
@@ -7531,6 +7537,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SecurityRecord',
     declaration: 'export type SecurityRecord = z.infer<typeof recordSchema>;',
+  },
+  {
+    name: 'SecuritySkillUsage',
+    declaration: 'export interface SecuritySkillUsage {\n    name: string;\n    sessionId: string;\n    contentSha256: string | null;\n    available: boolean;\n    modelReads: number;\n    explicitReads: number;\n    failedReads: number;\n    sequences: number[];\n}',
+  },
+  {
+    name: 'SecuritySkillUsagePage',
+    declaration: 'export interface SecuritySkillUsagePage {\n    items: SecuritySkillUsage[];\n    unavailableSessions: string[];\n    unattributedReads: number;\n}',
   },
   {
     name: 'SecurityToolUsage',

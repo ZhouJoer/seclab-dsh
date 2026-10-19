@@ -247,6 +247,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     ['laboratory', Laboratory],
   ])
   if (options.skills) {
+    modules.set('query', ExactQuery)
     modules.set('skills', Skills)
     modules.set('tool-skill', ToolSkill)
   }
@@ -1650,8 +1651,13 @@ else if (args.includes('--output')) {
     expect(text).toContain('<skill_content name="security-web">')
     expect(text).toContain('expected authorization rule')
     expect(model.requests[1]?.messages).toContainEqual(loaded.data.message)
+    const project = controller.view(agent.id).records.find(record => record.kind === 'engagement')!
+    if (project.kind !== 'engagement') throw new Error('Missing task')
+    const usage = await ctx.securityWorkbench.skillUsage(project.value.id)
+    expect(usage.items.find(item => item.name === 'security-web')).toMatchObject({ modelReads: 1, explicitReads: 0, available: true })
+    expect(await ctx.securityWorkbench.skillUsage(project.value.id)).toEqual(usage)
     const scripts = ctx.securityWorkbench.scriptCatalog()
-    expect(scripts).toHaveLength(11)
+    expect(scripts).toHaveLength(13)
     const packetMethod = await execute(ctx, agent, 'skill', { name: 'security-packet-analysis' })
     expect(packetMethod.isError).not.toBe(true)
     expect(JSON.stringify(packetMethod)).toContain('tshark/capture_summary.py')

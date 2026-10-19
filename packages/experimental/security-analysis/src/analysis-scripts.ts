@@ -43,6 +43,8 @@ export function analysisScripts(): AnalysisScript[] {
     { id: 'analysis.android-fingerprint', kind: 'androidFingerprint', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
     { id: 'analysis.android-api', kind: 'androidApi', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
     { id: 'analysis.kotlin-names', kind: 'kotlinNames', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
+    { id: 'analysis.android-callchain', kind: 'androidCallchain', category: 'reverse', skill: 'security-android', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
+    { id: 'analysis.native-xref-paths', kind: 'nativeXrefPaths', category: 'reverse', skill: 'security-native', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
     { id: 'analysis.native-triage', kind: 'nativeTriage', category: 'reverse', skill: 'security-native', relativePath: 'reverse/analyze.py', toolIds: ['python'] },
     { id: 'tshark.wireless', kind: 'wirelessCapture', category: 'tshark', skill: 'security-packet-analysis', relativePath: 'tshark/wireless.py', toolIds: ['python', 'tshark'], extra: [
       { flag: '--protocol', required: true, value: '<wifi|ble>' }, { flag: '--mode', required: true, value: '<summary|packets>' },
@@ -64,7 +66,8 @@ export function analysisScripts(): AnalysisScript[] {
     parameters: [...(entry.category === 'reverse' ? reverse : template ? dynamic : offline), ...extra,
       ...(entry.category === 'mqtt' ? [{ flag: '--mqtt-port' as const, required: false, value: '<TCP port; repeatable>' }] : [])].map(item => ({ ...item })),
     example: entry.category === 'reverse'
-      ? 'security_analysis ' + JSON.stringify({ assetId: '<asset ID>', operation: entry.id.slice('analysis.'.length), evidenceIds: ['<saved evidence ID>'] })
+      ? 'security_analysis ' + JSON.stringify({ assetId: '<asset ID>', operation: entry.id.slice('analysis.'.length), evidenceIds: ['<saved evidence ID>'],
+        ...['androidCallchain', 'nativeXrefPaths'].includes(entry.kind) ? { seed: '<exact method descriptor or hex address>', direction: 'callers', maxDepth: 3 } : {} })
       : template
         ? 'python "<resourceBase>/dynamic/prepare.py" ' + template + ' --output "<analysisDirectory>/scripts/<run>.js" --max-events 100'
         + (template === 'function-trace' ? ' --module "<module>" --symbol "<export>" --stack-depth 8' : '')

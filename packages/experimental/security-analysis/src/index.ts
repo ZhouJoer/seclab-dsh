@@ -1,3 +1,4 @@
+import { projectSkillUsage, type SecuritySkillUsagePage } from './skill-usage.ts'
 /** Host service exposing the security workbench to tools and generated Remote clients. @module */
 import './service.ts'
 import type { WorkbenchConfiguration } from './workbench-configuration-types.ts'
@@ -1809,6 +1810,34 @@ export default class SecurityWorkbench extends TypertRemoteService {
       listener => journal.subscribe(projectId, listener), AbortSignal.any([signal, this.shutdown.signal]))) {
       yield frame.type === 'activity' ? frame : { ...frame, coverage: deriveProjectCoverage(frame.view.records, frame.view.revision) }
     }
+  }
+  /** Read committed skill exposure and loads for current and historical task Sessions.
+   * @param projectId - existing task selected by the operator.
+   * @returns replay-safe usage; missing logs remain visible as unavailable Sessions.
+   */
+  @Remote('skillUsage')
+  async skillUsage(projectId: string): Promise<SecuritySkillUsagePage> {
+    const controller = await this.ready
+    controller.projectView(projectId)
+    assert(this.journal, 'Skill usage requires the task journal')
+    const query = this.ctx.get('sessionQuery')
+    if (!query) throw new Error('Skill usage requires sessionQuery')
+    const result: SecuritySkillUsagePage = { items: [], unavailableSessions: [], unattributedReads: 0 }
+    for (const [session, projects] of this.journal.sessionProjects()) {
+      if (!projects.has(projectId)) continue
+      try {
+        using observed = await query.observeSession(brandString<SessionId>(session), { signal: this.shutdown.signal, projectionMode: 'none' })
+        const usage = projectSkillUsage(observed.events, observed.inheritedEventCount, session, projectId,
+          projects.size === 1 ? projectId : undefined)
+        result.items.push(...usage.items)
+        result.unattributedReads += usage.unattributedReads
+      } catch (error) {
+        if (this.shutdown.signal.aborted) throw error
+        this.ctx.logger.warn('Skill usage cannot read Session %s: %s', session, String(error))
+        result.unavailableSessions.push(session)
+      }
+    }
+    return result
   }
   /** Read invocation details within one research direction.
    * @param projectId - selected project.

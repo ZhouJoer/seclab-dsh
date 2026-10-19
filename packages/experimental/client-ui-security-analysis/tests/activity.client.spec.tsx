@@ -13,7 +13,9 @@ import { investigationFixture } from './investigation-fixture.client.ts'
 afterEach(cleanup)
 it('uses the current finding instead of a checkpoint historical confirmation', () => {
   render(<ActivityPanel project="project" view={investigationFixture()} changed={vi.fn()} openChild={vi.fn()}
-    followActivity={async function* () {}} activityDetails={async () => ({ items: [], next: null, through: 0 })}
+    followActivity={async function* () {}}
+    skillUsage={async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 })}
+    activityDetails={async () => ({ items: [], next: null, through: 0 })}
     subscribeReset={() => () => {}} t={makeTranslate(en, common)} />)
   const direction = screen.getByRole('heading', { name: 'Inspect authorization' }).closest('article')!
   expect(within(direction).getByText('Suspected')).toBeTruthy()
@@ -44,6 +46,8 @@ it('updates counts during a turn without adding a stage and preserves a return t
   const details = vi.fn(async () => ({ items: [], next: null, through: 1 }))
   render(<ActivityPanel project="project" view={view} changed={changed} followActivity={followActivity}
     openChild={vi.fn()}
+
+    skillUsage={async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 })}
     activityDetails={details} subscribeReset={() => () => {}} t={makeTranslate(en, common)} />)
   await screen.findByText('Live updates')
   const usage = { checkpointId: 'third', tool: 'ghidra', verified: true, total: 1, running: 1,
@@ -70,6 +74,8 @@ it('combines totals while retaining confirmed and unverified identities', async 
   }
   render(<ActivityPanel project="project" view={view} changed={() => {}} followActivity={followActivity}
     openChild={vi.fn()}
+
+    skillUsage={async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 })}
     activityDetails={async () => ({ items: [], next: null, through: 1 })}
     subscribeReset={() => () => {}} t={makeTranslate(en, common)} />)
   const card = await screen.findByRole('group', { name: 'radare2 ×3' })
@@ -89,6 +95,8 @@ it('aborts an old project stream and ignores its late frames', async () => {
   }
   const props = { view: { revision: 0, records: [] }, changed: vi.fn(), followActivity,
     openChild: vi.fn(),
+
+    skillUsage: async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 }),
     activityDetails: vi.fn(async () => ({ items: [], next: null, through: 0 })),
     subscribeReset: () => () => {}, t: makeTranslate(en, common) }
   const mounted = render(<ActivityPanel {...props} project="first" />)
@@ -112,7 +120,9 @@ it('keeps question-scoped child work in its captured direction and sorts it by d
     checkpoint('second', 'assessment', 'Access checks'), child('Later parser question', 'first', 2),
     child('Initial parser question', 'first', 1), child('Caller question', 'second', 3), child('Unclassified question', '', 0)] }
   render(<ActivityPanel project="project" view={view} changed={vi.fn()} openChild={vi.fn()}
-    followActivity={async function* () {}} activityDetails={async () => ({ items: [], next: null, through: 0 })}
+    followActivity={async function* () {}}
+    skillUsage={async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 })}
+    activityDetails={async () => ({ items: [], next: null, through: 0 })}
     subscribeReset={() => () => {}} t={makeTranslate(en, common)} />)
   const first = screen.getByRole('heading', { name: 'Entry inventory' }).closest('article')!
   const second = screen.getByRole('heading', { name: 'Access checks' }).closest('article')!

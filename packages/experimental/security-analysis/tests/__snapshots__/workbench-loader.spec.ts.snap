@@ -59,7 +59,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > jadx 1`] = `
 [
   {
-    "guide": "Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. Call security_jadx with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. callgraph exports resolved application method relations and JSON method details (requires JADX --call-graph support); external and dynamic calls are not complete. Call security_jadx with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
     "id": "jadx",
   },
 ]

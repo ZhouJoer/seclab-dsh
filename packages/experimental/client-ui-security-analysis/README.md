@@ -25,6 +25,8 @@ The Toolbox selects installations per configured local or managed Docker environ
 
 Task creation and task details offer automatic or manual analysis-module selection. The editor shows active modules, selection reasons and associated skills, scripts and tools without starting an Agent or probing installations. Manual selections use revision-checked project updates; failed saves retain the draft and display the error. Returning to automatic mode clears the manual set for the coordinator to reassess.
 
+Research activity includes a compact, expandable skill-usage list. It reads committed task Sessions on demand, combines reads by skill name and omits unused catalog entries and zero counts. Successful model reads and explicit invocations share a read count; failed reads appear separately. Unavailable history is reported without discarding successfully loaded rows.
+
 -----
 
 <a id="use-this-package"></a>
