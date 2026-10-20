@@ -8,8 +8,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { CaptureControls } from './CaptureControls.tsx'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconRefreshOutlineRegular, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ProjectManagement } from './ProjectManagement.tsx'
+import { RestartTask } from './RestartTask.tsx'
 import { ProjectModules } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { Improvements, type ImprovementActions } from './Improvements.tsx'
@@ -45,6 +46,9 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   resumeProject(id: SessionId): Promise<void>
   createWorkspace(path: string): Promise<WorkspaceId>
   configureWorkspace(sessionId: SessionId, input: string): Promise<WorkbenchConfiguration>
+  restartTask(sessionId: SessionId, paths: Record<string, string | null>):
+  Promise<{ sessionId: SessionId; projectId: string; objective: string }>
+  openRestartDraft(sessionId: SessionId, objective: string): Promise<void>
 }
 type Props = DashboardActions & PropsLocale<typeof NS> & PropsRuntime<'main'> & PropsRenderSlots<'security.workbench.session'>
 /** Render project facts and explicit analysis actions.
@@ -93,6 +97,8 @@ export function Dashboard(props: Props) {
   const [sessionId, setSessionId] = useState<SessionId>()
   const [reference, setReference] = useState<SessionReference>()
   const [assistant, setAssistant] = useState(false)
+  const [restartOpen, setRestartOpen] = useState(false)
+  const restartTrigger = useRef<HTMLButtonElement>(null)
   const [advanced, setAdvanced] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [focusCheckId, setFocusCheckId] = useState<string>()
@@ -206,6 +212,7 @@ export function Dashboard(props: Props) {
     setSessionId(undefined); setReference(undefined); setAssistant(false); setAdvanced(false)
     setMissingSession(false); setFocusCheckId(undefined)
     setContextSettings(undefined)
+    setRestartOpen(false)
     setEvidenceId(''); setEvidenceQuery(''); setReportId(''); setError(''); setBusy(false); setStopping(false)
     setDeleting('')
   }
@@ -321,8 +328,27 @@ export function Dashboard(props: Props) {
                 finally { if (current === generation.current) setStopping(false) }
               })()
             }}>{t(stopping ? 'activityStopping' : 'stop')}</button><button className={css.primary} disabled={busy} onClick={() =>{  if (assistant) setAssistant(false); else void perform(() => connect(false)) }}>{t(assistant ? 'dashboardHideAssistant' : 'dashboardAssistant')}</button></>}
-            {!project.archived && <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button>}
+            {!project.archived && <><button ref={restartTrigger} className={css.restartAction} disabled={busy || stopping}
+              aria-expanded={restartOpen} aria-controls={restartOpen ? 'security-restart-confirmation' : undefined}
+              onClick={() => { setRestartOpen(value => !value) }}><IconRefreshOutlineRegular size={16} />{t('restartTask')}</button>
+            <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button></>}
           </div>
+          {!project.archived && restartOpen && <RestartTask key={project.id} t={t} view={view} disabled={busy || stopping}
+            close={() => { setRestartOpen(false); restartTrigger.current?.focus() }}
+            restart={async (paths) => {
+              const current = generation.current
+              setBusy(true)
+              try {
+                const id = sessionId ?? await props.findSession(project.id)
+                if (current !== generation.current) return
+                if (!id) throw new Error(t('dashboardMissingSession'))
+                const next = await props.restartTask(id, paths)
+                if (current !== generation.current) return
+                navigate(next.projectId); setSessionId(next.sessionId); setAssistant(true)
+                await props.openRestartDraft(next.sessionId, next.objective)
+                props.notifyImprovement(t('restartTaskReady'))
+              } finally { if (current === generation.current) setBusy(false) }
+            }} />}
           <ProjectModules key={project.id + JSON.stringify(project.moduleSelection)} t={t} value={project.moduleSelection}
             disabled={busy || !!project.archived} save={async (selection) => {
               const current = generation.current

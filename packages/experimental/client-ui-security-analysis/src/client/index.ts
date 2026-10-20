@@ -152,6 +152,16 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         return selectCoordinator(ids, directory, archived)
       },
       createSession: workspaceId => scoped.sessions.create({ workspaceId }),
+      restartTask: (id, paths) => unwrap(remote.restartTask(id, JSON.stringify(paths))),
+      openRestartDraft: async (id, objective) => {
+        await scoped.sessions.using(id, { source: 'securityWorkbench' }, () => {
+          const binding = scoped.sessions.binding(id)
+          if (!binding) throw new Error(scoped.locale.bind(NS)('analysisSessionChanged'))
+          scoped.conversation.input.for(binding.ctx).setDraft(objective)
+          scoped.uiWorkspace.openSession(id)
+          return Promise.resolve()
+        })
+      },
       retainSession: id => scoped.sessions.retain(id, { source: 'securityWorkbench' }),
       associateSession: async (id, projectId) => {
         await scoped.sessions.using(id, { source: 'securityWorkbench' }, async () => {

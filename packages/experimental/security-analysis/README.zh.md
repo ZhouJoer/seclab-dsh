@@ -64,7 +64,9 @@ kind: "package-reference"
 
 在工具箱配置安装和可选的固定环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将适配器绑定 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属本机环境；首次保存写入带版本格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。未绑定适配器继承任务唯一的兼容环境。保存比较修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。
 
-部署安装与绑定无需 toolConfiguration 即可运行；可选文件保存操作员修改。bind 与 reset-binding 只更新路由。CLI 适配器要求显式安装，不通过 PATH 选择替代程序；服务适配器要求对应 provider 配置。操作员扫描可搜索 PATH 或指定目录。工具专用环境变量及非空 searchPaths 不作为配置来源；旧的空 searchPaths 仍可读取。
+部署安装与绑定无需 toolConfiguration 即可运行；可选文件保存操作员修改。bind 与 reset-binding 只更新路由。安装检查搜索 PATH、Windows Git 相邻的工具目录，以及本机环境 provider 配置的 `searchDirectories`。配置可写且修订未变化时，唯一通过验证的本机安装会自动保存；多个候选需要操作者选择。显式安装不会回退到其他命令。Python 模块使用所选解释器检查。发现过程不安装软件，也不选择分析方法：适配器提供能力，Skill 指导方法，模型最终决策。工具专用环境变量及非空 searchPaths 不作为配置来源；旧的空 searchPaths 仍可读取。
+
+重新开始会归档当前轮次，并创建新的项目和 Session 标识。保留目标、任务背景、材料、环境与手动模块选择、模型及持久化工具偏好，不继承对话历史、证据、发现、报告、派生知识与执行审批。已记录来源的本地材料重新读取，上传材料沿用已保存字节。旧材料必须明确确认复用已保存内容或提供替代路径，不根据文件名推测原始路径。目录导入排除 `.dsh/analysis`。既有工作区文件和历史记录保留。新会话等待用户发送消息；重复请求同一次重启返回已预留的目标。受管理靶场目标需要重新创建后再开始。
 
 托管 Docker 检测和静态适配调用在环境租约内启动已配置的本地镜像，不拉取镜像。Docker 安装项填写容器内可执行文件，docker 填写 Host 启动程序。输入和生成文件使用挂载到 /dsh-inputs 的私有运行目录，执行后清理。这些静态适配器不支持外部容器、Android 设备或 SSH；ADB 使用自己的设备路由。配置和检测不安装或更新软件。
 

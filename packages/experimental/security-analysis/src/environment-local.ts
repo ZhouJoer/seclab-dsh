@@ -19,6 +19,8 @@ export interface Config {
   cpus: number
   pids: number
   temporaryMb: number
+  /** Operator-selected roots used only to discover local executable installations. */
+  searchDirectories?: string[]
 }
 /** Environment manager plugin identity. */
 export const name = 'experimental-security-environment-local'
@@ -26,6 +28,7 @@ export const name = 'experimental-security-environment-local'
 export const inject = ['securityWorkbench', 'subprocess']
 /** Health and lifecycle command bounds. */
 export const Config: Schema<Config> = Schema.object({
+  searchDirectories: Schema.array(Schema.string()).default([]),
   memoryMb: Schema.number().step(1).min(64).default(2048),
   cpus: Schema.number().min(0.1).default(2),
   pids: Schema.number().step(1).min(16).default(256),
@@ -68,7 +71,7 @@ export class LocalEnvironmentManager {
   inventory(environment: SecurityEnvironment, signal: AbortSignal, toolIds?: readonly string[]): Promise<ToolboxInventory> {
     return inspectToolbox(this.ctx, environment, { durationMs: this.config.timeoutMs,
       maxOutputBytes: this.config.maxOutputBytes, graceMs: this.config.graceMs },
-    signal, toolIds, this.ctx.securityWorkbench.toolCatalog().tools)
+    signal, toolIds, this.ctx.securityWorkbench.toolCatalog().tools, this.config.searchDirectories)
   }
   /**
    * Inspect installed tools without provisioning them.

@@ -484,16 +484,16 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const current = this.mainReference?.sessionId
     if (current === undefined
       || !this.workspaces.list.getSnapshot().archivedSessionIds.includes(current)) return false
-    this.clearMain()
+    this.clearMain('preserve')
     return true
   }
 
-  private clearMain(): void {
+  private clearMain(panel: 'reveal' | 'preserve' = 'reveal'): void {
     const previous = this.mainReference
     this.mainReference = undefined
     this.selection.set({})
     previous?.release()
-    this.ctx.layout.selectPanel(null)
+    if (panel === 'reveal') this.ctx.layout.selectPanel(null)
   }
 
   private replaceMain(

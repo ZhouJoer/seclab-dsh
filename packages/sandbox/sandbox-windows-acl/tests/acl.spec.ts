@@ -9,16 +9,16 @@
  * whose per-test lock file is removed in cleanup.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import koffi from 'koffi'
 
 import { buildExplicitAccess, grantWrite, lockFilePath, revokeWrite, withPathLock } from '../src/acl.ts'
-import { AclSandbox } from '../src/index.ts'
-import { createRestrictedToken, makeWellKnownSid } from '../src/token.ts'
-import { allocOverlapped, allocPtrSlot, decodePtr, isInvalidHandle, isNullPtr, win32 } from '../src/ffi.ts'
+import { AclSandbox, AclWriteGrant, workspaceWriteSid } from '../src/index.ts'
+import { createRestrictedToken, makeWellKnownSid, openCurrentProcessToken } from '../src/token.ts'
+import { allocOverlapped, allocPtrSlot, allocUint32, decodeUint32, decodePtr, decodePtrAt, isInvalidHandle, isNullPtr, win32 } from '../src/ffi.ts'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import * as abi from '../src/win32-abi.ts'
 
@@ -213,6 +213,142 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     scratchDirs.push(dir)
     return dir
   }
+
+  it('provisions a fresh owner-controlled directory without retaining WRITE_OWNER permission', async () => {
+    const api = await win32()
+    const dir = scratch()
+    const token = openCurrentProcessToken(api)
+    const needed = allocUint32()
+    api.getTokenInformation(token, abi.TokenUser, null, 0, needed)
+    const user = Buffer.alloc(decodeUint32(needed))
+    expect(api.getTokenInformation(token, abi.TokenUser, user, user.length, needed)).toBe(1)
+    api.closeHandle(token)
+    const userSid = decodePtrAt(user, 0)
+    expect(userSid).not.toBeNull()
+    const dacl = allocPtrSlot()
+    expect(api.setEntriesInAclW(1, buildExplicitAccess(userSid!, abi.GRANT_ACCESS,
+      abi.FILE_ALL_ACCESS & ~abi.WRITE_OWNER), null, dacl)).toBe(0)
+    const initial = decodePtr(dacl)
+    expect(api.setNamedSecurityInfoW(dir, abi.SE_FILE_OBJECT,
+      (abi.DACL_SECURITY_INFORMATION | 0x80000000) >>> 0, null, null, initial, null)).toBe(0)
+    const canSetLabel = () => {
+      const handle = api.createFileW(dir, abi.WRITE_OWNER, 7, null, 3, 0x02000000, null)
+      if (isInvalidHandle(handle)) return false
+      api.closeHandle(handle)
+      return true
+    }
+    expect(canSetLabel()).toBe(false)
+    const capability = sidFromString(api, 'S-1-4-4242-135')
+    const low = lowLabelSid(api)
+    const world = worldSid(api)
+    try {
+      grantWrite(api, dir, capability, low, world)
+      expect(readLabelAces(api, dir)).toEqual(expect.arrayContaining([expect.objectContaining({ sid: 'S-1-16-4096' })]))
+      expect(canSetLabel()).toBe(false)
+      grantWrite(api, dir, capability, low, world)
+      expect(canSetLabel()).toBe(false)
+      writeFileSync(join(dir, 'host-write.txt'), 'ready')
+    } finally {
+      api.setNamedSecurityInfoW(dir, abi.SE_FILE_OBJECT, abi.DACL_SECURITY_INFORMATION, null, null, initial, null)
+      if (initial !== null) api.localFree(initial)
+      api.localFree(capability); api.localFree(low); api.localFree(world)
+    }
+  })
+
+  it.each(['fresh', 'cached', 'denied'])('provisions existing analysis directories or reports the blocked child (%s)', async (state) => {
+    const api = await win32()
+    const root = scratch()
+    const outside = scratch()
+    const token = openCurrentProcessToken(api)
+    const needed = allocUint32()
+    api.getTokenInformation(token, abi.TokenUser, null, 0, needed)
+    const user = Buffer.alloc(decodeUint32(needed))
+    expect(api.getTokenInformation(token, abi.TokenUser, user, user.length, needed)).toBe(1)
+    api.closeHandle(token)
+    const userSid = decodePtrAt(user, 0)!
+    const slot = allocPtrSlot()
+    expect(api.setEntriesInAclW(1, buildExplicitAccess(userSid, abi.GRANT_ACCESS,
+      abi.FILE_ALL_ACCESS & ~abi.WRITE_OWNER), null, slot)).toBe(0)
+    const initial = decodePtr(slot)
+    const protectedChild = join(root, 'protected')
+    try {
+      expect(api.setNamedSecurityInfoW(root, abi.SE_FILE_OBJECT,
+        (abi.DACL_SECURITY_INFORMATION | 0x80000000) >>> 0, null, null, initial, null)).toBe(0)
+      mkdirSync(protectedChild)
+      expect(api.setNamedSecurityInfoW(protectedChild, abi.SE_FILE_OBJECT,
+        (abi.DACL_SECURITY_INFORMATION | 0x80000000) >>> 0, null, null, initial, null)).toBe(0)
+    } finally { if (initial !== null) api.localFree(initial) }
+    const analysis = join(root, '.dsh', 'analysis', 'task')
+    mkdirSync(analysis, { recursive: true })
+    writeFileSync(join(analysis, 'existing.txt'), 'before')
+    if (state === 'denied') {
+      const denySlot = allocPtrSlot()
+      expect(api.setEntriesInAclW(1, buildExplicitAccess(userSid, abi.DENY_ACCESS, abi.WRITE_OWNER, 0),
+        null, denySlot)).toBe(0)
+      const deny = decodePtr(denySlot)
+      try {
+        expect(api.setNamedSecurityInfoW(join(analysis, 'existing.txt'), abi.SE_FILE_OBJECT,
+          abi.DACL_SECURITY_INFORMATION, null, null, deny, null)).toBe(0)
+      } finally { if (deny !== null) api.localFree(deny) }
+    }
+    symlinkSync(outside, join(root, 'outside-link'), 'junction')
+    const outsideAces = readTypedAces(api, outside)
+    const outsideLabels = readLabelAces(api, outside)
+    const writeSid = workspaceWriteSid(root)
+    if (state === 'cached') {
+      const sid = sidFromString(api, writeSid)
+      const low = lowLabelSid(api)
+      const world = worldSid(api)
+      try { grantWrite(api, root, sid, low, world) }
+      finally { api.localFree(sid); api.localFree(low); api.localFree(world) }
+    }
+    const grant = AclWriteGrant.create(writeSid)
+    const sandbox = new AclSandbox({ writableDirs: [root], tempDir: null, writeSid, mode: 'workspace-write', manageDacls: false })
+    try {
+      if (state === 'denied') {
+        expect(() => { grant.add(root, true) }).toThrow(`Incomplete sandbox permission inheritance: ${join(analysis, 'existing.txt')}`)
+        expect(readTypedAces(api, join(analysis, 'existing.txt'))).toEqual(expect.arrayContaining([
+          expect.objectContaining({ type: abi.ACCESS_DENIED_ACE_TYPE, mask: abi.WRITE_OWNER }),
+        ]))
+        return
+      }
+      grant.add(root, true)
+      for (const path of [root, join(root, '.dsh'), analysis, join(analysis, 'existing.txt')]) {
+        const handle = api.createFileW(path, abi.WRITE_OWNER, 7, null, 3, 0x02000000, null)
+        const denied = isInvalidHandle(handle)
+        if (!denied) api.closeHandle(handle)
+        expect(denied).toBe(true)
+      }
+      const apply = vi.spyOn(api, 'setNamedSecurityInfoW')
+      try {
+        const again = AclWriteGrant.create(writeSid, api)
+        try { again.add(root, true) } finally { again.dispose() }
+        expect(apply).not.toHaveBeenCalled()
+      } finally { apply.mockRestore() }
+      await sandbox.init()
+      const code = `
+        const fs = require('node:fs');
+        fs.mkdirSync('outputs');
+        fs.writeFileSync('outputs/new.txt', 'ok');
+        fs.writeFileSync('existing.txt', 'after');
+        try { fs.writeFileSync(${JSON.stringify(join(outside, 'escape.txt'))}, 'bad'); process.exit(11); }
+        catch (error) { if (error.code !== 'EACCES' && error.code !== 'EPERM') throw error; }
+        try { fs.writeFileSync(${JSON.stringify(join(protectedChild, 'escape.txt'))}, 'bad'); process.exit(12); }
+        catch (error) { if (error.code !== 'EACCES' && error.code !== 'EPERM') throw error; }
+      `
+      const result = await sandbox.spawn({ command: process.execPath, args: ['-e', code], cwd: analysis }).wait()
+      expect(result.stderr.toString()).toBe('')
+      expect(result.exitCode).toBe(0)
+      expect(readFileSync(join(analysis, 'existing.txt'), 'utf8')).toBe('after')
+      expect(readFileSync(join(analysis, 'outputs', 'new.txt'), 'utf8')).toBe('ok')
+      expect(readTypedAces(api, outside)).toEqual(outsideAces)
+      expect(readLabelAces(api, outside)).toEqual(outsideLabels)
+      expect(readTypedAces(api, protectedChild).some(ace => ace.sid === writeSid)).toBe(false)
+    } finally {
+      sandbox.dispose()
+      grant.dispose()
+    }
+  })
 
   it('the ambient-delete deny inherits to subdirectories only, never onto files', async () => {
     // FILE_DELETE_CHILD is meaningless on a file and 0x40 is part of

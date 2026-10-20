@@ -8,6 +8,9 @@ import { analysisModules, moduleAllowsDefinition, moduleAllowsTool, moduleAllows
 import { installModuleRuntime } from './module-runtime.ts'
 import { installSecurityMethods } from './methods.ts'
 import { openWorkspaceIntake, type WorkspaceIntakeStore } from './workspace-intake.ts'
+import { openTaskSettings, type TaskSettings } from './task-settings.ts'
+import type {} from '@deepseek-ai/dsh-api-session-controller'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { taskContextSchema, type TaskContext } from './task-context.ts'
 import { installTaskContext } from './task-context-projection.ts'
 import { deriveProjectCoverage } from './workbench/coverage.ts'
@@ -263,6 +266,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private evolutionStore: EvolutionStore | undefined
   private evolution: SecurityEvolution | undefined
   private workspaceIntake: WorkspaceIntakeStore | undefined
+  private taskSettings: TaskSettings | undefined
+  private readonly restarting = new Map<SessionId, Promise<{ sessionId: SessionId; projectId: string; objective: string }>>()
   private index: SecuritySearchIndex | undefined
   private readonly shutdown = new AbortController()
   private readonly pending = new Set<Promise<unknown>>()
@@ -466,7 +471,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     ctx.tools.register(
       defineTool({
         name: 'security_environment',
-        description: 'Check tool versions and runtime readiness in one project environment. Optionally select toolId when a full inventory exceeds the output budget. Does not install tools, start containers or change devices. Health is not sample evidence.',
+        description: 'Check tool versions and runtime readiness in one project environment, saving unique verified local installations for adapters. Multiple installations require operator selection; existing pins are preserved. Optionally select toolId to narrow inventory. Does not install software, start containers or change devices. Health is not sample evidence.',
         parameters: { environmentId: { type: 'string', required: true }, toolId: { type: 'string' }, toolIds: { type: 'array', items: { type: 'string' } },
           native: { type: 'boolean', description: 'Include measured launch configuration for advanced native workflows. External-container inventory always retains it.' },
           devices: { type: 'boolean', description: 'Inspect Windows interfaces only; does not open devices or validate capture.' } },
@@ -484,11 +489,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const manager = controller.environments.get('local').manager
           if (args.devices) return json(await controller.manageEnvironment(environment.id, signal => manager.devices(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal])), project.value.id))
-          const key = this.toolObservationKey(environment)
+          const revision = environment.kind === 'local' && this.toolConfiguration.path !== undefined
+            ? this.toolConfiguration.read(environment.id).revision : undefined
           const inventory = await controller.manageEnvironment(environment.id, signal => manager.inventory(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal]),
             args.toolIds ?? (args.toolId === undefined ? undefined : [args.toolId])), project.value.id)
-          this.rememberTools(key, inventory)
+          if (revision !== undefined) this.toolConfiguration.reconcile(inventory, revision)
+          this.rememberTools(this.toolObservationKey(environment), inventory)
           if (args.toolId !== undefined && args.toolIds === undefined) {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
@@ -813,7 +820,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         if (candidate?.message.id === event.data.id) candidate.committed = true
       }
     })
-    ctx.on('agent/disposed', ({ agent }) => { this.intakeCandidates.delete(agent.id); this.turnBriefs.delete(agent.id); this.preferences.delete(agent.id) })
+    ctx.on('agent/disposed', ({ agent }) => { this.intakeCandidates.delete(agent.id); this.turnBriefs.delete(agent.id) })
     ctx.on('tools/execute', async (exec, next) => {
       if (!exec.agent || exec.signal.aborted) return next()
       const agent = exec.agent
@@ -907,6 +914,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         await this.activity?.close()
         await this.evolutionStore?.close()
         await this.workspaceIntake?.close()
+        await this.taskSettings?.close()
         await this.journal?.close()
         this.ownership?.close()
       }
@@ -1062,6 +1070,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
     try {
       const journal = await openSecurityJournal(this.ctx)
       this.journal = journal
+      this.taskSettings = await openTaskSettings(this.ctx)
+      for (const [id, preferences] of this.taskSettings.preferences) this.preferences.set(id, preferences)
       this.activity = await SecurityActivityStore.open(this.ctx)
       this.evolutionStore = await EvolutionStore.open(this.ctx)
       this.workspaceIntake = await openWorkspaceIntake(this.ctx,
@@ -1259,6 +1269,65 @@ export default class SecurityWorkbench extends TypertRemoteService {
     assert(this.journal, 'Initialized workbench requires its journal')
     this.index?.rebuild(this.journal.view().records)
     return JSON.stringify(result)
+  }
+
+  /** Archive one round and prepare a fresh conversation without sending a prompt.
+   * @param agent - authenticated source coordinator.
+   * @param input - JSON material choices: replacement paths or null to reuse saved content.
+   * @returns the durable destination and retained objective for the composer.
+   */
+  @Remote('restartTask')
+  async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }> {
+    const existing = this.restarting.get(agent.id)
+    if (existing) return existing
+    const replacements = z.record(z.string(), z.string().trim().min(1).nullable()).parse(JSON.parse(input))
+    const operation = this.restartTaskImpl(agent, replacements)
+    this.restarting.set(agent.id, operation)
+    this.pending.add(operation)
+    try { return await operation }
+    finally { this.restarting.delete(agent.id); this.pending.delete(operation) }
+  }
+
+  private async restartTaskImpl(agent: Agent, replacements: Record<string, string | null>) {
+    const controller = await this.ready
+    const sessions = this.ctx.get('sessionController')
+    const workspaces = this.ctx.get('workspaceRegistry')
+    assert(sessions && workspaces && this.taskSettings, 'Restart requires Session and Workspace services')
+    const receipt = await this.taskSettings.restart(agent.id)
+    const completed = controller.binding(receipt.sessionId)
+    if (completed) {
+      await workspaces.archiveSession(agent.id, { stopActivity: true })
+      const project = controller.projectView(completed.engagementId).records.find(item => item.kind === 'engagement')
+      assert(project?.kind === 'engagement')
+      return { sessionId: receipt.sessionId, projectId: project.value.id, objective: project.value.objective }
+    }
+    const binding = controller.binding(agent.id)
+    if (binding?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+    const workspace = workspaces.list().find(item => item.sessionIds.includes(agent.id))
+    const cwd = agent.session.header.cwd
+    assert(cwd, 'Restart requires a workspace directory')
+    const agentPreset = agent.session.header.agentPreset
+    const result = await sessions.create({ sessionId: receipt.sessionId,
+      ...(workspace ? { workspaceId: workspace.id } : { cwd }),
+      ...(agentPreset ? { agentPreset } : {}) })
+    if (result.sessionId !== receipt.sessionId) throw new Error('Restart destination is no longer blank; reload the task')
+    const selection = this.ctx.sessionProjections.stateOf(agent.session, 'modelSelection')
+    const model = selection?.pending ?? selection?.lastUsed
+    if (model) await sessions.selectModel({ ...model, sessionId: receipt.sessionId })
+    const preferences = structuredClone(this.preferences.get(agent.id) ?? { toolIds: [], tags: [], collectionIds: [] })
+    await this.taskSettings.savePreferences(receipt.sessionId, preferences)
+    this.preferences.set(receipt.sessionId, preferences)
+    const oldSessions = controller.view(agent.id).records
+      .filter(item => item.kind === 'binding').map(item => brandString<SessionId>(item.value.sessionId))
+    const view = await controller.restart(agent.id, receipt.sessionId, receipt.operationId, replacements, async () => {
+      const owners = this.ctx.agents.list().filter(owner => controller.binding(owner.id)?.engagementId === binding.engagementId)
+      for (const id of oldSessions) await workspaces.archiveSession(id, { stopActivity: true })
+      for (const owner of owners) owner.cancel({ kind: 'user' })
+      await Promise.all(owners.map(owner => owner.whenIdle()))
+    })
+    const project = view.records.find(item => item.kind === 'engagement')
+    assert(project?.kind === 'engagement')
+    return { sessionId: receipt.sessionId, projectId: project.value.id, objective: project.value.objective }
   }
 
   /** Attach user-selected materials without granting model access to their live paths.
@@ -1471,6 +1540,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('toolPreferences')
   async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences> {
+    await this.ready
     if (input !== undefined) {
       const preferences = toolPreferencesSchema.parse(JSON.parse(input))
       const catalog = this.toolCatalog()
@@ -1509,6 +1579,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.shutdown.signal.throwIfAborted()
       if (this.ctx.agents.get(agent.id) !== agent) throw new Error('Session was disposed during adapter checks')
       if (this.preferences.get(agent.id) !== previous) throw new Error('Tool preferences changed during checks; apply preferences again')
+      assert(this.taskSettings, 'Task settings require initialized storage')
+      await this.taskSettings.savePreferences(agent.id, preferences)
       this.preferences.set(agent.id, preferences)
     }
     return structuredClone(this.preferences.get(agent.id) ?? { toolIds: [], tags: [], collectionIds: [] })
@@ -1566,9 +1638,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const combined = AbortSignal.any([signal, this.shutdown.signal])
       if (environment.kind === 'docker' && !environment.externalContainer && !environment.containerId)
         await manager.start(environment, combined)
-      const key = this.toolObservationKey(environment)
+      const revision = environment.kind === 'local' && this.toolConfiguration.path !== undefined
+        ? this.toolConfiguration.read(environment.id).revision : undefined
       const inventory = await manager.inventory(environment, combined, toolIds)
-      return { key, inventory }
+      if (revision !== undefined) this.toolConfiguration.reconcile(inventory, revision)
+      return { key: this.toolObservationKey(environment), inventory }
     })
     this.pending.add(pending)
     try {

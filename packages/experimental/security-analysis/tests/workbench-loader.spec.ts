@@ -973,7 +973,7 @@ else if (args.includes('--output')) {
     expect((await ctx.securityWorkbench.toolPreferences(other.agent)).toolIds).toEqual([])
     await ctx.securityWorkbench.toolPreferences(other.agent, JSON.stringify({ toolIds: ['tshark'], tags: [], collectionIds: [] }))
     await other.dispose()
-    expect((await ctx.securityWorkbench.toolPreferences(other.agent)).toolIds).toEqual([])
+    expect((await ctx.securityWorkbench.toolPreferences(other.agent)).toolIds).toEqual(['tshark'])
     expect((await ctx.securityWorkbench.toolPreferences(agent)).toolIds).toEqual(['radare2'])
     await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: [], tags: [], collectionIds: [] }))
     expect(await ctx.securityWorkbench.toolPreferences(agent)).toEqual({ toolIds: [], tags: [], collectionIds: [] })

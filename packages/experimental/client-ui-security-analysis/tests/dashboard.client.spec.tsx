@@ -52,6 +52,9 @@ function harness(extra: object = {}) {
     report: vi.fn(async () => '# Report'), findSession: vi.fn(async () => 's1'),
     createSession: vi.fn(async () => 'new'), associateSession: vi.fn(async () => {}), resumeProject: vi.fn(async () => {}),
     stopProject: vi.fn(async () => {}), createWorkspace: vi.fn(async () => 'workspace'),
+    restartTask: vi.fn(async () => ({ sessionId: 'fresh', projectId: 'Beta', objective: 'Review owned code' })),
+    openRestartDraft: vi.fn(async () => {}),
+    notifyImprovement: vi.fn(),
     retainSession: vi.fn((id: string) => ({ sessionId: id, ready: Promise.resolve(), release })),
     subscribeReset: () => () => {}, manageProject: vi.fn(async (_projectId: string, _input: string) => '[]'), laboratory: vi.fn(),
     t: makeTranslate(en, common), useWorkspaces: (select: (state: object) => unknown) => select({ items: [{ workspaceId: 'workspace', path: '/owned', title: 'Owned' }] }),
@@ -62,6 +65,43 @@ function harness(extra: object = {}) {
   // The fixture supplies only framework seats consumed by this component.
   return { api, release, props: api as Parameters<typeof Dashboard>[0] }
 }
+it('confirms a restart and opens its fresh draft without sending or creating another Session', async () => {
+  const { api, props } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  const trigger = await screen.findByRole('button', { name: en.restartTask })
+  expect(trigger.parentElement?.contains(screen.getByRole('button', { name: en.dashboardAssistant }))).toBe(true)
+  fireEvent.click(trigger)
+  expect(api.restartTask).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
+  await waitFor(() => { expect(api.openRestartDraft).toHaveBeenCalledWith('fresh', 'Review owned code') })
+  expect(api.restartTask).toHaveBeenCalledWith('s1', {})
+  expect(api.notifyImprovement).toHaveBeenCalledWith(en.restartTaskReady)
+  expect(api.createSession).not.toHaveBeenCalled()
+  expect(api.associateSession).not.toHaveBeenCalled()
+})
+it('cancels restart with Escape and returns focus to its visible entry', async () => {
+  const { api, props } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  const trigger = await screen.findByRole('button', { name: en.restartTask })
+  fireEvent.click(trigger)
+  fireEvent.keyDown(screen.getByRole('group', { name: en.restartTaskConfirm }), { key: 'Escape' })
+  expect(screen.queryByRole('group', { name: en.restartTaskConfirm })).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+  expect(api.restartTask).not.toHaveBeenCalled()
+})
+it('keeps failed restart available and separates actionable copy from technical details', async () => {
+  const restartTask = vi.fn().mockRejectedValue(new Error('HTTP 404'))
+  const { props } = harness({ restartTask })
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  fireEvent.click(await screen.findByRole('button', { name: en.restartTask }))
+  fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
+  expect((await screen.findByRole('alert')).textContent).toBe(en.restartTaskFailed)
+  expect(screen.getByText('HTTP 404', { exact: false }).closest('details')?.open).toBe(false)
+  expect(screen.getByRole('button', { name: en.restartTaskConfirm }).hasAttribute('disabled')).toBe(false)
+})
 it('reuses a configured laboratory image only after an explicit project action', async () => {
   const laboratory = vi.fn(async () => ({ revision: 2, records: [alpha] }))
   const { api, props } = harness({ laboratory })

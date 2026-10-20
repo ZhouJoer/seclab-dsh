@@ -281,6 +281,57 @@ describe('buildLowLabelAcl failure paths', () => {
 })
 
 describe('mergeAndApply failure paths', () => {
+  it.each([0, 2, 3])('restores temporary tree label access after failure at apply %s', (failure) => {
+    const sid = craftSid(1, 0)
+    const calls: number[] = []
+    const api = aclApi({
+      setNamedSecurityInfoW: vi.fn((_path: string, _kind: number, information: number) => {
+        calls.push(information)
+        return calls.length === failure ? 5 : 0
+      }),
+      openProcess: vi.fn(() => 31n as NativePtr),
+      openProcessToken: vi.fn((_process, _access, slot) => { koffi.encode(slot, PVOID, 32n); return 1 }),
+      getTokenInformation: vi.fn((_token, _class, buffer, _length, needed) => {
+        koffi.encode(needed, 'uint32', 16)
+        if (Buffer.isBuffer(buffer)) buffer.writeBigUInt64LE(ptrAddress(sid), 0)
+        return buffer ? 1 : 0
+      }),
+    })
+    const run = () => { grantWrite(api, 'C:\\granted', sid, craftLowLabelSid(), craftWorldSid(), true) }
+    if (failure === 0) expect(run).not.toThrow()
+    else expect(run).toThrow('SetNamedSecurityInfoW')
+    expect(calls).toEqual(failure === 3 ? [4, 16, 4, 4] : [4, 16, 4])
+    const entries = (api.setEntriesInAclW as Mock).mock.calls[1]?.[1] as Buffer
+    expect(entries.readUInt32LE(0)).toBe(abi.WRITE_OWNER)
+    expect(entries.readUInt32LE(8)).toBe(abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT)
+  })
+
+  it.each([true, false])('removes temporary non-inheriting label access after apply (success=%s)', (success) => {
+    const sid = craftSid(1, 0)
+    const calls: number[] = []
+    const closeHandle = vi.fn(() => 1)
+    const apply = vi.fn((_path: string, _kind: number, information: number) => {
+      calls.push(information)
+      return calls.length === 1 || calls.length === 3 && !success ? 5 : 0
+    })
+    const api = aclApi({ setNamedSecurityInfoW: apply, closeHandle,
+      openProcess: vi.fn(() => 31n as NativePtr),
+      openProcessToken: vi.fn((_process, _access, slot) => { koffi.encode(slot, PVOID, 32n); return 1 }),
+      getTokenInformation: vi.fn((_token, _class, buffer, _length, needed) => {
+        koffi.encode(needed, 'uint32', 16)
+        if (Buffer.isBuffer(buffer)) buffer.writeBigUInt64LE(ptrAddress(sid), 0)
+        return buffer ? 1 : 0
+      }),
+    })
+    const run = () => { grantWrite(api, 'C:\\granted', sid, craftLowLabelSid(), craftWorldSid()) }
+    if (success) expect(run).not.toThrow()
+    else expect(run).toThrow('SetNamedSecurityInfoW')
+    expect(calls).toEqual(success ? [20, 4, 20] : [20, 4, 20, 4])
+    const entries = (api.setEntriesInAclW as Mock).mock.calls[1]?.[1] as Buffer
+    expect(entries.readUInt32LE(0)).toBe(abi.WRITE_OWNER)
+    expect(entries.readUInt32LE(8)).toBe(0)
+    expect(closeHandle).toHaveBeenCalledWith(32n)
+  })
   it('reports a SetEntriesInAclW failure when the directory carries no descriptor to free', () => {
     const api = aclApi({ setEntriesInAclW: vi.fn(() => 5) }) // default descriptor: none
     const sid = craftSid(1, 0)
@@ -347,7 +398,7 @@ describe('mergeAndApply failure paths', () => {
 
   it('frees the merged ACL and the label ACL and reports when SetNamedSecurityInfoW fails', () => {
     const localFree = vi.fn(() => 0n as NativePtr)
-    const api = aclApi({ setNamedSecurityInfoW: vi.fn(() => 5), localFree })
+    const api = aclApi({ setNamedSecurityInfoW: vi.fn(() => 87), localFree })
     const sid = craftSid(1, 0)
     let caught: unknown
     try {

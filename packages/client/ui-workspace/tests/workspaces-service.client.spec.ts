@@ -1442,7 +1442,25 @@ describe('UiWorkspaceService', () => {
     b.workspaces.list.set(workspaceState([], [sid('current')]))
 
     expect(b.sessions.retained[0]!.release).toHaveBeenCalledOnce()
-    expect(b.selectPanel).toHaveBeenCalledTimes(2)
+    expect(b.selectPanel).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the active panel and its pending navigation when the selected Session is archived remotely', () => {
+    const b = bench()
+    b.uiWorkspace.openSession(sid('current'))
+    const panel = 'other-panel' as MainPanelId
+    b.layout.selectPanel(panel)
+    b.selectPanel.mockClear()
+    const navigation = b.layout.beginNavigation()
+
+    b.workspaces.list.set(workspaceState([], [sid('current')]))
+
+    expect(b.sessions.retained[0]!.release).toHaveBeenCalledOnce()
+    expect(b.selectPanel).not.toHaveBeenCalled()
+    expect(navigation.aborted).toBe(false)
+    b.uiWorkspace.openSession(sid('fresh'))
+    expect(b.sessions.retained.at(-1)!.reference.sessionId).toBe(sid('fresh'))
+    expect(b.selectPanel).toHaveBeenCalledExactlyOnceWith(null)
   })
 
   it('clears a selected Session after archiving it without an intervening snapshot', async () => {

@@ -6,6 +6,7 @@ import { expect, it, onTestFinished } from 'vitest'
 import { LocalToolConfiguration, toolConfigurationInput } from '../src/tool-configuration.ts'
 import { readSecurityTools, readToolSettings } from '../src/local-tools.ts'
 import type { SecurityEnvironment } from '../src/workbench/providers.ts'
+import type { ToolboxInventory } from '../src/toolbox-types.ts'
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'dsh-adapter-settings-'))
@@ -19,6 +20,23 @@ function fixture() {
   const open = () => new LocalToolConfiguration(path, local, undefined, [local, docker], { radare2: 'local' })
   return { root, path, local, docker, open }
 }
+it('saves unique discovery for adapter routing without replacing pins or binding a tool', () => {
+  const { open, path } = fixture()
+  const settings = open()
+  const inventory: ToolboxInventory = { environmentId: 'local', kind: 'local', runtime: 'ready', detail: '',
+    checkedAt: 0, workdir: '', tools: [{ id: 'file', category: 'utility', status: 'available', command: process.execPath,
+      location: process.execPath, version: 'fixture', source: 'PATH', detail: '', installUrl: '', invocation: 'shell' }] }
+  const revision = settings.read().revision
+  expect(settings.reconcile(inventory, revision)).toBe(true)
+  expect(open().route('file', ['local'])).toBe('local')
+  expect(readToolSettings(path).bindings).toEqual({})
+  expect(() => settings.reconcile(inventory, revision)).toThrow('changed')
+  const current = settings.read().revision
+  expect(settings.reconcile({ ...inventory, tools: [{ ...inventory.tools[0]!, command: path }] }, current)).toBe(false)
+  expect(settings.read().tools.find(tool => tool.id === 'file')?.command).toBe(process.execPath)
+  expect(settings.reconcile({ ...inventory, tools: [{ ...inventory.tools[0]!, id: 'strings',
+    status: 'not-checked', candidates: [process.execPath, path] }] }, current)).toBe(false)
+})
 it('upgrades legacy local pins while keeping Docker paths, routes and manager state independent', () => {
   const { path, local, docker, open } = fixture()
   writeFileSync(path, JSON.stringify({ radare2: process.execPath }))

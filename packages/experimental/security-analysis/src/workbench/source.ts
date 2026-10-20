@@ -71,6 +71,10 @@ export async function importSource(store: ArtifactStore, path: string, roots: st
     for (const name of names) {
       if (++entries > limits.entries) throw new Error(`Source snapshot exceeds the configured entry limit (${limits.entries}; visited ${entries}). Increase security-workbench.maxDerivedAssets and restart the Host, or select a smaller directory.`)
       const path = memberPath.parse(prefix + name)
+      if (path === '.dsh/analysis') {
+        manifest.excluded.push({ path, reason: 'Task analysis outputs are not input materials' })
+        continue
+      }
       const absolute = join(directory, name)
       const stat = await lstat(absolute)
       if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) {

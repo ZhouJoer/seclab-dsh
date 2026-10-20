@@ -63,7 +63,7 @@ sandbox.dispose() // revokes the revocable (temp) grant and label, keeps the sta
 rmSync(tempDir, { recursive: true, force: true })
 ```
 
-工作区的安全描述符改动以常驻方式授予——`dispose()` 保留它们，因为它们是跨实例的复用缓存——而不同的临时 SID 以可回收方式授予。每次授权就是一次调用，同时携带能力 SID 允许 ACE、环境性删除拒绝与 Low 禁止上调标签。服务端对应实现是 `AclWriteGrant` 类：每个目录一次 `add(path, standing)`，`dispose()` 撤销可回收路径并释放各 SID。
+工作区的安全描述符改动以常驻方式授予——`dispose()` 保留它们，因为它们是跨实例的复用缓存——而不同的临时 SID 以可回收方式授予。每次授权都在启动受限进程前，检查继承子树中的能力 SID 允许 ACE、环境性删除拒绝与 Low 禁止上调标签。服务端对应实现是 `AclWriteGrant` 类：每个目录一次 `add(path, standing)`，`dispose()` 撤销可回收路径并释放各 SID。
 
 ### 隔离给你带来什么
 
@@ -97,7 +97,7 @@ rmSync(tempDir, { recursive: true, force: true })
 
 ### 机制
 
-调用者令牌被复制为 `WRITE_RESTRICTED` 受限令牌，其 restricting SIDs 携带彼此独立的工作区与私有临时目录能力，该令牌还会被降级为 Low 完整性。Windows 执行两次访问检查——先对正常 SID，再对 restricting SID——并且只在两次检查都通过时才授予写类访问；与此同时，内核的强制完整性检查会拒绝对任何未标记为 Low 的对象进行写类访问。写 SID 交叉检查只覆盖对象自身的那次访问检查：Windows 也可以依据父目录的 `FILE_DELETE_CHILD` 权限批准写入或删除，而这项权限不需要任何 restricting SID 副署，因此只带交叉检查的令牌不仅能删除其环境用户 SID 所控制的任何文件，还能删除**另一个授权根目录**内的文件——那里的 Low 标签恰好能通过完整性检查。所以每次授权还会向 world SID 拒绝 `FILE_DELETE_CHILD`，使能力 ACE 的 DELETE 位成为授权根目录内唯一的删除授权来源，并在同一次 `SetNamedSecurityInfoW` 调用中把该目录标记为 Low。工作区 SID 由规范工作区路径确定性派生（`workspaceWriteSid`），因此工作区根目录的安全描述符改动每台机器每个工作区只物化一次，之后每次会话、调用或重启都命中精确 ACE／精确拒绝／精确标签跳过。每个活跃的会话/工作区对则获得一个随机私有临时目录，以及一个从该路径派生的 SID（`tempWriteSid`），因此各会话共享预期的工作区权限，却不会继承彼此的临时目录权限。每个策略专用 Win32 调用和 [`dsh-win32-process`](../../subprocess/win32-process/README.zh.md) 提供的进程原语都有检查；失败抛出携带 API 名、精确错误码、系统文本与失败上下文的 `Win32Error`——从构造上 fail-closed。
+调用者令牌被复制为 `WRITE_RESTRICTED` 受限令牌，其 restricting SIDs 携带彼此独立的工作区与私有临时目录能力，该令牌还会被降级为 Low 完整性。Windows 执行两次访问检查——先对正常 SID，再对 restricting SID——并且只在两次检查都通过时才授予写类访问；与此同时，内核的强制完整性检查会拒绝对任何未标记为 Low 的对象进行写类访问。写 SID 交叉检查只覆盖对象自身的那次访问检查：Windows 也可以依据父目录的 `FILE_DELETE_CHILD` 权限批准写入或删除，而这项权限不需要任何 restricting SID 副署，因此只带交叉检查的令牌不仅能删除其环境用户 SID 所控制的任何文件，还能删除**另一个授权根目录**内的文件——那里的 Low 标签恰好能通过完整性检查。所以每次授权还会向 world SID 拒绝 `FILE_DELETE_CHILD`，使能力 ACE 的 DELETE 位成为授权根目录内唯一的删除授权来源，并在同一次 `SetNamedSecurityInfoW` 调用中把该目录标记为 Low。工作区 SID 由规范工作区路径确定性派生（`workspaceWriteSid`），因此常驻安全描述符可以跨会话复用。供给时，每个 provider 生命周期内每个工作区读取一次后代权限；授权完整时不写 ACL，继承不完整时刷新并验证。每个活跃的会话/工作区对则获得一个随机私有临时目录，以及一个从该路径派生的 SID（`tempWriteSid`），因此各会话共享预期的工作区权限，却不会继承彼此的临时目录权限。每个策略专用 Win32 调用和 [`dsh-win32-process`](../../subprocess/win32-process/README.zh.md) 提供的进程原语都有检查；失败抛出携带 API 名、精确错误码、系统文本与失败上下文的 `Win32Error`——从构造上 fail-closed。
 
 ### 模式与令牌列表
 
@@ -115,7 +115,7 @@ Authenticated Users 在两种列表中都不存在——WMI 命名空间安全�
 node runner.js --workspace <dir> --temp <dir> --mode <read-only|workspace-write> [--write-sid <S-1-4-…> --temp-write-sid <S-1-4-…>] -- <argv...>
 ```
 
-seam 先把确定性工作区 SID 的 ACE 常驻物化（每个工作区每服务器生命周期一次——复用缓存），再为每个活跃的会话/工作区对创建随机私有临时目录和不同的可回收 SID，把两种身份作为必须成对出现的 `--write-sid`/`--temp-write-sid` 传入；runner 对照各自所属路径验证二者，既不授权也不撤销（`manageDacls: false`）。fork 获得不同的临时能力；即使恢复的是同一会话，新的提供方也会给出新的路径和 SID，因此崩溃残留只是失效垃圾。如果不带这一对标志，`--temp` 指定的是根目录：无 agent（智能体）/独立的 workspace-write runner 会创建随机私有子目录，自行管理其临时 SID，重写 TMP/TEMP，并在退出时移除该子目录。重启后重新授权常驻工作区 ACE 是幂等的：`grantWrite` 读取当前 DACL，当完全相同的 ACE 已存在时跳过重新传播。工作区若等于或包含临时根目录，会在任何授权前被拒绝。
+seam 先把确定性工作区 SID 的 ACE 常驻物化（每个工作区每服务器生命周期一次——复用缓存），再为每个活跃的会话/工作区对创建随机私有临时目录和不同的可回收 SID，把两种身份作为必须成对出现的 `--write-sid`/`--temp-write-sid` 传入；runner 对照各自所属路径验证二者，既不授权也不撤销（`manageDacls: false`）。fork 获得不同的临时能力；即使恢复的是同一会话，新的提供方也会给出新的路径和 SID，因此崩溃残留只是失效垃圾。如果不带这一对标志，`--temp` 指定的是根目录：无 agent（智能体）/独立的 workspace-write runner 会创建随机私有子目录，自行管理其临时 SID，重写 TMP/TEMP，并在退出时移除该子目录。重启后重新授权常驻工作区 ACE 是幂等的：`grantWriteTree` 检查根目录和参与继承的后代，只有能力、拒绝条目与 Low 标签都存在时才跳过重新传播。工作区若等于或包含临时根目录，会在任何授权前被拒绝。
 
 启动时若带有 subprocess 控制标记，runner 会通过受限子进程的 CRT 启动表转发 fd 7，并在 spawn 后立即关闭自身副本。可选的 `controlFileDescriptor: 7` 输入要求 `stdio: 'inherit'`；在管道 stdio 下请求它会在进程创建前失败。
 
@@ -129,7 +129,7 @@ seam 先把确定性工作区 SID 的 ACE 常驻物化（每个工作区每服�
 - **控制台隔离不可用。** 以 `CREATE_NO_WINDOW` / `CREATE_NEW_CONSOLE` 创建的子进程在 DLL 初始化期间以 `STATUS_DLL_INIT_FAILED`（`0xC0000142`）死亡；子进程共享宿主控制台，基于管道的 stdio 重定向不受影响。
 - **安全描述符改动是对真实目录的驻留改动。** 工作区 ACE、拒绝项与标签按设计常驻（复用缓存，绝不撤销）；临时改动由 `dispose()` 撤销——但若该目录上仍留有其他能力授权，撤销会保留共享的 Low 标签——撤销后残留的那条拒绝项会随临时目录本身一并消失；手工 `icacls` 清理无法在本平台回收它们（`ERROR_NONE_MAPPED` 1332），请通过本模块回收。
 - **常驻 Low 标签的生命期长于 DSH，并会向其他 Low 完整性的进程放宽该目录树。** 工作区的可继承标签在会话结束后（以及同卷移动后）依然存在，因此任何以同一用户身份运行在 Low 完整性的其他进程——别家产品的 Low-IL 沙箱、受保护模式阅读器——都能写入与删除工作区内的内容，而在 Medium 标签下这会被拒绝。这个标签是写边界的代价：没有它受限子进程根本无法写入，而按会话回收会导致每次供给都要重新传播整棵树。
-- **被授权目录必须由调用者拥有并授予 `WRITE_OWNER`。** 所有者隐式获得的只有 `READ_CONTROL` 与 `WRITE_DAC`；标签位于 SACL，因此合并应用还需要 `WRITE_OWNER`（完全控制目录——即正常工作区情形——本就具备）。DACL 只授予 Modify 的目录现在会大声失败，而不是静默跳过隔离。
+- **被授权目录需要有效的 `WRITE_DAC`。** 所有者身份本身不包含应用 Low 标签所需的 `WRITE_OWNER`。根目录更新可能成功，而 Windows 跳过缺少该权限的已有子对象。初始化验证参与继承的后代；继承不完整时，先临时授予 Host 可继承的 `WRITE_OWNER`，再应用 Low 标签，最后应用不含临时权限的最终 DACL。应用失败会恢复原始 DACL；恢复失败或继承仍不完整时，报告受影响路径并停止初始化。拒绝条目和所有者保持不变，验证跳过受保护的 DACL 子树与链接，不提权，也不退回无隔离执行。进程若在两次 DACL 写入之间终止，可能留下临时的 Host 权限。
 - **环境临时根目录绝不会被隐式授权。** 直接调用方必须提供已存在的私有 `tempDir` 及其不同的 `tempWriteSid`，或用 `tempDir: null` 禁用临时写入；实际临时目录不得与任何可写根目录重叠。
 - **受限子进程的临时能力按每个活跃的会话/工作区对私有。** runner 在 spawn 之前把 TMP/TEMP 改写为该私有目录；共享同一工作区 SID 的两个令牌无法写入彼此的临时目录。
 - **受限令牌下 `whoami` 与令牌检查 cmdlet 可能失败。** 子进程对复制令牌的 `GetTokenInformation` 部分不可用，因此这类报告型 cmdlet 是否可用取决于宿主环境；这是诊断噪音而非运行故障。
@@ -186,7 +186,7 @@ Windows 上多一个目录条目：技能描述随目录进入上下文，正文
 - **常驻工作区 ACE 是不可见残留。** 工作区改名会派生新的 SID；旧路径上的旧 ACE 留在原地（失效、仅含写入 SID），未来的清理命令可以回收它们。
 - **NULL-DACL 目录在 grant+revoke 往返下不保持身份。** 带 NULL DACL 的目录意味着「所有人完全控制」；`grantWrite` 从该 null 构建新 ACL，撤销往返后留下的是 EMPTY（全部拒绝）DACL 而非原始 NULL DACL。真实工作区与临时目录都带真实 DACL，因此这仍是记录在案的边界情形。
 - **受限孙进程的管道 stdio 捕获不可用。** libuv 的管道 stdio 用的是 NAMED pipe，其 client 端打开所请求的写访问没有任何 restricting SID 被授予（是 Win32 层的默认 SD 模板，而非令牌默认 DACL），因此受限进程内 `spawn(..., { stdio: 'pipe' })` 以 EPERM 失败；继承与忽略 stdio 的 spawn 可用，匿名管道（PowerShell 的管道）因受限令牌默认 DACL 携带 restricting SID 全权 ACE 而可用。
-- **授权物化是急切的全树传播。** 在带可继承 ACE 的目录上调用 `SetNamedSecurityInfoW` 会立即遍历每个后代（大型工作区树上以数十秒计）；按工作区身份每台机器每个工作区只付一次，精确 ACE 跳过让后续每次供给都很便宜。
+- **授权物化是急切的全树传播。** 在带可继承 ACE 的目录上调用 `SetNamedSecurityInfoW` 会立即遍历每个后代（大型工作区树上以数十秒计）；仅首次授权或继承不完整时刷新。每个 provider 生命周期内的首次供给仍需读取继承子树的安全描述符，成本随对象数增长；后续命令复用已验证的授权。
 - **读侧隔离与网络策略不在范围内**——`WRITE_RESTRICTED` 只交叉检查写访问；将此后端与读侧策略配对以获得更强隔离。
 - **读取会被其他基于 AppContainer 的工具以包 SID 授权过的对象挡住。** 在本机上，当文件的 DACL 携带针对包 SID（`S-1-15-2-…`）的 ACE 时，Low 完整性的令牌无法访问它——即使同一份 DACL 同时向用户授予完全控制、向 Everyone 授予读取（已观测：只给新文件加这一条 ACE 即可复现拒绝，补授 Everyone 读取无法解除，而同样内容复制到别处仍可读）。其背后的内核规则尚未确证，也不由本包掌控；以 AppContainer 自我隔离的工具正是会写入这类 ACE，因此被它们标记过的目录树对本后端的子进程将不可读。移除外来 ACE（或重新安装受影响的目录树）即可恢复访问。
 - **宽目录与 FAT 卷警告已推迟；FAT 类残留未经验证。** UI 侧警告尚未实现，FAT 卷作为授权根会大声失败，而授权根之外的 FAT 类目标不存储安全描述符；其有效完整性标签由系统分配而非记录在对象上，因此标签层在该处的行为未经测试。FAT 仍被视为遗留残留。

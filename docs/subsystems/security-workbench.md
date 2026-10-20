@@ -90,6 +90,13 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('manageProject') async manageProject(projectId: string, input: string): Promise<string>
 
+/** Archive one round and prepare a fresh conversation without sending a prompt.
+ * @param agent - authenticated source coordinator.
+ * @param input - JSON material choices: replacement paths or null to reuse saved content.
+ * @returns the durable destination and retained objective for the composer.
+ */
+@Remote('restartTask') async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }>
+
 /** Attach user-selected materials without granting model access to their live paths.
  * @param agent - authenticated top-level conversation.
  * @param input - material selection and current revision.

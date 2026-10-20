@@ -19,6 +19,8 @@ import { findingHash } from '../src/workbench/assessment.ts'
 import { bindDelegatedChild } from './delegation-fixture.ts'
 import { refineKnowledge, refinementSchema } from '../src/workbench/knowledge.ts'
 import { SecuritySearchIndex } from '../src/workbench/search.ts'
+import { openTaskSettings } from '../src/task-settings.ts'
+import { SessionId } from '@deepseek-ai/dsh-session'
 
 async function harness(generateReport?: (prompt: string, signal: AbortSignal) => Promise<string>) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-workbench-'))
@@ -79,6 +81,65 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
 }
 
 describe('security workbench', () => {
+  it('retains operator tool preferences and restart destinations after reopening storage', async () => {
+    const { ctx } = await harness()
+    const id = SessionId('settings-fixture')
+    const store = await openTaskSettings(ctx)
+    await store.savePreferences(id, { toolIds: ['radare2'], tags: [], collectionIds: [] })
+    const receipt = await store.restart(id)
+    await store.close()
+    const resumed = await openTaskSettings(ctx)
+    expect(resumed.preferences.get(id)?.toolIds).toEqual(['radare2'])
+    expect(await resumed.restart(id)).toEqual(receipt)
+    expect(await resumed.restart(receipt.sessionId)).not.toEqual(receipt)
+    await resumed.close()
+  })
+  it('restarts with fresh local bytes and saved uploads, retaining settings but no results or approvals', async () => {
+    const { controller, journal, root, assetId, artifacts, send } = await harness()
+    await controller.importMaterials('parent', { operationId: randomUUID(), expectedRevision: journal.view().revision,
+      material: { kind: 'text', name: 'authorization.txt', text: 'Owned fixture; read only' } })
+    const context = { authorization: { basis: 'Owned fixture', scope: 'Sample', allowedActions: 'Read', restrictions: 'No network',
+      expiresAt: 1577836800000 }, background: 'Keep this setting' }
+    const original = controller.view('parent').records.find(item => item.kind === 'engagement')!
+    if (original.kind !== 'engagement') throw new Error('Missing project')
+    await controller.manageProject(original.value.id, { operationId: randomUUID(), expectedRevision: journal.view().revision,
+      action: { kind: 'task-context', taskContext: context } })
+    await send({ kind: 'template', assetId })
+    const path = join(root, 'sample.exe')
+    await writeFile(path, 'MZ new input bytes')
+    const stopped = vi.fn(async () => {})
+    const operationId = randomUUID()
+    const next = await controller.restart('parent', 'fresh', operationId, { [assetId]: path }, stopped)
+    const project = next.records.find(item => item.kind === 'engagement')!
+    expect(project.value).toMatchObject({ taskContext: context, title: original.value.title, objective: original.value.objective,
+      moduleSelection: original.value.moduleSelection, stopped: false })
+    expect(project.value.id).not.toBe(original.value.id)
+    expect(next.records.every(item => ['engagement', 'binding', 'asset'].includes(item.kind))).toBe(true)
+    const files = next.records.filter(item => item.kind === 'asset').map(item => item.value)
+    const sample = files.find(item => 'format' in item)!
+    if (!('artifact' in sample)) throw new Error('Missing sample')
+    expect((await artifacts.read(sample.artifact)).toString()).toBe('MZ new input bytes')
+    expect(files.some(item => item.label === 'authorization.txt')).toBe(true)
+    expect(controller.projects(true).find(item => item.id === original.value.id)?.archived).toBe(true)
+    expect(stopped).toHaveBeenCalledTimes(1)
+    expect((await controller.restart('parent', 'fresh', operationId, {}, stopped)).records).toEqual(next.records)
+  })
+  it('rejects unknown legacy origins before stopping or archiving the old round', async () => {
+    const { controller } = await harness()
+    const stopped = vi.fn(async () => {})
+    await expect(controller.restart('parent', 'fresh', randomUUID(), {}, stopped)).rejects.toThrow('Reselect')
+    expect(stopped).not.toHaveBeenCalled()
+    expect(controller.projects()[0]?.stopped).toBe(false)
+  })
+  it('reuses a legacy material snapshot after explicit confirmation without guessing its live path', async () => {
+    const { controller, assetId, root, artifacts } = await harness()
+    await writeFile(join(root, 'sample.exe'), 'MZ changed live file')
+    const next = await controller.restart('parent', 'fresh', randomUUID(), { [assetId]: null }, async () => {})
+    const sample = next.records.find(item => item.kind === 'asset')?.value
+    if (!sample || !('artifact' in sample)) throw new Error('Missing retained material')
+    expect(sample.inputSource).toEqual({ kind: 'stored' })
+    expect((await artifacts.read(sample.artifact)).toString()).toBe('MZ owned fixture')
+  })
   it('rejects derived inputs belonging to another asset before reading them or running the provider', async () => {
     const { controller, assetId, root, send } = await harness()
     controller.providers.register(new BinaryProvider())

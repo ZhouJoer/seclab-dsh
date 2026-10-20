@@ -2190,6 +2190,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'complete project list, including removed projects.',
       },
       {
+        signature: '@Remote(\'restartTask\') async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }>',
+        description: 'Archive one round and prepare a fresh conversation without sending a prompt.',
+        parameters: [{ name: 'agent', description: 'authenticated source coordinator.' }, { name: 'input', description: 'JSON material choices: replacement paths or null to reuse saved content.' }],
+        returns: 'the durable destination and retained objective for the composer.',
+      },
+      {
         signature: '@Remote(\'importMaterials\') async importMaterials(agent: Agent, input: string): Promise<WorkbenchView>',
         description: 'Attach user-selected materials without granting model access to their live paths.',
         parameters: [{ name: 'agent', description: 'authenticated top-level conversation.' }, { name: 'input', description: 'material selection and current revision.' }],
@@ -8800,7 +8806,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxTool',
-    declaration: 'export interface ToolboxTool {\n    id: string;\n    category: \'runtime\' | \'reverse\' | \'device\' | \'web\' | \'utility\' | \'custom\';\n    status: \'available\' | \'missing\' | \'error\' | \'not-checked\';\n    command: string;\n    prefixArgs?: string[];\n    installation?: {\n        command: string;\n        prefixArgs: string[];\n    };\n    version: string;\n    location: string;\n    python?: {\n        prefix: string;\n        basePrefix: string;\n        virtualEnvironment: boolean;\n        pipAvailable: boolean;\n    };\n    source: string;\n    dependency?: string;\n    detail: string;\n    installUrl: string;\n    invocation: \'shell\' | \'plugin\' | \'python\' | \'provider\';\n    provider?: string;\n}',
+    declaration: 'export interface ToolboxTool {\n    id: string;\n    category: \'runtime\' | \'reverse\' | \'device\' | \'web\' | \'utility\' | \'custom\';\n    status: \'available\' | \'missing\' | \'error\' | \'not-checked\';\n    command: string;\n    prefixArgs?: string[];\n    installation?: {\n        command: string;\n        prefixArgs: string[];\n    };\n    version: string;\n    location: string;\n    python?: {\n        prefix: string;\n        basePrefix: string;\n        virtualEnvironment: boolean;\n        pipAvailable: boolean;\n    };\n    candidates?: string[];\n    source: string;\n    dependency?: string;\n    detail: string;\n    installUrl: string;\n    invocation: \'shell\' | \'plugin\' | \'python\' | \'provider\';\n    provider?: string;\n}',
   },
   {
     name: 'ToolCallBlock',

@@ -35,6 +35,18 @@ beforeEach(() => {
       : ['r2pipe', 'frida', 'capstone', 'pefile'].includes(id) ? '{"version":"1.0","location":"site-packages"}' : '6.2'))
 })
 describe('tool inventory', () => {
+  it('requires a choice between distinct usable interpreters and does not probe their modules', async () => {
+    const result = await fixture(['python', 'python3']).inspect(env, undefined, ['r2pipe'])
+    expect(result.tools[0]).toMatchObject({ id: 'python', status: 'not-checked', command: '', candidates: ['python', 'python3'] })
+    expect(result.tools[1]).toMatchObject({ id: 'r2pipe', status: 'not-checked', detail: 'dependency-unavailable' })
+    expect(run.mock.calls.map(call => call[2])).toEqual(['python', 'python'])
+  })
+  it('continues discovery after an unconfigured placeholder fails its identity probe', async () => {
+    run.mockImplementation(async (_ctx, environment) => ok(environment.tools.find(tool => tool.id === 'python')?.command === 'python'
+      ? 'WindowsApps placeholder' : pythonIdentity('python3')))
+    const result = await fixture(['python', 'python3']).inspect(env, undefined, ['python'])
+    expect(result.tools[0]).toMatchObject({ status: 'available', command: 'python3' })
+  })
   it('reports a failed pinned loader without switching executable or probing dependent plugins', async () => {
     run.mockResolvedValue({ ...ok(''), exitCode: -1073741515 })
     const { inspect, resolveExecutable } = fixture(['selected-radare', 'radare2'])
@@ -133,7 +145,7 @@ describe('tool inventory', () => {
   ])('keeps a failed selected installation instead of probing another candidate: %j', async (failure) => {
     run.mockResolvedValue(failure)
     const { inspect, resolveExecutable } = fixture(['python', 'python3'])
-    const result = await inspect(env, undefined, ['python'])
+    const result = await inspect({ ...env, tools: [{ id: 'python', command: 'python', source: 'Selected', versionArgs: [] }] }, undefined, ['python'])
     expect(result.tools).toMatchObject([{ id: 'python', status: 'error', command: 'python' }])
     expect(resolveExecutable.mock.calls.map(call => call[0])).toEqual(['python'])
     expect(run).toHaveBeenCalledTimes(1)
@@ -150,7 +162,7 @@ describe('tool inventory', () => {
   it('does not substitute another program when the selected executable disappears before the probe', async () => {
     run.mockRejectedValue(new SubprocessExecutableNotFoundError('Selected executable disappeared'))
     const { inspect, resolveExecutable } = fixture(['python', 'python3'])
-    expect((await inspect(env, undefined, ['python'])).tools).toMatchObject([
+    expect((await inspect({ ...env, tools: [{ id: 'python', command: 'python', source: 'Selected', versionArgs: [] }] }, undefined, ['python'])).tools).toMatchObject([
       { id: 'python', status: 'error', command: 'python', detail: 'Selected executable disappeared' },
     ])
     expect(resolveExecutable.mock.calls.map(call => call[0])).toEqual(['python'])

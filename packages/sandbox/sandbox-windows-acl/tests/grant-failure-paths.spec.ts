@@ -8,6 +8,8 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { tmpdir } from 'node:os'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import koffi from 'koffi'
 
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
@@ -90,10 +92,13 @@ describe('AclWriteGrant failure paths', () => {
   it('dispose aggregates a failing revocation into an AggregateError (best-effort cleanup)', () => {
     const { api, failReads } = grantThenFailApi()
     const grant = AclWriteGrant.create('S-1-4-42-42', api)
-    grant.add('C:\\granted')
-    expect(grant.paths).toEqual(['C:\\granted'])
-    failReads()
-    expect(() =>{  grant.dispose() }).toThrow(AggregateError)
+    const directory = mkdtempSync(join(tmpdir(), 'dsh-grant-failure-'))
+    try {
+      grant.add(directory)
+      expect(grant.paths).toEqual([directory])
+      failReads()
+      expect(() =>{  grant.dispose() }).toThrow(AggregateError)
+    } finally { rmSync(directory, { recursive: true, force: true }) }
   })
 
   it('dispose aggregates a failing SID free into an AggregateError', () => {

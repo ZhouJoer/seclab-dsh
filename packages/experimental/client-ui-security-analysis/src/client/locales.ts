@@ -6,6 +6,12 @@ import { taskContextZh, taskContextEn } from './task-context-locales.ts'
 export const NS = 'security-workbench'
 /** Chinese operator-facing security copy. */
 export const zh = {
+  restartTask: '重新开始任务', restartTaskConfirm: '保留设置并重新开始', restartTaskPending: '正在结束旧轮次…',
+  restartTaskHint: '保留目标、授权材料、任务偏好和工具设置。\n新轮次清空分析上下文、证据和审批，旧轮次保留在历史中。已记录来源的本地材料重新读取，上传材料沿用已保存内容，工作区文件保持不变。\n准备完成后，你可以编辑目标、调整材料，再点击发送开始分析。',
+  restartSavedMaterials: '以下历史材料未记录原始路径，将沿用已保存的内容，无需重新选择：',
+  restartTaskFailed: '未能准备新轮次。请重试；如果仍然失败，可展开详情查看原因',
+  restartErrorDetails: '查看错误详情',
+  restartTaskReady: '新轮次已准备好，设置已保留。点击发送开始分析',
   skillUsageTitle: '技能使用', skillUsageRefresh: '刷新',
   skillUsageFailed: '无法读取技能统计，请重试', skillUsagePartial: '统计不完整：无法读取的会话数 / 无法归属任务的读取数',
   skillUsageEmpty: '暂无使用记录', skillUsageReads: '读取', skillUsageErrors: '失败',
@@ -548,6 +554,12 @@ export const zh = {
 export type SecurityKey = keyof typeof zh
 /** English operator-facing security copy. */
 export const en: Record<SecurityKey, string> = {
+  restartTask: 'Restart task', restartTaskConfirm: 'Keep settings and restart', restartTaskPending: 'Stopping the previous round…',
+  restartTaskHint: 'Keep the objective, authorization materials, preferences and tool settings.\nStart without analysis context, evidence or approvals; keep the previous round in history. Reread local materials with recorded paths and reuse saved uploads. Workspace files stay unchanged.\nOnce ready, edit the objective or adjust materials, then select Send to start analysis.',
+  restartSavedMaterials: 'These historical materials have no recorded source path. Their saved content will be reused without reselection:',
+  restartTaskFailed: 'Could not prepare the new round. Try again, or expand the details to inspect the cause.',
+  restartErrorDetails: 'View error details',
+  restartTaskReady: 'New round ready with settings retained. Select Send to begin analysis.',
   skillUsageTitle: 'Skill usage', skillUsageRefresh: 'Refresh',
   skillUsageFailed: 'Could not read skill usage. Retry.', skillUsagePartial: 'Incomplete: unavailable Sessions / reads with unknown task attribution',
   skillUsageEmpty: 'No usage yet', skillUsageReads: 'Reads', skillUsageErrors: 'Failed',

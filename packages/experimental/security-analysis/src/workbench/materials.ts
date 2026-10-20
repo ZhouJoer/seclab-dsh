@@ -1,7 +1,7 @@
 /** Operator-selected files and pasted text converted to immutable analysis assets. @module */
 import assert from 'node:assert/strict'
 import { lstat } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { basename, resolve } from 'node:path'
 import { z } from 'zod'
 import { ArtifactStore, detectFileFormat } from './artifacts.ts'
 import { importSource, isSourceText, saveSourceManifest, sourceManifestSchema } from './source.ts'
@@ -26,6 +26,13 @@ export type MaterialAsset = Omit<FileAsset, 'id' | 'engagementId'> | Omit<Source
  * @returns measured assets; invalid names, encodings and oversized selections reject before publication.
  */
 export async function prepareMaterials(store: ArtifactStore, input: z.infer<typeof materialInputSchema>,
+  limits: { bytes: number; entries: number }): Promise<MaterialAsset[]> {
+  const materials = await prepareInput(store, input, limits)
+  return materials.map(material => ({ ...material, inputSource: input.kind === 'path'
+    ? { kind: 'path', path: resolve(input.path) } : { kind: 'stored' } }))
+}
+
+async function prepareInput(store: ArtifactStore, input: z.infer<typeof materialInputSchema>,
   limits: { bytes: number; entries: number }): Promise<MaterialAsset[]> {
   if (input.kind === 'path') {
     const selected = await lstat(input.path)

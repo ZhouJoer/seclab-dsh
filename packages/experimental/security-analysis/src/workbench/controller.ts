@@ -1,5 +1,6 @@
 /** Security command validation and durable project authority. @module */
 import { createHash, randomUUID } from 'node:crypto'
+import assert from 'node:assert/strict'
 import { z } from 'zod'
 import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
 import { moduleSelectionSchema, moduleAllowsOperation } from '../analysis-modules.ts'
@@ -487,6 +488,65 @@ export class SecurityController {
    */
   async importMaterials(sessionId: string, input: unknown, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
     return this.withArtifactWrite(() => this.importMaterialsImpl(sessionId, input, defaultTaskContext))
+  }
+  /** Start a fresh project from user inputs after draining the old round.
+   * @param sessionId - source coordinator.
+   * @param destination - fresh Session reserved by the operator service.
+   * @param operationId - durable retry identity.
+   * @param replacements - selected paths, or null to explicitly reuse a saved material.
+   * @param stopAgents - stop and await every Agent belonging to the old project.
+   * @returns the new project, with no evidence or execution approvals inherited.
+   */
+  async restart(sessionId: string, destination: string, operationId: string,
+    replacements: Record<string, string | null>, stopAgents: () => Promise<void>): Promise<WorkbenchView> {
+    const completed = this.binding(destination)
+    if (completed) return this.view(destination)
+    return this.withArtifactWrite(async () => {
+      const view = this.view(sessionId)
+      const project = view.records.find(item => item.kind === 'engagement')?.value
+      if (!project || this.binding(sessionId)?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+      const samples = view.records.filter(item => item.kind === 'asset')
+        .map(item => item.value).filter(asset => !('parentId' in asset && asset.parentId))
+      const inputs: Asset[] = []
+      for (const sample of samples) {
+        if ('kind' in sample && sample.kind === 'web')
+          throw new Error('Managed laboratory inputs must be recreated before restarting this task')
+        if ('kind' in sample && sample.kind === 'external-web') { inputs.push(sample); continue }
+        const replacement = replacements[sample.id]
+        const source = replacement === null ? { kind: 'stored' as const }
+          : replacement ? { kind: 'path' as const, path: replacement } : sample.inputSource
+        if (!source) throw new Error('Reselect the original file or directory for: ' + sample.label)
+        if (source.kind === 'path') {
+          const measured = await prepareMaterials(this.artifacts, source,
+            { bytes: this.options.maxArtifactBytes, entries: this.options.maxDerivedAssets })
+          for (const material of measured) inputs.push(assetSchema.parse({ ...material, id: randomUUID(), engagementId: project.id }))
+        } else {
+          await this.artifacts.read(sample.artifact)
+          inputs.push({ ...sample, inputSource: source })
+        }
+      }
+      await this.journal.commit(operationId + ':stop', undefined, { sessionId, destination }, current => [
+        { kind: 'engagement', value: { ...this.project(current, project.id), stopped: true } },
+      ])
+      await Promise.all([stopAgents(), this.cancelExecutions(project.id)])
+      await this.journal.commit(operationId, undefined, { sessionId, destination }, async (current) => {
+        const retained = this.project(current, project.id)
+        const records = this.createRecords(destination, { kind: 'create', title: retained.title,
+          objective: retained.objective, environmentIds: retained.environmentIds, maxAttempts: retained.maxAttempts,
+          taskContext: retained.taskContext, moduleSelection: retained.moduleSelection?.mode === 'manual'
+            ? retained.moduleSelection : { mode: 'auto', modules: [], reason: '' } })
+        const next = records.find(item => item.kind === 'engagement')
+        assert(next?.kind === 'engagement')
+        for (const input of inputs) records.push(...await this.importedRecords(assetSchema.parse({
+          ...input, id: randomUUID(), engagementId: next.value.id,
+        })))
+        records.push({ kind: 'engagement', value: { ...retained, archived: true, stopped: true } })
+        for (const item of current.records) if (item.kind === 'binding' && item.value.engagementId === project.id)
+          records.push({ kind: 'binding', value: { ...item.value, active: false } })
+        return records
+      })
+      return this.view(destination)
+    })
   }
   private async importMaterialsImpl(sessionId: string, input: unknown, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),

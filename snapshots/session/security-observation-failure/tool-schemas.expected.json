@@ -437,7 +437,7 @@
     },
     {
       "name": "security_environment",
-      "description": "Check tool versions and runtime readiness in one project environment. Optionally select toolId when a full inventory exceeds the output budget. Does not install tools, start containers or change devices. Health is not sample evidence.",
+      "description": "Check tool versions and runtime readiness in one project environment, saving unique verified local installations for adapters. Multiple installations require operator selection; existing pins are preserved. Optionally select toolId to narrow inventory. Does not install software, start containers or change devices. Health is not sample evidence.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -1431,7 +1431,7 @@
       },
       {
         "name": "security_environment",
-        "description": "Check tool versions and runtime readiness in one project environment. Optionally select toolId when a full inventory exceeds the output budget. Does not install tools, start containers or change devices. Health is not sample evidence.",
+        "description": "Check tool versions and runtime readiness in one project environment, saving unique verified local installations for adapters. Multiple installations require operator selection; existing pins are preserved. Optionally select toolId to narrow inventory. Does not install software, start containers or change devices. Health is not sample evidence.",
         "parameters": {
           "type": "object",
           "properties": {

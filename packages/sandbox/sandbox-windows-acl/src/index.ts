@@ -47,7 +47,7 @@ import { existsSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 
-import { grantWrite, revokeWrite } from './acl.ts'
+import { grantWriteTree, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import { assertPrivateTempDisjoint } from './path-boundary.ts'
@@ -61,7 +61,7 @@ export { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
 export { ACL_DIAGNOSIS_SKILL, registerAclDiagnosisSkill } from './acl-skill.ts'
 /** Construction options: the workspace/temp allowlists and their distinct SID identities. */
 export interface AclSandboxOptions {
-  /** Directories the confined child may write into (must exist and be caller-owned). */
+  /** Existing directories the confined child may write into; provisioning requires effective WRITE_DAC. */
   writableDirs: readonly string[]
   /**
    * Existing private temp directory to grant. Workspace-write callers must
@@ -268,14 +268,14 @@ export class AclSandbox {
       if (this.manageDacls) {
         if (this.writeSidPtr !== undefined) {
           for (const path of this.writableDirs) {
-            grantWrite(api, path, this.writeSidPtr, lowLabelSid, worldSid)
+            grantWriteTree(api, path, this.writeSidPtr, lowLabelSid, worldSid)
           }
           if (tempDir !== null && this.tempWriteSidPtr !== undefined) {
             // Record BEFORE granting: grantWrite can throw after a successful
             // apply (a LocalFree failure), and the fail-closed catch must still
             // revoke that path (revoking an ungranted path is a no-op merge).
             this.grantedPaths.push({ path: tempDir, sidPtr: this.tempWriteSidPtr })
-            grantWrite(api, tempDir, this.tempWriteSidPtr, lowLabelSid, worldSid)
+            grantWriteTree(api, tempDir, this.tempWriteSidPtr, lowLabelSid, worldSid)
           }
         }
       }

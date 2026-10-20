@@ -108,34 +108,50 @@ export async function inspectToolbox(ctx: Context, environment: SecurityEnvironm
       const candidates = configured ? [configured.command] : [...entry.commands, ...(environment.kind === 'docker' ? [] : toolCandidates(entry, searchDirectories))]
       if (!candidates.length) { row.detail = 'configuration-required'; continue }
       let lastError: unknown
+      const verified = new Map<string, ToolboxTool>()
+      const seen = new Set<string>()
       for (const candidate of candidates) {
+        let resolved = false
         try {
           row.command = environment.kind === 'docker' ? candidate : await ctx.subprocess.resolveExecutable(candidate, {}, signal)
+          resolved = true
+          const key = process.platform === 'win32' && environment.kind !== 'docker' ? row.command.toLowerCase() : row.command
+          if (seen.has(key)) continue
+          seen.add(key)
           executableSelected = true
           if (environment.kind !== 'docker' && process.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(row.command))
             throw new Error('Select the interpreter executable and supply its launcher arguments')
           row.location = row.command
           const tool = { id: entry.id, command: row.command, versionArgs: configured?.versionArgs ?? entry.args, source: row.source }
           const identity = probeIdentity(entry, await run(tool, probeArguments(entry, tool.versionArgs)))
-          if (!identity) { row.status = 'missing'; break }
+          if (!identity) { lastError = new Error('Installation identity probe returned no version: ' + row.command); continue }
           row.version = identity.version; row.location = identity.location ?? row.command
           if (identity.python) row.python = identity.python
           row.status = 'available'
-          break
+          verified.set(key, { ...row })
+          if (configured || environment.kind === 'docker') break
         } catch (error) {
           signal.throwIfAborted()
-          if (configured || !(error instanceof MissingContainerTool
-            || !executableSelected && error instanceof SubprocessExecutableNotFoundError)) throw error
+          if (configured || environment.kind === 'docker' && !(error instanceof MissingContainerTool)
+            || !resolved && !(error instanceof SubprocessExecutableNotFoundError)) throw error
           lastError = error
         }
       }
-      if (row.status === 'not-checked') throw lastError
+      if (verified.size === 1) Object.assign(row, [...verified.values()][0])
+      else if (verified.size > 1) {
+        row.status = 'not-checked'; row.command = ''; row.location = ''; row.version = ''
+        row.candidates = [...verified.values()].map(item => item.command)
+        row.detail = 'Multiple verified installations; choose one in Toolbox: ' + row.candidates.join(', ')
+      } else {
+        throw lastError instanceof Error ? lastError : new Error('No usable installation found', { cause: lastError })
+      }
     } catch (error) {
       signal.throwIfAborted()
       row.detail = error instanceof Error ? error.message : String(error)
       const missing = !executableSelected && error instanceof SubprocessExecutableNotFoundError || error instanceof MissingContainerTool
         || !!entry.dependency && /ModuleNotFoundError|PackageNotFoundError/.test(row.detail)
       row.status = !configured && missing ? 'missing' : 'error'
+      if (entry.dependency && missing) row.detail = 'Module unavailable in selected ' + entry.dependency + ' (' + row.command + '): ' + row.detail
     }
   }
   if (environment.kind === 'docker' && inventory.runtime === 'ready') {
