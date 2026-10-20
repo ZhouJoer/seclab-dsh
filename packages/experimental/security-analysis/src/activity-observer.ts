@@ -43,9 +43,10 @@ export function analysisJobOutcome(snapshot: JobView): Pick<SecurityActivity, 's
  * @param ctx - tool and job lifecycle owner.
  * @param ready - domain initialization.
  * @param catalog - current definition reader; built-ins when omitted.
+ * @returns drain operation awaited before closing the activity store.
  */
 export function installActivityObserver(ctx: Context, ready: Promise<SecurityController>,
-  catalog: () => readonly ToolDefinition[] = () => toolboxCatalog): void {
+  catalog: () => readonly ToolDefinition[] = () => toolboxCatalog): () => Promise<void> {
   const jobs = new Map<string, { record: SecurityActivity; store: SecurityActivityStore }>()
   const pending = new Set<Promise<void>>()
   const settled = async (snapshot: JobView) => {
@@ -55,14 +56,22 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
     jobs.delete(key)
     await entry.store.finish(entry.record.id, analysisJobOutcome(snapshot))
   }
-  ctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
-    if (event.type !== 'settled') return
-    const work = settled(event.job)
-      .catch((error: unknown) => { ctx.logger.error('Security job activity could not be saved: %s', String(error)) })
-      .finally(() => { pending.delete(work) })
-    pending.add(work)
+  let closing: Promise<void> | undefined
+  const close = () => closing ??= (async () => {
+    await (await ready).dispose()
+    await Promise.all(pending)
+  })()
+  ctx.effect(function* () {
+    // Tracked identities remain observable after their Agent scope has detached.
+    yield ctx.jobs.events.subscribe({ owners: 'all' }, (event) => {
+      if (event.type !== 'settled') return
+      const work = settled(event.job)
+        .catch((error: unknown) => { ctx.logger.error('Security job activity could not be saved: %s', String(error)) })
+        .finally(() => { pending.delete(work) })
+      pending.add(work)
+    })
+    yield ctx.effect(() => close)
   })
-  ctx.effect(() => async () => { await Promise.all(pending) })
   ctx.on('tools/post-execute', async (exec, result, next) => {
     if (result.isError && result.error.message === ANALYSIS_PROGRESS_REQUIRED) return next()
     if (exec.agent && result.isError && (['security_static', 'security_execute'].includes(exec.name) || adapterToolId(exec.name))) {
@@ -118,4 +127,5 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
       throw error
     }
   })
+  return close
 }

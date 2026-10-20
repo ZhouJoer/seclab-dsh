@@ -1263,6 +1263,8 @@ export interface WorkbenchConfig {
   importRoots: string[]
   /** Operator-selected execution environments; model commands cannot add environments. */
   environments: SecurityEnvironment[]
+  /** Optional absolute JSON file overriding environments by identity and intake defaults. Missing files add no overrides. */
+  environmentConfigurationPath?: string
   /** Maximum source directory entries or members extracted from one APK. */
   maxDerivedAssets: number
   /** Maximum bytes in one imported sample or immutable artifact. */
@@ -4152,8 +4154,10 @@ export interface Config {
 export interface Config {
   /** Wait duration applied when `job_output` sets `wait` without `timeout_ms` (default 30s). */
   waitTimeoutMs?: number
-  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 60s). */
+  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 10min). */
   maxWaitTimeoutMs?: number
+  /** Whether waits end only on completion or also on unread output and progress (default `completion`). */
+  waitMode?: 'completion' | 'activity'
   /** Whether a completion opens a turn on an idle owner (default `wakeup`). */
   completionDelivery?: CompletionDelivery
   /**

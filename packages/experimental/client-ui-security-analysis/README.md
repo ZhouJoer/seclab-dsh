@@ -32,6 +32,8 @@ Research activity includes a compact, expandable skill-usage list. It reads comm
 <a id="use-this-package"></a>
 ## Use this package
 
+The compact progress entry follows project updates and reconnect snapshots as well as tool activity. Its running indicator includes active child assignments and clears when they complete, fail or are cancelled. Historical child progress reads the authorized Session identity without activating the child.
+
 **Restart task** stays in the task's sticky action bar beside **Analysis assistant**. Its confirmation keeps materials and settings, shows which legacy inputs will reuse saved content, and opens the new Conversation with the objective as an unsent draft. The new Session is selected in the sidebar; sending remains an explicit action. Cancel or Escape returns focus to the entry. Failed requests keep the confirmation open with a retry action and expandable technical details. [Restart behavior](../security-analysis/README.md#use-this-package) defines retained settings and cleared context.
 
 **Authorization and task background** is optional: background alone or neither field is valid. **Default authorization and background** in workspace resources applies only to new tasks. New analysis inherits those defaults and allows a one-task override without saving it back. Existing tasks show a collapsed authorization and background card below the title and actions, above every detail tab. Its summary shows whether each part is filled; expand it to edit in place. Folding preserves unsaved input without saving. Disabling authorization preserves the background. The objective remains a separate input.

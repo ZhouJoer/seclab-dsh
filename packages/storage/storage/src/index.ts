@@ -6,6 +6,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import type { Fiber } from '@deepseek-ai/cordis'
 import { StorageError } from './error.ts'
 import { BackendRegistry } from './registry.ts'
 
@@ -25,6 +26,33 @@ export type { StorageBackend, KvFacet, KvUnit, KvUnitDescriptor } from './backen
  */
 export function storageBackendServiceKey(name: string): string {
   return `storage.backend.${name}`
+}
+
+/**
+ * Retain exact consumer fibers through enclosing-owner disposal, which removes
+ * fibers from the registry before their asynchronous cleanup finishes.
+ * @param ctx - provider activation that owns the service and its resources.
+ * @param service - exact published lifecycle service key.
+ * @returns effect disposer to yield after resource cleanup and before service
+ * publication; withdrawal runs first, then consumer cleanup, then resource release.
+ */
+export function retainStorageConsumers(ctx: Context, service: string): () => Promise<void> {
+  const consumers = new Set<Fiber>()
+  const observe = (fiber: Fiber) => {
+    if (fiber === ctx.fiber) return
+    if (fiber.store?.[service]?.fiber === ctx.fiber) consumers.add(fiber)
+    else if (!fiber.inertia) consumers.delete(fiber)
+  }
+  for (const runtime of ctx.registry.values()) {
+    for (const fiber of runtime.fibers) observe(fiber)
+  }
+  return ctx.effect(function* () {
+    yield ctx.on('internal/status', observe)
+    yield ctx.effect(() => async () => {
+      await Promise.allSettled([...consumers].map(fiber => fiber.await()))
+      consumers.clear()
+    })
+  })
 }
 
 declare module '@deepseek-ai/cordis' {

@@ -9,6 +9,8 @@ import type { SecurityEnvironment } from '../src/workbench/providers.ts'
 vi.mock('../src/workbench/process.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/workbench/process.ts')>(), runProcess: vi.fn(),
 }))
+// The resolver fixture owns available installations; host PATH files are not part of its inventory.
+vi.mock('../src/tool-candidates.ts', () => ({ toolCandidates: () => [] }))
 const run = vi.mocked(runProcess)
 const env: SecurityEnvironment = { id: 'local', label: 'Local', kind: 'local', cwd: process.cwd(), tools: [] }
 const limits = { durationMs: 1000, maxOutputBytes: 8192, graceMs: 100 }

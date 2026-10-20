@@ -1,11 +1,11 @@
 /** The pnpm security source launcher composes the complete, keyless security profile. */
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Loader, { interpolate } from '@deepseek-ai/cordis-plugin-loader'
 import Group from '@deepseek-ai/cordis-plugin-group'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -77,6 +77,42 @@ it('keeps task intake and operator tools in the launched profile and resolves it
       },
       environments: environmentsValue,
     })
+    const scope = {
+      process: { cwd: () => cwd, getBuiltinModule: (id: string) => process.getBuiltinModule(id) },
+      dshHomePath: (...parts: string[]) => join(cwd, '.dsh', ...parts),
+    }
+    const localTools = join(cwd, '.dsh', 'security-tools.json')
+    const homeTools = join(cwd, '.dsh', 'security', 'tools.json')
+    const resolved = (): unknown => interpolate(scope, workbench?.config)
+    expect(resolved()).toMatchObject({ toolConfiguration: { path: cwd + '/.dsh/security-tools.json' } })
+    await mkdir(join(cwd, '.dsh', 'security'), { recursive: true })
+    const savedTools = '{"installations":{"local":{"python":{"command":"custom-python"}}}}'
+    await writeFile(homeTools, savedTools)
+    expect(resolved()).toMatchObject({ toolConfiguration: { path: homeTools } })
+    await writeFile(localTools, savedTools)
+    expect(resolved()).toMatchObject({ toolConfiguration: { path: cwd + '/.dsh/security-tools.json' } })
+    expect(await readFile(homeTools, 'utf8')).toBe(savedTools)
+    expect(await readFile(localTools, 'utf8')).toBe(savedTools)
+    const profilePatch = join(cwd, '.dsh', 'profiles', 'security', 'cordis.patch.yml')
+    const homePatch = join(cwd, '.dsh', 'cordis.patch.yml')
+    const cliPatch = join(cwd, 'explicit.yml')
+    if (!workbench?.config || typeof workbench.config !== 'object') throw new Error('Missing workbench configuration')
+    const saved = { ...workbench.config, analysisTurnTokens: 12345, evolution: { auto: false }, root: join(cwd, 'custom-data') }
+    const patch = (config: object) => JSON.stringify([{ id: 'security-workbench', config }])
+    const effective = async (extra: string[] = []) => {
+      const run = await execa(launch.command, [...launch.args, ...extra], {
+        cwd, env: launch.env, input: '', timeout: 30_000, killSignal: 'SIGKILL', reject: false,
+      })
+      expect(run.exitCode, run.stderr).toBe(0)
+      return (load(run.stdout, { schema: entryListSchema }) as DumpEntry[]).find(entry => entry.id === 'security-workbench')?.config
+    }
+    await writeFile(profilePatch, patch(saved))
+    expect(await effective()).toEqual(saved)
+    expect(await effective()).toEqual(saved)
+    await writeFile(homePatch, patch({ ...saved, analysisTurnTokens: 23456 }))
+    expect(await effective()).toEqual({ ...saved, analysisTurnTokens: 23456 })
+    await writeFile(cliPatch, patch({ ...saved, analysisTurnTokens: 34567 }))
+    expect(await effective(['--patch', cliPatch])).toEqual({ ...saved, analysisTurnTokens: 34567 })
 
     const presetProvider = entries.find(entry => entry.id === 'security-presets')
     expect(presetProvider).toMatchObject({ name: '@deepseek-ai/dsh-experimental-security-profile' })

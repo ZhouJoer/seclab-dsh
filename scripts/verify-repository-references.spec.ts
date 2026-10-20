@@ -8,6 +8,18 @@ import { findRepositoryReferences, scanRepositoryReferences, uniquePrefixMatch }
 
 const organizationUrl = `https://${['github.com', ['deepseek', 'harness'].join('-')].join('/')}`
 
+it('allows only full revision fields consumed by the security merge checker', () => {
+  const commit = 'a'.repeat(40)
+  const commits = new Set([commit, commit.slice(0, 10)])
+  for (const key of ['upstreamCommit', 'reviewedForkCommit']) {
+    const line = `  "${key}": "${commit}",`
+    expect(findRepositoryReferences('scripts/security-compatibility.json', line, commits)).toEqual([])
+    expect(findRepositoryReferences('other.json', line, commits)).toHaveLength(1)
+    expect(findRepositoryReferences('scripts/security-compatibility.json', line.replace(commit, commit.slice(0, 10)), commits)).toHaveLength(1)
+  }
+  expect(findRepositoryReferences('scripts/security-compatibility.json', `  "description": "${commit}",`, commits)).toHaveLength(1)
+})
+
 function repository(test: TestContext) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-repository-references-'))
   test.onTestFinished(() => {

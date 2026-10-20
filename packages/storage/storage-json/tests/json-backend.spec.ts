@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import { runKvBackendContract } from '../../storage/tests/contract.ts'
+import { runStoragePluginLifecycle } from '../../storage/tests/plugin-lifecycle.ts'
 import { Config, JsonStorageBackend, apply } from '../src/index.ts'
 
 const roots: string[] = []
@@ -25,6 +26,12 @@ runKvBackendContract('json', async () => {
     backend: new JsonStorageBackend(root),
     reopen: async () => new JsonStorageBackend(root),
   }
+})
+
+runStoragePluginLifecycle('json', async (ctx) => {
+  const root = await freshRoot()
+  const fiber = await ctx.plugin({ apply, Config, inject: ['storage'] }, { root })
+  return { fiber, reopen: async () => new JsonStorageBackend(root) }
 })
 
 describe('json backend specifics', () => {

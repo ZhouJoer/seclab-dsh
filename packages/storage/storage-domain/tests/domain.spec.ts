@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
@@ -200,6 +200,43 @@ describe('DomainFacility.open', () => {
 })
 
 describe('plugin apply', () => {
+  it.each(['provider', 'root'] as const)('keeps domains writable until an already-disposing consumer finishes on %s teardown', async (target) => {
+    const ctx = new Context()
+    const release = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    onTestFinished(async () => { release.resolve(undefined); await ctx.fiber.dispose() })
+    await ctx.plugin(Storage)
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('memory', backend)
+    ctx.provide(storageBackendServiceKey('memory'), backend)
+    const provider = await ctx.plugin({ inject: ['storage'], apply }, { backend: 'memory' })
+    const failures: unknown[] = []
+    const consumer = await ctx.plugin({
+      inject: ['storageDomain'],
+      async apply(owner: Context) {
+        const domain = await owner.storageDomain.open(bareSpec)
+        owner.effect(() => async () => {
+          entered.resolve(undefined)
+          await release.promise
+          try { await domain.table('rows').put('last', { label: 'saved', count: 1 }) }
+          catch (error) { failures.push(error) }
+          finally { await domain.close() }
+        })
+      },
+    })
+    const leaving = consumer.dispose()
+    await entered.promise
+    const disposal = (target === 'root' ? ctx.fiber : provider).dispose()
+    try {
+      release.resolve(undefined)
+      await Promise.all([leaving, disposal])
+      expect(failures).toEqual([])
+      const saved = await backend.kv.open(descriptorOf(bareSpec))
+      expect((await saved.loadAll()).tables['rows']).toEqual({ last: { label: 'saved', count: 1 } })
+      await saved.close()
+    } finally { release.resolve(undefined); await Promise.all([leaving, disposal]) }
+  })
+
   it('uses only the default backend when routes are omitted', async () => {
     const ctx = new Context()
     await ctx.plugin(Storage)

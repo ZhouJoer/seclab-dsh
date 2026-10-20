@@ -35,13 +35,18 @@
     - id: security-workbench
       name: '@deepseek-ai/dsh-experimental-security-analysis'
       config:
+        analysisTurnTokens: 360000
+        maxDurationMs: 1800000
+        maxDerivedAssets: 1024
         evolution:
           auto: true
-        analysisTurnTokens: 360000
-        root: !!js dshHomePath('security')
+        environmentConfigurationPath: !!js process.cwd() + '/.dsh/security-environments.json'
+        toolCatalogPath: !!js process.cwd() + '/.dsh/security-tool-packs.json'
         toolConfiguration:
-          path: !!js dshHomePath('security/tools.json')
+          path: !!js >-
+            process.getBuiltinModule('node:fs').existsSync(process.cwd() + '/.dsh/security-tools.json') || !process.getBuiltinModule('node:fs').existsSync(dshHomePath('security/tools.json')) ? process.cwd() + '/.dsh/security-tools.json' : dshHomePath('security/tools.json')
           environmentId: local
+        root: !!js dshHomePath('security')
         importRoots: !!js '[process.cwd()]'
         taskIntake:
           workspaces: []
@@ -50,9 +55,65 @@
         environments:
           - id: local
             kind: local
-            label: Local analysis
+            label: Local reverse analysis
             cwd: !!js process.cwd()
-            tools: []
+            tools:
+              - id: python
+                command: python
+                versionArgs: [--version]
+                source: Operator installation with Frida bindings
+              - id: jadx
+                command: jadx
+                versionArgs: [--version]
+                source: Operator JADX installation
+              - id: adb
+                command: adb
+                versionArgs: [version]
+                source: Android platform tools
+              - id: fastboot
+                command: fastboot
+                versionArgs: [--version]
+                source: Android platform tools; inventory only
+              - id: john
+                command: john
+                versionArgs: [--list=build-info]
+                source: Operator audit tools; inventory only
+          # Managed mining container for sanitizer builds and PoC differential runs.
+          # The image must already exist locally; the dsh toolbox recipe builds one.
+          - id: mining
+            kind: docker
+            label: Mining sanitizer builds
+            cwd: !!js process.cwd()
+            image: dsh-security-toolbox:latest
+            tools:
+              - id: docker
+                command: docker
+                versionArgs: [--version]
+                source: Operator Docker installation
+              - id: python
+                command: python3
+                versionArgs: [--version]
+                source: Toolbox image
+              - id: cmake
+                command: cmake
+                versionArgs: [--version]
+                source: Toolbox image
+              - id: make
+                command: make
+                versionArgs: [--version]
+                source: Toolbox image
+              - id: gcc
+                command: gcc
+                versionArgs: [--version]
+                source: Toolbox image
+              - id: clang
+                command: clang
+                versionArgs: [--version]
+                source: Toolbox image
+              - id: pkg-config
+                command: pkg-config
+                versionArgs: [--version]
+                source: Toolbox image
     - id: security-environments
       name: '@deepseek-ai/dsh-experimental-security-analysis/environment'
     - id: security-ghidra

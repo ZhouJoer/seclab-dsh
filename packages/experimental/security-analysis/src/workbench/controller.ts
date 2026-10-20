@@ -136,11 +136,13 @@ export class SecurityController {
     } finally { this.purging = undefined; gate.resolve() }
   }
   private readonly delegated = new Map<AbortController, { project: string; done: Promise<unknown> }>()
+  private readonly releasingEnvironments = new Set<string>()
   private readonly active = new Map<
     string,
     { project: string; environment: string; plan: string; controller: AbortController; done: Promise<void> }
   >()
   private lease(project: string, environment: string, plan: string, key: string | null) {
+    if (this.disposed || this.releasingEnvironments.has(environment)) throw new Error('Security environment is closing')
     const id = key ?? randomUUID()
     if (this.active.has(environment) || this.active.has(id)) throw new Error('Analysis instance is already leased')
     const controller = new AbortController()
@@ -199,6 +201,7 @@ export class SecurityController {
    * @returns disposer releasing the live registration.
    */
   trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void {
+    if (this.disposed) throw new Error('Security workbench is closing')
     if (this.project(this.journal.view(), project).stopped) controller.abort(new Error('Project is stopped'))
     this.delegated.set(controller, { project, done })
     return () => { this.delegated.delete(controller) }
@@ -211,6 +214,7 @@ export class SecurityController {
    * @returns the lifecycle result.
    */
   async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = ''): Promise<T> {
+    if (this.disposed || this.releasingEnvironments.has(environmentId)) throw new Error('Security environment is closing')
     if ([...this.active.values()].some(run => run.environment === environmentId)) throw new Error('Environment is already leased by another operation')
     const controller = new AbortController()
     const settled = Promise.withResolvers<undefined>()
@@ -220,6 +224,22 @@ export class SecurityController {
     } finally {
       this.active.delete(environmentId)
       settled.resolve(undefined)
+    }
+  }
+  /** Cancel consumers before releasing environments owned by one provider activation.
+   * @param environmentIds - environments whose resources are being released.
+   * @param release - resource cleanup, called after admitted consumers settle.
+   * @returns completion after cleanup; other environments remain available.
+   */
+  async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void> {
+    for (const id of environmentIds) this.releasingEnvironments.add(id)
+    try {
+      const runs = [...this.active.values()].filter(run => environmentIds.includes(run.environment))
+      for (const run of runs) run.controller.abort(new Error('Security environment provider disposed'))
+      await Promise.allSettled(runs.map(run => run.done))
+      await release()
+    } finally {
+      for (const id of environmentIds) this.releasingEnvironments.delete(id)
     }
   }
   /**

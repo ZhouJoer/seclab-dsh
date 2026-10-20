@@ -31,10 +31,19 @@ export function installNativeAnalysis(ctx: Context, ready: Promise<SecurityContr
           return state !== 'running' && state !== 'stopping'
         }
         let off = () => {}
-        const cleanup = () => { off(); abort.signal.removeEventListener('abort', kill); release(); done.resolve() }
+        let dispose: () => void | Promise<void> = () => {}
+        const cleanup = () => { off(); abort.signal.removeEventListener('abort', kill); release(); done.resolve(); void dispose() }
         const kill = () => { ctx.jobs.kill(id, owner, 'Security project stopped') }
-        off = ctx.jobs.events.subscribe({ owner }, (event) => {
-          if (event.type === 'settled' && event.job.id === id) cleanup()
+        dispose = ctx.effect(function* () {
+          off = ctx.jobs.events.subscribe({ owner }, (event) => {
+            if (event.type === 'settled' && event.job.id === id) cleanup()
+          })
+          yield off
+          // Completion delivery must survive cancellation during fiber disposal.
+          yield ctx.effect(() => async () => {
+            abort.abort(new Error('Security workbench disposed'))
+            await done.promise
+          })
         })
         abort.signal.addEventListener('abort', kill, { once: true })
         background = true

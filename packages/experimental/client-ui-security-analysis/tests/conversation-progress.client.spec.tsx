@@ -147,3 +147,38 @@ it('keeps the running indicator visible for a child without counting it as a too
   await screen.findByRole('img', { name: 'Running' })
   await waitFor(() => { expect(screen.getByTitle('Tools & progress').textContent).toContain('0') })
 })
+
+it.each(['completed', 'failed', 'cancelled', 'interrupted'] as const)('clears the running indicator when a child becomes %s', async (status) => {
+  const view = project('Alpha')
+  view.records.push(recordSchema.parse({ kind: 'delegation', value: {
+    id: 'child-task', engagementId: 'Alpha', assetId: 'sample', checkpointId: '', parentSessionId: 'session',
+    callId: 'delegate', role: 'researcher', task: 'assessment', question: 'Check the documentation',
+    criterion: 'Return evidence references', createdAt: 1, status: 'running',
+  } }))
+  const update = Promise.withResolvers<undefined>()
+  const resets = new Set<() => void>()
+  let connected = 0
+  const finished: WorkbenchView = { revision: 2, records: view.records.map(record => record.kind === 'delegation'
+    ? { ...record, value: { ...record.value, status } } : record) }
+  const mounted = render(<ConversationProgressEntry sessionId={SessionId('session')} t={makeTranslate(en, common)}
+    subscribeReset={(listener) => { resets.add(listener); return () => { resets.delete(listener) } }}
+    openProgress={vi.fn()} openDashboard={vi.fn()}
+    followSessionView={async function* () { yield view }}
+    followActivity={async function* (_id, signal) {
+      yield { type: 'snapshot', cursor: 0, briefs: [], usage: [], view: ++connected > 1 ? finished : view }
+      const abort = () => { update.resolve(undefined) }
+      signal.addEventListener('abort', abort, { once: true })
+      try {
+        await update.promise
+        if (signal.aborted) return
+        yield { type: 'project', view: finished }
+      } finally { signal.removeEventListener('abort', abort) }
+    }} />)
+  try {
+    await screen.findByRole('img', { name: 'Running' })
+    await act(async () => { update.resolve(undefined) })
+    await waitFor(() => { expect(screen.queryByRole('img', { name: 'Running' })).toBeNull() })
+    await act(async () => { for (const reset of resets) reset() })
+    await waitFor(() => { expect(connected).toBe(2); expect(screen.queryByRole('img', { name: 'Running' })).toBeNull() })
+  } finally { update.resolve(undefined); mounted.unmount() }
+})

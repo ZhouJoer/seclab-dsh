@@ -54,7 +54,7 @@ type EntryProps = ConversationProgressEntryActions & PropsLocale<typeof NS> & { 
  * @returns a small badge without occupying transcript space.
  */
 export function ConversationProgressEntry(props: EntryProps) {
-  const { view, epoch, error } = useSelection(props)
+  const { view, setView, epoch, error } = useSelection(props)
   const project = view.records.find(item => item.kind === 'engagement')?.value.id
   const [count, setCount] = useState<number>()
   const [running, setRunning] = useState(false)
@@ -68,6 +68,9 @@ export function ConversationProgressEntry(props: EntryProps) {
       try {
         for await (const frame of current.current.followActivity(project, abort.signal)) {
           if (abort.signal.aborted) break
+          if (frame.type === 'project' || frame.type === 'snapshot') {
+            setView(previous => frame.view.revision >= previous.revision ? frame.view : previous)
+          }
           if (frame.type === 'project') continue
           setCount(frame.usage.reduce((sum, row) => sum + row.total, 0))
           setRunning(frame.usage.some(row => row.running > 0))

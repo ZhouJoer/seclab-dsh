@@ -24,6 +24,8 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用
 
+Bundle 在 profile、home 和显式 CLI 补丁之前提供工作台默认值。源码启动器初始化 profile 后启动标准 `dsh`，不会替换已保存的工作台配置。`environmentConfigurationPath` 选择启动目录下的 `.dsh/security-environments.json`。工具箱安装信息使用 `.dsh/security-tools.json`；该文件不存在而 Harness home 已有 `security/tools.json` 时，默认继续使用旧文件。显式 `toolConfiguration.path` 始终选择指定文件。预设设置 `tool-jobs.waitMode: activity` 和 `maxWaitTimeoutMs: 60000`；普通 profile 保持等待任务完成。合入上游后查看[分叉兼容清单](../../../scripts/security-compatibility.json)并运行 `pnpm run check:security-compatibility`，它报告两个提交标识并检查构建产物导入、Loader 行为和 Session 记录回放。分析测试要求 PATH 中存在 Python。
+
 此 bundle 随安装提供，默认关闭，需要显式选择。在专用 profile 中按顺序组合 `@deepseek-ai/dsh-base`、应用 bundle、`@deepseek-ai/dsh-experimental-security-profile`。Web 还需在最后加入 `@deepseek-ai/dsh-experimental-security-web-profile`。使用 `dsh --profile <name>` 启动。Web 对话会使用已配置的 `local` 环境自动初始化任务，包括启动目录以外的工作区。精确的 `taskIntake.workspaces` 映射和已保存的工作区选择优先于此默认值。详见[安全分析](../security-analysis/README.zh.md)。
 
 -----

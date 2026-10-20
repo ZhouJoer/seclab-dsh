@@ -81,6 +81,38 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
 }
 
 describe('security workbench', () => {
+  it('drains only the released environment and refuses new consumers until cleanup finishes', async () => {
+    const { controller } = await harness()
+    const done = Promise.withResolvers<undefined>()
+    const released = Promise.withResolvers<undefined>()
+    const cleanup = Promise.withResolvers<undefined>()
+    let localSignal: AbortSignal | undefined
+    let remoteSignal: AbortSignal | undefined
+    const local = controller.manageEnvironment('local', async (signal) => {
+      localSignal = signal
+      await done.promise
+    })
+    const remote = controller.manageEnvironment('kali', async (signal) => {
+      remoteSignal = signal
+      await done.promise
+    })
+    const release = controller.releaseEnvironments(['local'], async () => {
+      released.resolve(undefined)
+      await cleanup.promise
+    })
+    try {
+      expect(localSignal?.aborted).toBe(true)
+      expect(remoteSignal?.aborted).toBe(false)
+      await expect(controller.manageEnvironment('local', async () => {})).rejects.toThrow('closing')
+      done.resolve(undefined)
+      await released.promise
+      await expect(controller.manageEnvironment('local', async () => {})).rejects.toThrow('closing')
+      cleanup.resolve(undefined)
+      await release
+      await expect(controller.manageEnvironment('local', async () => 'available')).resolves.toBe('available')
+    } finally { done.resolve(undefined); cleanup.resolve(undefined); await Promise.all([local, remote, release]) }
+  })
+
   it('retains operator tool preferences and restart destinations after reopening storage', async () => {
     const { ctx } = await harness()
     const id = SessionId('settings-fixture')

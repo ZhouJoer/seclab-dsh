@@ -68,7 +68,7 @@ import { openSecurityJournal, type SecurityJournal } from './workbench/journal.t
 import { SecurityController, commandSchema, type SecurityCommand } from './workbench/controller.ts'
 import { SecuritySearchIndex } from './workbench/search.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
-import { securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
+import { resolveEnvironmentConfiguration, securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
 import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from './toolbox-types.ts'
 import { operationSchema, childReportSchema, recordSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
 import { refineKnowledge, refinementPrompt } from './workbench/knowledge.ts'
@@ -118,6 +118,8 @@ export interface WorkbenchConfig {
   importRoots: string[]
   /** Operator-selected execution environments; model commands cannot add environments. */
   environments: SecurityEnvironment[]
+  /** Optional absolute JSON file overriding environments by identity and intake defaults. Missing files add no overrides. */
+  environmentConfigurationPath?: string
   /** Maximum source directory entries or members extracted from one APK. */
   maxDerivedAssets: number
   /** Maximum bytes in one imported sample or immutable artifact. */
@@ -233,6 +235,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     root: Schema.string().required(),
     importRoots: Schema.array(Schema.string()).required(),
     environments: Schema.array(securityEnvironmentSchema).required(),
+    environmentConfigurationPath: Schema.string(),
     toolAdapters: Schema.object({
       bindings: Schema.dict(Schema.string()).default({}),
       maxItems: Schema.number().step(1).min(1).default(1000),
@@ -283,6 +286,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     private readonly config: WorkbenchConfig,
   ) {
     super(ctx, 'securityWorkbench')
+    config = this.config = resolveEnvironmentConfiguration(config)
     ctx.jobs.attachController('security-analysis')
     if (config.toolCatalogPath && !isAbsolute(config.toolCatalogPath)) throw new Error('toolCatalogPath must be absolute')
     this.catalog = new ToolCatalog(config.toolCatalogPath)
@@ -311,7 +315,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       maxItems: config.toolAdapters.maxItems, modelResultBytes: config.modelResultBytes, pending: this.pending })
     installReportExport(ctx, this.ready, config.exportMaxBytes)
     installNativeAnalysis(ctx, this.ready)
-    installActivityObserver(ctx, this.ready, () => this.toolCatalog().tools)
+    const closeActivity = installActivityObserver(ctx, this.ready, () => this.toolCatalog().tools)
     const output = {
       schema: { type: 'json' } as const,
       render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }],
@@ -908,6 +912,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       try {
         await this.evolution?.close()
         await (await this.ready).dispose()
+        await closeActivity()
         await Promise.allSettled([...this.pending])
       } finally {
         this.index?.close()
@@ -1825,27 +1830,27 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return (await this.ready).view(agent.id)
   }
   /** Follow the project selected by this Session, including selection during a running turn.
-   * @param agent - carrier-resolved agent.
+   * @param sessionId - authenticated Session identity; reading does not activate an Agent.
    * @param signal - connection lifetime.
    * @returns initial selection and committed selection changes.
    */
-  @Remote({ mode: 'stream' })
-  async *followSessionView(agent: Agent, signal: AbortSignal): AsyncIterable<WorkbenchView> {
+  @Remote({ mode: 'stream', resources: { session: (sessionId: SessionId) => sessionId } })
+  async *followSessionView(sessionId: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView> {
     const controller = await this.ready
     assert(this.journal, 'Session selection requires initialized storage')
     const lifetime = AbortSignal.any([signal, this.shutdown.signal])
     lifetime.throwIfAborted()
     const state = { dirty: false }
     let wake = () => {}
-    const off = this.journal.subscribeSelection(agent.id, () => { state.dirty = true; wake() })
+    const off = this.journal.subscribeSelection(sessionId, () => { state.dirty = true; wake() })
     const abort = () => { wake() }
     lifetime.addEventListener('abort', abort, { once: true })
     try {
-      yield controller.view(agent.id)
+      yield controller.view(sessionId)
       while (!lifetime.aborted) {
         const pending = Promise.withResolvers<void>()
         wake = () => { pending.resolve() }
-        if (state.dirty) { state.dirty = false; yield controller.view(agent.id) }
+        if (state.dirty) { state.dirty = false; yield controller.view(sessionId) }
         else await pending.promise
       }
     } finally { off(); lifetime.removeEventListener('abort', abort) }

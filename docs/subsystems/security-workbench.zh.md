@@ -260,11 +260,11 @@ Optional security profile service; default application compositions remain indep
 @Remote('view') async view(agent: Agent): Promise<WorkbenchView>
 
 /** Follow the project selected by this Session, including selection during a running turn.
- * @param agent - carrier-resolved agent.
+ * @param sessionId - authenticated Session identity; reading does not activate an Agent.
  * @param signal - connection lifetime.
  * @returns initial selection and committed selection changes.
  */
-@Remote({ mode: 'stream' }) async *followSessionView(agent: Agent, signal: AbortSignal): AsyncIterable<WorkbenchView>
+@Remote({ mode: 'stream', resources: { session: (sessionId: SessionId) => sessionId } }) async *followSessionView(sessionId: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView>
 
 /**
  * Apply a user-authored command including approval gestures.

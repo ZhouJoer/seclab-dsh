@@ -1,3 +1,8 @@
+- id: tool-jobs
+  config:
+    waitMode: activity
+    maxWaitTimeoutMs: 60000
+
 - id: llm-deepseek
   name: '@deepseek-ai/dsh-llm-deepseek-api-key'
   disabled: true

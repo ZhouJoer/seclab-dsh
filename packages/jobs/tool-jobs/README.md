@@ -45,7 +45,7 @@ Waking is unbounded by default: an unattended agent that chains background comma
 
 Loading the plugin with no config is the common path; a `waitTimeoutMs` above `maxWaitTimeoutMs` fails at load.
 
-With `wait: true`, unread model-visible output returns immediately. Otherwise new output, a changed progress line, or settlement releases the wait; observer-only logs do not. A timeout reports that the job remains running and asks the model to report status rather than repeat an unchanged wait. Reading partial output preserves the later completion notice. Producer-side buffering, such as piping a command through `Select-Object -Last`, can still withhold all output until the command ends.
+With `waitMode: completion` (the default), `wait: true` waits for settlement or timeout even when output is available. With `waitMode: activity`, unread model-visible output returns immediately. Otherwise new output, a changed progress line, or settlement releases the wait; observer-only logs do not. A timeout reports that the job remains running and asks the model to report status rather than repeat an unchanged wait. Reading partial output preserves the later completion notice. Producer-side buffering, such as piping a command through `Select-Object -Last`, can still withhold all output until the command ends.
 
 ```yaml
 - name: '@deepseek-ai/dsh-tool-jobs'
@@ -54,7 +54,8 @@ With `wait: true`, unread model-visible output returns immediately. Otherwise ne
 | Field | Default | Meaning |
 |---|---|---|
 | `waitTimeoutMs` | `30,000` | Wait used when `wait: true` omits `timeout_ms` |
-| `maxWaitTimeoutMs` | `60,000` | Cap for model-supplied waits; larger values clamp down to it |
+| `waitMode` | `completion` | Wait for settlement, or use `activity` to return on output or progress |
+| `maxWaitTimeoutMs` | `600,000` | Cap for model-supplied waits; larger values clamp down to it |
 | `completionDelivery` | `wakeup` | `wakeup` opens a turn on an idle owner; `quiet` leaves the notice pending |
 | `maxConsecutiveWakes` | unset | Turns one owner may open by wake before notices degrade to injection; unset means no cap |
 

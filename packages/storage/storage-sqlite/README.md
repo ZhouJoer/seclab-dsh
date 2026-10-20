@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Plugin and root Context teardown await consumers and their final writes before closing storage resources; consumers still own their handles. See [storage cleanup ordering](../storage/README.md#use-this-package).
+
 Use this package when a composition keeps frequently updated domain data in one database: route the relevant domains to this backend and each unit materializes as tables in the configured database file.
 
 ### When to choose it

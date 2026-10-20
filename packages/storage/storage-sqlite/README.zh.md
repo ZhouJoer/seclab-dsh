@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+插件卸载和根 Context 卸载都会先等待消费者的最后写入，再关闭存储资源；消费者仍负责关闭自己的句柄。详见[存储清理顺序](../storage/README.zh.md#use-this-package)。
+
 当组合把频繁更新的领域数据保存在一个数据库中时使用本包：把相关领域路由到此后端，每个单元即作为表物化在配置的数据库文件中。
 
 ### 何时选择

@@ -33,14 +33,16 @@ import Subagents from '@deepseek-ai/dsh-subagent'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import Jobs from '@deepseek-ai/dsh-jobs-local'
 import { JobId } from '@deepseek-ai/dsh-jobs'
+import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkbenchView } from '../src/workbench/model.ts'
 import { createScope, bindScopeParent, scopeOf } from '@deepseek-ai/dsh-scope'
 import Approval from '@deepseek-ai/dsh-user-approval'
 import Skills from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import Security from '../src/workbench/index.ts'
-import type { ToolInstallation } from '../src/workbench/providers.ts'
+import type { SecurityEnvironment, ToolInstallation } from '../src/workbench/providers.ts'
 import { findingHash } from '../src/workbench/assessment.ts'
+import { SecurityActivityStore } from '../src/workbench/activity.ts'
 import { bindDelegatedChild } from './delegation-fixture.ts'
 import type { SessionBinding } from '../src/workbench/model.ts'
 import type { EvolutionConfig } from '../src/evolution.ts'
@@ -355,6 +357,49 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('drains owned container consumers before removal without cancelling another environment', async () => {
+    const { ctx, controller } = await load(false, 0, { native: true })
+    const root = roots[roots.length - 1]!
+    const log = join(root, 'docker.jsonl')
+    const script = join(root, 'docker.mjs')
+    await writeFile(script, `import { appendFileSync } from 'node:fs'
+const args = process.argv.slice(2)
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n')
+if (args[0] === 'image') console.log('sha256:' + 'a'.repeat(64))
+else if (args[0] === 'inspect') console.log('true')
+else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker operation')
+`)
+    const environment: SecurityEnvironment = { id: 'managed', kind: 'docker', label: 'Owned fixture', cwd: root, image: 'fixture',
+      tools: [{ id: 'docker', command: process.execPath, prefixArgs: [script], versionArgs: ['--version'], source: 'Fixture' }] }
+    controller.options.environments.push(environment)
+    const manager = controller.environments.get('local').manager
+    const container = await controller.manageEnvironment(environment.id, signal => manager.start(environment, signal))
+    const ownedDone = Promise.withResolvers<undefined>()
+    const otherDone = Promise.withResolvers<undefined>()
+    const cancelled = Promise.withResolvers<undefined>()
+    onTestFinished(() => { ownedDone.resolve(undefined); otherDone.resolve(undefined); cancelled.resolve(undefined) })
+    let otherSignal: AbortSignal | undefined
+    const owned = controller.manageEnvironment(environment.id, async (signal) => {
+      signal.addEventListener('abort', () => { cancelled.resolve(undefined) }, { once: true })
+      await ownedDone.promise
+    })
+    const other = controller.manageEnvironment('local', async (signal) => { otherSignal = signal; await otherDone.promise })
+    const disposal = [...ctx.registry.get(Environments)!.fibers][0]!.dispose()
+    try {
+      await cancelled.promise
+      expect(await readFile(log, 'utf8')).not.toContain('"rm"')
+      expect(otherSignal?.aborted).toBe(false)
+      ownedDone.resolve(undefined)
+      await disposal
+      const calls = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[])
+      expect(calls.filter(args => args[0] === 'rm')).toEqual([['rm', '--force', container]])
+      expect(environment.containerId).toBeUndefined()
+      expect(otherSignal?.aborted).toBe(false)
+      await ctx.plugin(Environments)
+      expect(controller.environments.list()).toEqual(['local'])
+    } finally { ownedDone.resolve(undefined); otherDone.resolve(undefined); await Promise.all([owned, other, disposal]) }
+  })
+
   it('rejects unknown scope kinds instead of presenting imported materials as absent', async () => {
     const { ctx, agent } = await load()
     for (const kind of ['assets', 'project']) {
@@ -1184,7 +1229,8 @@ else if (args.includes('--output')) {
     }
   })
 
-  it.each([false, true])('cancels native processes on project stop or archive (background=%s)', async (background) => {
+  it.each(['stop', 'archive', 'plugin', 'root'] as const)('cancels native processes on %s disposal', async (target) => {
+    const background = target !== 'stop'
     const { ctx, agent, controller } = await load(false, 0, { native: true })
     ctx.jobs.attachController('native-test')
     const root = roots[roots.length - 1]!
@@ -1200,6 +1246,21 @@ else if (args.includes('--output')) {
     await vi.waitFor(async () => { expect(await readFile(ready, 'utf8')).toBe('ready') }, { timeout: 10_000 })
     const projectId = controller.binding(agent.id)!.engagementId
     expect(controller.activity!.usage(projectId)).toMatchObject([{ total: 1, running: 1, completed: 0 }])
+    if (target === 'plugin' || target === 'root') {
+      expect((await running).isError).toBe(false)
+      const terminal = ctx.jobs.wait(ctx.jobs.list(agent.id)[0]!.id, 10_000, agent.id)
+      await (target === 'root' ? ctx.fiber : [...ctx.registry.get(Security)!.fibers][0]!).dispose()
+      expect((await terminal).status).toBe('killed')
+      const reader = new Context()
+      contexts.push(reader)
+      await reader.plugin(Storage)
+      await reader.plugin(StorageJson, { root: join(root, 'domain') })
+      await reader.plugin(StorageDomain, { backend: 'json' })
+      const activity = await SecurityActivityStore.open(reader)
+      try { expect(activity.usage(projectId)).toMatchObject([{ total: 1, running: 0, cancelled: 1 }]) }
+      finally { await activity.close() }
+      return
+    }
     if (background) {
       expect((await running).isError).toBe(false)
       const project = controller.binding(agent.id)!.engagementId
@@ -1884,6 +1945,21 @@ it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loa
     .toMatchSnapshot('logged report Session input with an accepted static review')
   expect(model.requests).toHaveLength(1)
   expect(model.requests[0]?.tools ?? []).toHaveLength(0)
+  if (format === 'plain') {
+    const projectId = controller.binding(agent.id)!.engagementId
+    const download = () => controller.exportReport(projectId, report.value.id, 4e6, new Request('http://localhost/export', { method: 'HEAD' }))
+    expect((await download()).status).toBe(200)
+    const done = Promise.withResolvers<undefined>()
+    let consumerSignal: AbortSignal | undefined
+    const consumer = controller.manageEnvironment('local', async (signal) => { consumerSignal = signal; await done.promise })
+    try {
+      await [...ctx.registry.get(Environments)!.fibers][0]!.dispose()
+      await ctx.plugin(Environments)
+      expect(controller.environments.list()).toEqual(['local'])
+      expect(consumerSignal?.aborted).toBe(false)
+      expect((await download()).status).toBe(200)
+    } finally { done.resolve(undefined); await consumer }
+  }
 })
 
 it('rejects a fenced report with missing required fields without publishing an artifact', async () => {
@@ -2547,7 +2623,8 @@ it('streams Session selection from unbound through create, switch and leave, and
   const { ctx, agent, controller } = await load()
   const abort = new AbortController()
   // Remote's AsyncIterable signature erases this generator's void return type.
-  const stream = ctx.securityWorkbench.followSessionView(agent, abort.signal)[Symbol.asyncIterator]() as AsyncIterator<WorkbenchView, void>
+  const stream = ctx.securityWorkbench.followSessionView(agent.id, abort.signal)[Symbol.asyncIterator]() as
+    AsyncIterator<WorkbenchView, void>
   try {
     expect((await stream.next()).value?.records).toEqual([])
     const send = operator(controller, agent)
@@ -2563,6 +2640,28 @@ it('streams Session selection from unbound through create, switch and leave, and
     const pending = stream.next()
     abort.abort()
     expect((await pending).done).toBe(true)
+  } finally { abort.abort(); await stream.return?.() }
+})
+
+it('reads a delegated historical Session without creating an Agent', async () => {
+  const { ctx, agent, controller } = await load()
+  await operator(controller, agent)({ kind: 'create', title: 'History', objective: 'Read saved progress', environmentIds: ['local'], maxAttempts: 1 })
+  await controller.importMaterials(agent.id, { operationId: 'history-material', expectedRevision: controller.view(agent.id).revision,
+    material: { kind: 'text', name: 'owned.txt', text: 'owned' } })
+  const asset = controller.view(agent.id).records.find(item => item.kind === 'asset')!
+  const childId = SessionId('historical-child')
+  await bindDelegatedChild(controller, agent.id, childId, asset.value.id, 'reviewer')
+  const resource = remoteMethods(ctx.securityWorkbench).find(method => method.method === 'followSessionView')?.resources?.session
+  expect(resource?.(childId)).toBe(childId)
+  const create = vi.spyOn(ctx.agents, 'create')
+  const abort = new AbortController()
+  const stream = ctx.securityWorkbench.followSessionView(childId, abort.signal)[Symbol.asyncIterator]()
+  try {
+    const first = await stream.next()
+    expect(first.done).toBe(false)
+    expect(first.value).toEqual(controller.view(childId))
+    expect(create).not.toHaveBeenCalled()
+    expect(ctx.agents.list().map(item => item.id)).toEqual([agent.id])
   } finally { abort.abort(); await stream.return?.() }
 })
 

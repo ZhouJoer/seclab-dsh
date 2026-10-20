@@ -25,6 +25,8 @@ Use `dsh-storage` to keep typed application data durable without adding it to se
 <a id="use-this-package"></a>
 ## Use this package
 
+Storage providers await declared consumers before closing resources, including consumers already removed from the plugin registry while asynchronous cleanup continues. `retainStorageConsumers` retains those fibers until cleanup settles; providers yield resource cleanup, then this waiter, then service publication in one composed effect. Consumers complete their final writes and close handles in their own cleanup.
+
 Use this package to give a composition durable, non-session storage: mount it together with backend and domain-form packages, and host-side packages read and write validated records through `ctx.storageDomain`. The hub itself adds nothing observable — it is the meeting point that makes the family work, and everything below is what a composition gets from it.
 
 ### When to use it

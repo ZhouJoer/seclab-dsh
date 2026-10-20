@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import type { KvUnitDescriptor } from '@deepseek-ai/dsh-storage'
 import { runKvBackendContract } from '../../storage/tests/contract.ts'
+import { runStoragePluginLifecycle } from '../../storage/tests/plugin-lifecycle.ts'
 import * as StorageSqlite from '../src/index.ts'
 import { Config, SqliteStorageBackend, STORAGE_SQLITE_SCHEMA_VERSION } from '../src/index.ts'
 
@@ -32,6 +33,12 @@ runKvBackendContract('sqlite', async () => {
     backend: backendAt(path),
     reopen: async () => backendAt(path),
   }
+})
+
+runStoragePluginLifecycle('sqlite', async (ctx) => {
+  const path = await freshDbPath()
+  const fiber = await ctx.plugin(StorageSqlite, { path })
+  return { fiber, reopen: async () => backendAt(path) }
 })
 
 const DESCRIPTOR: KvUnitDescriptor = {

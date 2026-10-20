@@ -24,6 +24,8 @@ View security projects, checks, environments and evidence inside the conversatio
 <a id="use-this-package"></a>
 ## Use this package
 
+The bundle supplies workbench defaults before profile, home and explicit CLI patches. The source launcher initializes the profile and starts standard `dsh`; it does not replace saved workbench configuration. `environmentConfigurationPath` selects `.dsh/security-environments.json` beside the launch directory. Toolbox installations use `.dsh/security-tools.json`; when that file is absent and an existing Harness-home `security/tools.json` is present, the default keeps using the existing file. Explicit `toolConfiguration.path` always selects its own file. The preset sets `tool-jobs.waitMode: activity` and `maxWaitTimeoutMs: 60000`; ordinary profiles retain completion waits. See the [fork compatibility inventory](../../../scripts/security-compatibility.json) and run `pnpm run check:security-compatibility` after merging upstream; it reports both commit identities and checks built imports, Loader behavior and recorded Session replay. Python must be available on PATH for the analysis fixtures.
+
 This bundle ships disabled and must be selected explicitly. Compose `@deepseek-ai/dsh-base`, an application bundle, and `@deepseek-ai/dsh-experimental-security-profile` in a dedicated profile. For Web, append `@deepseek-ai/dsh-experimental-security-web-profile`. Launch through `dsh --profile <name>`. Web conversations automatically start tasks with the configured `local` environment, including workspaces outside the launch directory. Exact `taskIntake.workspaces` mappings and saved workspace selections override this default. See [security analysis](../security-analysis/README.md).
 
 -----
