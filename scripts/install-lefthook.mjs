@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
   existsSync,
@@ -14,7 +14,10 @@ import {
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import lefthookPackage from 'lefthook/package.json' with { type: 'json' }
+import { runLefthook } from './run-lefthook.mjs'
+import { prepareWindowsEsbuild } from './windows-host-esbuild.mjs'
 
 const MINIMUM_GIT = [2, 26, 0]
 const HOOKS_DIRECTORY = 'dsh-hooks'
@@ -563,14 +566,10 @@ function environmentWithoutCommandGitConfig() {
   return env
 }
 
-function runLefthook(root, lefthook) {
+function installLefthook(root, lefthook) {
   const args = ['install', '--force']
   const env = environmentWithoutCommandGitConfig()
-  // Node refuses to spawn Windows `.cmd` shims directly; the quoted path is
-  // re-parsed by cmd.exe, while POSIX can execute its extensionless shim.
-  const result = process.platform === 'win32'
-    ? spawnSync(`"${lefthook}"`, args, { cwd: root, env, stdio: 'inherit', shell: true })
-    : spawnSync(lefthook, args, { cwd: root, env, stdio: 'inherit' })
+  const result = runLefthook(root, args, env)
   if (result.status !== 0) throw commandFailure(lefthook, args, result)
 }
 
@@ -719,7 +718,13 @@ async function main() {
       ) {
         throw new Error('new worktree-local core.hooksPath did not become the effective direct worktree value')
       }
-      runLefthook(root, lefthook)
+      if (isWindows) {
+        const repository = createHash('sha256').update(root.toLowerCase()).digest('hex')
+        // MSIX can redirect AppData writes into a package-private cache that
+        // other editors cannot see through the installed directory junctions.
+        prepareWindowsEsbuild(root, join(homedir(), '.cache', 'dsh', 'host-esbuild', repository))
+      }
+      installLefthook(root, lefthook)
       updateOwnershipMarker(ownedHooksDirectory.markerPath, hooksPath)
     } catch (error) {
       const rollbackErrors = []

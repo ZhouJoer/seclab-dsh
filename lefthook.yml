@@ -2,6 +2,8 @@
 # repository-wide gate matrix.
 # Install: `node scripts/install-lefthook.mjs` (runs automatically via postinstall).
 
+lefthook: node scripts/run-lefthook.mjs
+
 pre-commit:
   jobs:
     - name: translation pairing (staged records)
