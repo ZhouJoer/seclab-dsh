@@ -215,7 +215,7 @@
       {
         "type": "usage",
         "usage": {
-          "inputTokens": 1200,
+          "inputTokens": 3,
           "outputTokens": 3
         }
       },
@@ -225,6 +225,46 @@
           "kind": "tool-calls"
         }
       }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "select-native-method",
+          "name": "security_command",
+          "arguments": "{\"command\":\"{\\\"operationId\\\":\\\"fixture-native-method\\\",\\\"expectedRevision\\\":14,\\\"action\\\":{\\\"kind\\\":\\\"modules\\\",\\\"selection\\\":{\\\"mode\\\":\\\"auto\\\",\\\"modules\\\":[\\\"reverse.native\\\"],\\\"reason\\\":\\\"Inspect imported native binary and PE helper guidance\\\"}}}\"}"
+        }
+      },
+      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
+      { "type": "finish", "reason": { "kind": "tool-calls" } }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      { "type": "block-start", "index": 0, "blockType": "tool-call" },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "load-native-method",
+          "name": "skill",
+          "arguments": "{\"name\":\"security-native\"}"
+        }
+      },
+      { "type": "usage", "usage": { "inputTokens": 1200, "outputTokens": 3 } },
+      { "type": "finish", "reason": { "kind": "tool-calls" } }
     ]
   },
   {

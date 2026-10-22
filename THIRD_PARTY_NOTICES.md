@@ -36,6 +36,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`@anthropic-ai/sdk`](https://github.com/anthropics/anthropic-sdk-typescript) | MIT |
 | [`@babel/code-frame`](https://github.com/babel/babel) | MIT |
 | [`@browserbasehq/stagehand`](https://github.com/browserbase/stagehand) | MIT |
+| [`@dagrejs/dagre`](https://github.com/dagrejs/dagre) | MIT |
 | [`@deepseek-ai/libreoffice-kit`](https://github.com/deepseek-ai/dsh-libreoffice-kit) | MPL-2.0 |
 | [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) | MIT |
 | [`@eslint-community/regexpp`](https://github.com/eslint-community/regexpp) | MIT |
@@ -71,6 +72,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`@xterm/addon-serialize`](https://github.com/xtermjs/xterm.js/tree/master/addons/addon-serialize) | MIT |
 | [`@xterm/headless`](https://github.com/xtermjs/xterm.js) | MIT |
 | [`@xterm/xterm`](https://github.com/xtermjs/xterm.js) | MIT |
+| [`@xyflow/react`](https://github.com/xyflow/xyflow) | MIT |
 | [`@yarnpkg/parsers`](https://github.com/yarnpkg/berry) | BSD-2-Clause |
 | [`acorn`](https://github.com/acornjs/acorn) | MIT |
 | [`ajv`](https://github.com/ajv-validator/ajv) | MIT |
@@ -90,6 +92,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`exceljs`](https://github.com/exceljs/exceljs) | MIT |
 | [`execa`](https://github.com/sindresorhus/execa) | MIT |
 | [`fast-xml-parser`](https://github.com/NaturalIntelligence/fast-xml-parser) | MIT |
+| [`fast-xml-validator`](https://github.com/NaturalIntelligence/fast-xml-validator) | MIT |
 | [`fflate`](https://github.com/101arrowz/fflate) | MIT |
 | [`got`](https://github.com/sindresorhus/got) | MIT |
 | [`hosted-git-info`](https://github.com/npm/hosted-git-info) | ISC |
@@ -118,6 +121,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`open`](https://github.com/sindresorhus/open) | MIT |
 | [`p-limit`](https://github.com/sindresorhus/p-limit) | MIT |
 | [`papaparse`](https://github.com/mholt/PapaParse) | MIT |
+| [`parse5`](https://github.com/inikulin/parse5) | MIT |
 | [`pdfjs-dist`](https://github.com/mozilla/pdf.js) | Apache-2.0 |
 | [`picomatch`](https://github.com/micromatch/picomatch) | MIT |
 | [`react`](https://github.com/facebook/react) | MIT |
@@ -132,6 +136,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`simple-icons`](https://github.com/simple-icons/simple-icons) | CC0-1.0 |
 | [`supports-color`](https://github.com/chalk/supports-color) | MIT |
 | [`tar`](https://github.com/isaacs/node-tar) | BlueOak-1.0.0 |
+| [`tough-cookie`](https://github.com/salesforce/tough-cookie) | BSD-3-Clause |
 | [`tsx`](https://github.com/privatenumber/tsx) | MIT |
 | [`turndown`](https://github.com/mixmark-io/turndown) | MIT |
 | [`typescript`](https://github.com/microsoft/TypeScript) | Apache-2.0 |
@@ -140,6 +145,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`ws`](https://github.com/websockets/ws) | MIT |
 | [`xlsx`](https://git.sheetjs.com/SheetJS/sheetjs) | Apache-2.0 |
 | [`yaml`](https://github.com/eemeli/yaml) | ISC |
+| [`yauzl`](https://github.com/thejoshwolfe/yauzl) | MIT |
 | [`zod`](https://github.com/colinhacks/zod) | MIT |
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
 
@@ -223,6 +229,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`@types/turndown`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/use-sync-external-store`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/ws`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
+| [`@types/yauzl`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@vitejs/plugin-react`](https://github.com/vitejs/vite-plugin-react) | MIT |
 | [`@vitest/coverage-v8`](https://github.com/vitest-dev/vitest) | MIT |
 | [`@vitest/spy`](https://github.com/vitest-dev/vitest) | MIT |
@@ -290,6 +297,7 @@ The [shared runtime lock](scripts/primary-runtime/lock.json) records each distri
 | [`numpy`](https://github.com/numpy/numpy) | 2.3.5 | BSD-3-Clause |
 | [`openpyxl`](https://foss.heptapod.net/openpyxl/openpyxl) | 3.1.5 | MIT |
 | [`pandas`](https://github.com/pandas-dev/pandas) | 3.0.1 | BSD-3-Clause |
+| [`pefile`](https://github.com/erocarrera/pefile) | 2024.8.26 | MIT |
 | [`pillow`](https://github.com/python-pillow/Pillow) | 12.3.0 | MIT-CMU |
 | [`python-dateutil`](https://github.com/dateutil/dateutil) | 2.9.0.post0 | Apache-2.0 OR BSD-3-Clause |
 | [`python-docx`](https://github.com/python-openxml/python-docx) | 1.2.0 | MIT |

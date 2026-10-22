@@ -50,6 +50,8 @@ The packaged `sdk` profile uses its bundled Python and Office skills by default;
 
 ### Build a carrier payload
 
+The shared Python payload includes `pefile` for PE headers, address mapping and checksums. Its wheel and version are locked with the other libraries, so Python preparation installs it without a separate analysis-time download. Native smoke checks parse a synthetic PE and verify its checksum.
+
 From a repository checkout with dependencies installed, `CI=true pnpm run prepare:primary-runtime --target linux-x64 --output /tmp/dsh-office` writes `primary-runtime/` and `office-skills/`. The shared [download lock](../../../scripts/primary-runtime/lock.json) also covers `linux-arm64`, `mac-arm64`, `mac-x64`, and `win-x64`. `--python-only` omits Node.js and pnpm; `--cache` selects the hash-verified archive cache. The entry executes interpreter and Office read/write checks only for a native target. Cross-target builds require those checks on the target host before deployment.
 
 A container can copy both directories into an immutable image layer and set `DSH_PRIMARY_RUNTIME` to the absolute `primary-runtime/` path. The SDK queries that payload in place. Desktop uses the same builder and retains its Harness-home installation and signing checks.

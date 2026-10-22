@@ -104,6 +104,7 @@ const PYTHON_METADATA: Record<string, { license: string; repo: string; role?: st
   numpy: { license: 'BSD-3-Clause', repo: 'https://github.com/numpy/numpy' },
   openpyxl: { license: 'MIT', repo: 'https://foss.heptapod.net/openpyxl/openpyxl' },
   pandas: { license: 'BSD-3-Clause', repo: 'https://github.com/pandas-dev/pandas' },
+  pefile: { license: 'MIT', repo: 'https://github.com/erocarrera/pefile' },
   pillow: { license: 'MIT-CMU', repo: 'https://github.com/python-pillow/Pillow' },
   'python-dateutil': { license: 'Apache-2.0 OR BSD-3-Clause', repo: 'https://github.com/dateutil/dateutil' },
   'python-docx': { license: 'MIT', repo: 'https://github.com/python-openxml/python-docx' },

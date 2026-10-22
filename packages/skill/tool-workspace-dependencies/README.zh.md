@@ -50,6 +50,8 @@ kind: "package-reference"
 
 ### 构建载体 payload
 
+共享 Python payload 包含用于 PE 头、地址映射和校验和的 `pefile`。其 wheel 与版本随其他库一起锁定，准备 Python 时一并安装，分析阶段无需单独下载。本机冒烟检查会解析合成 PE 并验证校验和。
+
 在已安装依赖的仓库 checkout 中运行 `CI=true pnpm run prepare:primary-runtime --target linux-x64 --output /tmp/dsh-office`，会生成 `primary-runtime/` 和 `office-skills/`。[共享下载锁](../../../scripts/primary-runtime/lock.json)还覆盖 `linux-arm64`、`mac-arm64`、`mac-x64` 和 `win-x64`。`--python-only` 省略 Node.js 和 pnpm；`--cache` 选择经过哈希校验的归档缓存。入口仅对本机目标执行解释器与 Office 读写检查。跨目标构建必须在部署前到目标主机执行这些检查。
 
 容器可将这两个目录复制到不可变镜像层，并将 `DSH_PRIMARY_RUNTIME` 设为 `primary-runtime/` 的绝对路径。SDK 原位查询该 payload。Desktop 使用同一构建器，并保留 Harness-home 安装与签名检查。
