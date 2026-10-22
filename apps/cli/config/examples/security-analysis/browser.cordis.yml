@@ -1,0 +1,8 @@
+# Apply to the security profile before creating or restoring browser Sessions.
+- id: security-browser-use
+  disabled: false
+- id: security-browser-playwright
+  disabled: false
+  config:
+    mode: launch
+    headless: true

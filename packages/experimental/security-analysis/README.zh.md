@@ -89,7 +89,12 @@ Frida 通过 Harness subprocess 使用官方 Python bindings，需要配置已�
 
 JADX 接受 APK/DEX，并明确标记不完整反编译。adb 只操作指定设备，暴露固定的包和设备查询。Android 验证会先核对已安装的 base APK。root、Frida server/Gadget、USB 授权及版本兼容仍由用户准备。可登记 `fastboot`、`john` 的版本参数以检查安装情况；其设备写入或审计操作没有执行 provider。
 
+<a id="tool-inventory-and-acceptance"></a>
 ### 工具清单与验收
+
+Playwright MCP 工具支持交互式 Web 工作流，包括表单登录、页面跳转，以及重复使用当前活动 Session 的 Cookie。选中 Web 模块后，协调者和 Web 分析员可使用明确列出的页面操作工具；其他角色不能执行。任意 JavaScript、上传、浏览器安装及未识别的上游工具不在其中。即使绕过模型工具发现直接调用，执行守卫仍检查权限。配置见[登录指南](../../../docs/user/guide/security-analysis.zh.md#browser-login)。
+
+浏览器调用计入已核实的 Playwright 调用次数，并响应项目取消。通过 `security_capture_analysis` 列出已提交调用，将选定观察保存到分配的资产；活动条目关联生成的不可变证据。采集保留日志文本和附件引用，不读取浏览器输出文件。证据仍为不完整的辅助观察，目标关联由分析员声明；它不批准验证，也不证明漏洞。表单值和页面内容遵循普通 Session 日志规则；敏感凭据需要避开模型和工具输入时，应在有窗口的浏览器中手动输入。浏览器流量使用 Host 网络，不继承 `external-web` 的 origin/IP 约束和凭据存储。
 
 Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测解析。仅在候选程序不存在时继续发现。选定程序的查询失败、超时、空响应或无效 JSON 会报告错误，不尝试其他安装；失败的检查不会保存配置。Python 身份包含解释器位置、环境前缀及 pip 可用性。
 

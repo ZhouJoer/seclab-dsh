@@ -28,6 +28,15 @@
     backend: sqlite
 
 - insert:
+    - id: security-browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+      disabled: true
+    - id: security-browser-playwright
+      name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
+      disabled: true
+      config:
+        mode: launch
+        headless: true
     - id: security-storage-sqlite
       name: '@deepseek-ai/dsh-storage-sqlite'
       config:

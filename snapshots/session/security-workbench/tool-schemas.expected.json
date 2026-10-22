@@ -328,7 +328,7 @@
     },
     {
       "name": "security_capture_analysis",
-      "description": "Omit callIds to list your capturable committed bash, pwsh or job_output call IDs; use jobId to find collected background output and offset for continuation. Then supply returned callIds to save auxiliary target evidence, never output text or background job IDs. Background capture includes the recorded start and earlier output. These logs alone do not establish approved validation or complete implementation evidence.",
+      "description": "Omit callIds to list your capturable committed shell, job_output or Playwright call IDs; use jobId to find collected background output and offset for continuation. Then supply returned callIds to save auxiliary target evidence, never output text or background job IDs. Background capture includes the recorded start and earlier output. Browser capture preserves logged text and attachment references, not browser state. These logs alone do not establish approved validation or complete implementation evidence.",
       "parameters": {
         "type": "object",
         "properties": {

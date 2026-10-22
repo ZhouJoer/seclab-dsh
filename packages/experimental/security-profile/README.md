@@ -32,6 +32,8 @@ This bundle ships disabled and must be selected explicitly. Compose `@deepseek-a
 
 The composition includes the fixed offline `packet-capture` provider and Windows device diagnostics. Python and TShark must be installed separately; browsing never starts a probe. See the [Windows wireless workflow](../../../docs/user/guide/security-analysis.md#windows-wireless) for importing and analyzing recordings.
 
+The existing Playwright MCP provider is available through disabled `security-browser-use` and `security-browser-playwright` entries. Enable both before creating or restoring a Session; the [Web login guide](../../../docs/user/guide/security-analysis.md#browser-login) provides an overlay. The security preset does not implement another browser driver.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

@@ -304,8 +304,8 @@ export class SecurityController {
       signal.throwIfAborted()
       const engagementId = authorize()
       return [{ kind: 'evidence', value: evidenceSchema.parse({
-        id: randomUUID(), engagementId, assetId, title: 'Script analysis log',
-        summary: 'Recorded native tool interaction. Target association is analyst-declared; complete process output and runtime validation are not established.',
+        id: randomUUID(), engagementId, assetId, title: 'Analysis tool log',
+        summary: 'Recorded analysis tool interaction. Target association is analyst-declared; complete output and approved runtime validation are not established.',
         artifact, provider: 'session-tool', operation: 'analysis-log', toolVersion: 'recorded-session',
         request: { callIds }, requestHash, source: { sessionId, callId: callIds[0], channel: 'tool' },
         incomplete: true, createdAt: Date.now(),

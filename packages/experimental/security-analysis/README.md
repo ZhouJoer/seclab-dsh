@@ -89,7 +89,12 @@ Frida uses official Python bindings through Harness subprocess. Configure a Pyth
 
 JADX accepts APK/DEX assets and reports incomplete decompilation explicitly. adb operations select a configured device and expose only fixed package/device queries. Android validation verifies the installed base APK before instrumentation. Root, Frida server/Gadget, USB authorization and compatible versions remain operator prerequisites. Register `fastboot` and `john` with version arguments to inspect installation; no execution provider exposes their device-writing or audit operations.
 
+<a id="tool-inventory-and-acceptance"></a>
 ### Tool inventory and acceptance
+
+Playwright MCP tools support interactive Web workflows, including form login, navigation and repeated use of the same live Session's cookies. With the Web module selected, the coordinator and Web analyst can use the explicit page-operation catalog; other roles cannot execute it. Arbitrary JavaScript, uploads, browser installation and unrecognized upstream tools are excluded. Tools remain subject to the execution guard even when called without model schema discovery. See the [login setup](../../../docs/user/guide/security-analysis.md#browser-login).
+
+Browser calls contribute verified Playwright invocation counts and respond to project cancellation. Use `security_capture_analysis` to list committed calls and save selected observations against an assigned asset; activity entries link to the resulting immutable evidence. Capture retains logged text and attachment references without reading browser output files. Evidence remains auxiliary and incomplete, with analyst-declared target association; it does not approve validation or establish a vulnerability. Form values and page content follow ordinary Session logging, so enter sensitive credentials manually in a headed browser when they must stay out of model/tool inputs. Browser traffic uses the Host network, independently of `external-web` origin/IP enforcement and credential storage.
 
 Host and CLI tool checks share executable discovery, dependency ordering and probe decoding. Discovery continues only when a candidate executable is absent. A selected executable's failed query, timeout, empty response or invalid JSON reports an error without trying another installation; failed checks do not save configuration. Python identities include interpreter location, environment prefixes and pip availability.
 

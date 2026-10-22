@@ -32,6 +32,8 @@ Bundle 在 profile、home 和显式 CLI 补丁之前提供工作台默认值。�
 
 此组合包含固定离线 `packet-capture` provider 和 Windows 设备诊断。Python 与 TShark 需单独安装，浏览页面不会触发探测。导入及分析抓包的步骤见 [Windows 无线流程](../../../docs/user/guide/security-analysis.zh.md#windows-wireless)。
 
+现有 Playwright MCP provider 通过默认关闭的 `security-browser-use` 和 `security-browser-playwright` 条目提供。在创建或恢复 Session 前启用两者；[网页登录指南](../../../docs/user/guide/security-analysis.zh.md#browser-login)提供覆盖配置。安全 preset 不另行实现浏览器驱动。
+
 <a id="understand-the-implementation"></a>
 ## 实现
 

@@ -4,6 +4,7 @@ import { ANALYSIS_FILES_GUIDANCE } from '../analysis-workspace.ts'
 import { TOOL_DISCOVERY_GUIDANCE } from '../analysis-tools.ts'
 import { PUBLIC_RESEARCH_GUIDANCE } from '../methods.ts'
 import { canUseAdapter, toolAdapters } from '../tool-adapter-catalog.ts'
+import { securityBrowserTools } from '../browser-tools.ts'
 
 /** Durable role names shared by tool admission and domain execution. */
 export type SecurityRole = SessionBinding['role']
@@ -17,11 +18,11 @@ export const analysisTools = ['bash', 'pwsh', 'read', 'read_image', 'write', 'ed
   ...toolAdapters.map(tool => tool.toolName),
   'job_list', 'job_output', 'job_kill', 'security_capture_analysis'] as const
 const roleTools: Record<SecurityRole, readonly string[]> = {
-  coordinator: [...researchTools, ...analysisTools, 'security_environment', 'security_static', 'security_command', 'security_execute', 'security_delegate',
+  coordinator: [...researchTools, ...analysisTools, ...securityBrowserTools, 'security_environment', 'security_static', 'security_command', 'security_execute', 'security_delegate',
     'todo_write', 'get_goal', 'create_goal', 'update_goal', 'advisor'],
   reconnaissance: [...evidenceTools, ...analysisTools, 'security_environment', 'security_static'],
   'reverse-analyst': [...researchTools, ...analysisTools, 'security_environment', 'security_static'],
-  'web-analyst': [...researchTools, ...analysisTools, 'security_environment', 'security_static'],
+  'web-analyst': [...researchTools, ...analysisTools, ...securityBrowserTools, 'security_environment', 'security_static'],
   researcher: researchTools,
   reviewer: [...evidenceTools, 'security_review'],
 }

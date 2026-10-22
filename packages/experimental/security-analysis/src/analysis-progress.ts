@@ -2,6 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SecurityController } from './workbench/controller.ts'
 import { adapterToolId } from './tool-adapter-catalog.ts'
+import { isSecurityBrowserTool } from './browser-tools.ts'
 
 const explorationTools = new Set(['bash', 'pwsh', 'read', 'read_image', 'write', 'edit', 'glob', 'grep',
   'web_search', 'web_fetch', 'security_static', 'security_execute', 'security_delegate'])
@@ -37,7 +38,7 @@ export function installAnalysisProgress(ctx: Context, limit: number, controller:
     },
   })
   ctx.tools.guard((exec) => {
-    if (!exec.agent || !(explorationTools.has(exec.name) || adapterToolId(exec.name))) return undefined
+    if (!exec.agent || !(explorationTools.has(exec.name) || adapterToolId(exec.name) || isSecurityBrowserTool(exec.name))) return undefined
     const current = state(exec.agent.id)
     return current && current.pending >= limit ? ANALYSIS_PROGRESS_REQUIRED : undefined
   })

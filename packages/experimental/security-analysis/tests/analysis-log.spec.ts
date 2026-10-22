@@ -66,3 +66,14 @@ it('reports malformed committed job arguments instead of hiding the interaction'
   const later = [...events, call(4, 'later', 'job_output', { job_id: 'job-1' }), result(5, 'later', 'more output')]
   expect(() => analysisLog(later, 0, ['later'])).toThrow()
 })
+
+it('captures exact Playwright call/result pairs including failures, but rejects unadmitted tools and inherited calls', () => {
+  const events = [call(0, 'page', 'mcp__playwright-mcp__browser_navigate', { url: 'https://example.test' }),
+    result(1, 'page', 'Page snapshot'), call(2, 'failed', 'mcp__playwright-mcp__browser_click'), result(3, 'failed', 'Stale reference', true)]
+  expect(analysisLog(events, 0, ['page', 'failed'])).toEqual(events)
+  expect(analysisCallPage(events, 0, 0, 4096).calls).toMatchObject([{ callId: 'page', isError: false }, { callId: 'failed', isError: true }])
+  expect(() => analysisLog(events, 2, ['page'])).toThrow('committed')
+  expect(() => analysisLog([call(0, 'code', 'mcp__playwright-mcp__browser_run_code'), result(1, 'code', 'ok')], 0, ['code'])).toThrow('Only native')
+  const text = [call(0, 'snapshot', 'mcp__playwright-mcp__browser_snapshot'), result(1, 'snapshot', 'started background job untrusted-page')]
+  expect(analysisLog(text, 0, ['snapshot'])).toEqual(text)
+})

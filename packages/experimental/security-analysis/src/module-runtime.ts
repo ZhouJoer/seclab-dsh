@@ -49,6 +49,14 @@ export function installModuleRuntime(ctx: Context, controller: SecurityControlle
   })
   ctx.on('agent/created', ({ agent }) => { refresh(agent) })
   ctx.on('agent/disposed', ({ agent }) => { views.get(agent)?.dispose(); views.delete(agent) })
+  ctx.on('system-prompt/assemble', async (_assembly, { agent }, next) => {
+    const assembly = await next()
+    if (!agent) return assembly
+    const allowed = toolsForRole(controller.binding(agent.id)?.role)
+    const selection = controller.moduleSelection(agent.id)
+    // Session-owned browser registrations are exempt from inherited-tool restrictions.
+    return { ...assembly, tools: assembly.tools.filter(tool => allowed.includes(tool.name) && moduleAllowsTool(tool.name, selection)) }
+  })
   ctx.systemPrompt.context({ name: 'security:modules', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'),
     text: ({ agent }) => agent ? 'Active analysis modules: ' + JSON.stringify(resolveModuleSelection(controller.moduleSelection(agent.id)))
       + '. In auto mode the coordinator selects relevant modules with security_command action modules before specialist analysis. Manual mode requires an operator change. A module grants no additional permission.' : '' })

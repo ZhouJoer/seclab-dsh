@@ -43,6 +43,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { analysisCallPage, analysisLog } from './analysis-log.ts'
+import { isSecurityBrowserTool } from './browser-tools.ts'
 import { installAnalysisBudget } from './analysis-budget.ts'
 import { installAnalysisProgress } from './analysis-progress.ts'
 import { closingBrief } from './turn-brief.ts'
@@ -328,7 +329,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     }
     ctx.tools.register(defineTool({
       name: 'security_capture_analysis',
-      description: 'Omit callIds to list your capturable committed bash, pwsh or job_output call IDs; use jobId to find collected background output and offset for continuation. Then supply returned callIds to save auxiliary target evidence, never output text or background job IDs. Background capture includes the recorded start and earlier output. These logs alone do not establish approved validation or complete implementation evidence.',
+      description: 'Omit callIds to list your capturable committed shell, job_output or Playwright call IDs; use jobId to find collected background output and offset for continuation. Then supply returned callIds to save auxiliary target evidence, never output text or background job IDs. Background capture includes the recorded start and earlier output. Browser capture preserves logged text and attachment references, not browser state. These logs alone do not establish approved validation or complete implementation evidence.',
       parameters: { assetId: { type: 'string', required: true }, callIds: { type: 'array', items: { type: 'string' } },
         jobId: { type: 'string', description: 'Filter the call list by background job ID; collect job_output first.' },
         offset: { type: 'integer', description: 'Call list continuation offset; default 0.' } },
@@ -778,6 +779,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
       if (!exec.agent || !toolsForRole(this.controller?.binding(exec.agent.id)?.role).includes(exec.name))
         return 'Tool is outside the security role capability set'
       if (!moduleAllowsTool(exec.name, this.controller?.moduleSelection(exec.agent.id))) return 'Analysis module is not enabled'
+      if (isSecurityBrowserTool(exec.name)) {
+        try {
+          if (!this.controller?.analysisProject(exec.agent.id)) return 'Select an active security task before using the browser'
+        } catch (error) { return error instanceof Error ? error.message : String(error) }
+      }
       if (this.adapterPreferences(exec.agent.id) && ['bash', 'pwsh'].includes(exec.name))
         return 'Checked tool preferences require dedicated adapters. Shell execution is disabled; ask the operator to clear tool preferences for native workflows.'
       if (['bash', 'pwsh', 'write', 'edit', 'security_capture_analysis'].includes(exec.name)) {

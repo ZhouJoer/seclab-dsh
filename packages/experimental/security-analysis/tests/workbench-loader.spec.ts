@@ -70,6 +70,8 @@ import * as NativePwsh from '@deepseek-ai/dsh-tool-pwsh'
 import SessionQuery from '@deepseek-ai/dsh-session-query'
 import AgentPresets from '@deepseek-ai/dsh-agent-preset-registry'
 import * as NativeJobs from '@deepseek-ai/dsh-tool-jobs'
+import BrowserUse from '@deepseek-ai/dsh-browser-use'
+import * as PlaywrightBrowser from '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
 
 class ExactQuery extends SessionQuery {
   searchSessions(): Promise<never> { return Promise.reject(new Error('Search is outside this fixture')) }
@@ -81,7 +83,8 @@ const roots: string[] = []
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
-  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
+  // Windows can release the browser subprocess working-directory handle after MCP disposal settles.
+  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })))
 })
 
 class ScopeModel extends LlmAdapter {
@@ -195,7 +198,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; analysisProgressCalls?: number; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; analysisProgressCalls?: number; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -254,6 +257,11 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     modules.set('tool-skill', ToolSkill)
   }
   if (options.adapters) modules.set('subprocess', LocalSubprocess)
+  if (options.browser) {
+    modules.set('browser-use', BrowserUse)
+    modules.set('browser-playwright', PlaywrightBrowser)
+    modules.set('query', ExactQuery)
+  }
   if (options.native) {
     modules.set('subprocess', LocalSubprocess)
     modules.set('native-shell', process.platform === 'win32' ? LocalPwsh : LocalBash)
@@ -269,7 +277,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
         id: name,
         name: 'cordis:' + name,
         config:
-          name === 'loop'
+          name === 'browser-playwright' ? { mode: 'launch', headless: true, executablePath: process.env.DSH_BROWSER_EXECUTABLE } : name === 'loop'
             ? { agents: [] }
             : name === 'storage-json'
               ? { root: join(root, 'domain') }
@@ -357,6 +365,154 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
 }
 
 describe('security workbench Loader composition', () => {
+  it('filters session-owned browser tools and records success, failure and project cancellation', async () => {
+    const { ctx, agent, controller } = await load()
+    const name = 'mcp__playwright-mcp__browser_snapshot'
+    let outcome: 'success' | 'failure' | 'wait' = 'success'
+    const started = Promise.withResolvers<undefined>()
+    const finished = Promise.withResolvers<boolean>()
+    onTestFinished(() => { finished.resolve(false) })
+    agent.ctx.effect(() => agent.ctx.tools.register(defineTool({
+      name, description: 'Owned browser fixture.', parameters: {},
+      output: { schema: { type: 'boolean' }, render: () => [{ type: 'text', text: 'Fixture snapshot.' }] },
+      execute: async (_args, { signal }) => {
+        if (outcome === 'failure') throw new Error('Fixture browser failed')
+        if (outcome === 'success') return true
+        const abort = () => { finished.resolve(false) }
+        signal.addEventListener('abort', abort, { once: true })
+        started.resolve(undefined)
+        try { return await finished.promise }
+        finally { signal.removeEventListener('abort', abort) }
+      },
+    })))
+    const scope = scopeOf(agent.ctx)!
+    expect((await execute(ctx, agent, name)).isError).toBe(true)
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Browser lifecycle', objective: 'Read an owned page', environmentIds: ['local'], maxAttempts: 2,
+      moduleSelection: { mode: 'manual', modules: ['reverse.native'], reason: '' } })
+    expect((await ctx.systemPrompt.assemble({ agent, scope })).tools.map(tool => tool.name)).not.toContain(name)
+    expect((await execute(ctx, agent, name)).isError).toBe(true)
+    await send({ kind: 'modules', selection: { mode: 'manual', modules: ['web'], reason: '' } })
+    expect((await ctx.systemPrompt.assemble({ agent, scope })).tools.map(tool => tool.name)).toContain(name)
+    expect((await execute(ctx, agent, name, {}, 'browser-success')).isError).toBe(false)
+    outcome = 'failure'
+    expect((await execute(ctx, agent, name, {}, 'browser-failure')).isError).toBe(true)
+    outcome = 'wait'
+    const pending = execute(ctx, agent, name, {}, 'browser-cancelled')
+    await started.promise
+    try { await send({ kind: 'stop' }) }
+    finally { finished.resolve(false); await pending }
+    expect((await execute(ctx, agent, name)).isError).toBe(true)
+    expect(controller.activity!.usage(controller.binding(agent.id)!.engagementId)).toMatchObject([
+      { tool: 'playwright-mcp', verified: true, total: 3, completed: 1, failed: 1, cancelled: 1, incomplete: 3 },
+    ])
+  })
+  it.skipIf(!process.env.DSH_BROWSER_EXECUTABLE)('uses Playwright login across turns and captures browser evidence under role enforcement', async () => {
+    let logins = 0
+    let authenticatedReads = 0
+    const server = createServer((request, response) => {
+      if (request.url === '/login' && request.method === 'POST') {
+        let body = ''
+        request.setEncoding('utf8')
+        request.on('data', (chunk: string) => { body += chunk })
+        request.on('end', () => {
+          const fields = new URLSearchParams(body)
+          if (fields.get('username') !== 'fixture-user' || fields.get('password') !== 'fixture-password') {
+            response.writeHead(403); response.end('Invalid fixture login'); return
+          }
+          logins++
+          response.writeHead(303, { 'Set-Cookie': 'fixture-session=authenticated; HttpOnly; SameSite=Strict; Path=/', Location: '/account' })
+          response.end()
+        })
+        return
+      }
+      if (request.url === '/account') {
+        const authenticated = request.headers.cookie?.includes('fixture-session=authenticated') === true
+        if (authenticated) authenticatedReads++
+        response.writeHead(authenticated ? 200 : 401, { 'Content-Type': 'text/html' })
+        response.end(authenticated ? '<h1>Signed in as fixture-user</h1>' : '<h1>Login required</h1>')
+        return
+      }
+      response.writeHead(200, { 'Content-Type': 'text/html' })
+      response.end('<form action="/login" method="post"><label>Username<input name="username"></label><label>Password<input name="password" type="password"></label><button>Sign in</button></form>')
+    })
+    onTestFinished(async () => {
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) => server.close((error) => {
+        if (error) reject(error)
+        else resolve()
+      }))
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Missing fixture address')
+    const origin = `http://127.0.0.1:${address.port}`
+    const { ctx, agent, model, controller } = await load(false, 0, { browser: true, analysisProgressCalls: 100 })
+    const send = operator(controller, agent)
+    const navigate = 'mcp__playwright-mcp__browser_navigate'
+    expect((await execute(ctx, agent, navigate, { url: origin })).isError).toBe(true)
+    await send({ kind: 'create', title: 'Browser login', objective: 'Log in to the owned fixture', environmentIds: ['local'], maxAttempts: 2,
+      moduleSelection: { mode: 'manual', modules: ['web'], reason: 'Browser workflow' } })
+    const root = roots.at(-1)!
+    await writeFile(join(root, 'target.txt'), origin)
+    await send({ kind: 'import', path: join(root, 'target.txt'), label: 'Owned login fixture' })
+    const asset = controller.view(agent.id).records.find(item => item.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Missing fixture asset')
+    const lastText = (request: GenerateOptions) => request.messages.at(-1)!.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    let signInRef = ''
+    model.nativeCalls = [
+      { name: navigate, args: { url: origin } },
+      { name: 'mcp__playwright-mcp__browser_snapshot', args: {} },
+      { name: 'mcp__playwright-mcp__browser_fill_form', args: (request) => {
+        const text = lastText(request)
+        const reference = (role: string, label: string) => {
+          const match = new RegExp(role + ' "' + label + '" \\[ref=([^\\]]+)\\]').exec(text)
+          if (!match) throw new Error('Missing reference for ' + label + ': ' + text)
+          return match[1]!
+        }
+        signInRef = reference('button', 'Sign in')
+        return { fields: [
+          { name: 'Username', type: 'textbox', target: reference('textbox', 'Username'), value: 'fixture-user' },
+          { name: 'Password', type: 'textbox', target: reference('textbox', 'Password'), value: 'fixture-password' },
+        ] }
+      } },
+      { name: 'mcp__playwright-mcp__browser_click', args: () => ({ target: signInRef, element: 'Sign in' }) },
+    ]
+    agent.followup(webPrompt('Log in to the owned fixture using its test credentials.'))
+    await agent.whenIdle()
+    expect(logins).toBe(1)
+    expect(authenticatedReads).toBeGreaterThan(0)
+    const before = authenticatedReads
+    model.nativeCalls[model.requests.length] = { name: navigate, args: { url: origin + '/account' } }
+    model.nativeCalls[model.requests.length + 1] = { name: 'mcp__playwright-mcp__browser_snapshot', args: {} }
+    model.nativeCalls[model.requests.length + 2] = { name: 'security_capture_analysis', args: { assetId: asset.value.id } }
+    model.nativeCalls[model.requests.length + 3] = { name: 'security_capture_analysis', args: (request) => {
+      const page = JSON.parse(lastText(request)) as { calls: { callId: string; tool: string }[] }
+      // Capture observations, excluding the fixture's credential-entry call.
+      return { assetId: asset.value.id, callIds: page.calls.filter(call => call.tool === navigate || call.tool.endsWith('__browser_snapshot')).map(call => call.callId) }
+    } }
+    agent.followup(webPrompt('Revisit the account page using the existing login and save the navigation evidence.'))
+    await agent.whenIdle()
+    expect(logins).toBe(1)
+    expect(authenticatedReads).toBeGreaterThan(before)
+    const evidence = controller.view(agent.id).records.find(item => item.kind === 'evidence' && item.value.provider === 'session-tool')
+    if (evidence?.kind !== 'evidence') throw new Error('Browser evidence missing')
+    const bytes = await controller.artifacts.read(evidence.value.artifact)
+    expect(bytes.toString()).toContain('Signed in as fixture-user')
+    expect(bytes.toString()).not.toContain('fixture-password')
+    expect(evidence.value.incomplete).toBe(true)
+    expect(controller.activity!.usage(controller.binding(agent.id)!.engagementId)).toMatchObject([
+      { tool: 'playwright-mcp', verified: true, total: 6, completed: 6 },
+    ])
+    expect((await execute(ctx, agent, 'mcp__playwright-mcp__browser_run_code', { code: 'async page => page.url()' })).isError).toBe(true)
+    const child = await ctx.agents.create({ sessionId: SessionId('browser-reviewer'), meta: { cwd: root } })
+    await bindDelegatedChild(controller, agent.id, child.agent.id, asset.value.id, 'reviewer')
+    expect((await execute(ctx, child.agent, navigate, { url: origin })).isError).toBe(true)
+    await child.dispose()
+    await send({ kind: 'stop' })
+    expect((await execute(ctx, agent, navigate, { url: origin })).isError).toBe(true)
+  })
   it('drains owned container consumers before removal without cancelling another environment', async () => {
     const { ctx, controller } = await load(false, 0, { native: true })
     const root = roots[roots.length - 1]!
