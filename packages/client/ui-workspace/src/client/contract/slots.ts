@@ -129,6 +129,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * seat renders there, and its live status appears on the hover card only.
      */
     'sidebar.session.row.leading': { kind: 'list'; scope: 'root'; owner: SessionRowScheduleOwnerProps }
+    /** Persistent business marks displayed independently from activity and approval indicators. */
+    'sidebar.session.row.badge': { kind: 'list'; scope: 'root'; owner: SessionRowScheduleOwnerProps }
     /**
      * Section of the Session row's hover card between its relative time and
      * its trailing status line. Mounted only while that card is open.
@@ -472,6 +474,7 @@ export type WorkspaceBrowserProps =
     | 'sidebar.workspaces.session.menu.item'
     | 'sidebar.workspaces.session.row.action'
     | 'sidebar.session.row.leading'
+    | 'sidebar.session.row.badge'
     | 'sidebar.session.row.hover'
   >
   & PropsStore<WorkspaceViewStoreHandle>

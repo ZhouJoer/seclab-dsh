@@ -11,9 +11,11 @@ import css from './Workbench.module.css'
  * @param props - resolved workspace, available environments and save action.
  * @returns workspace resource form.
  */
-export function WorkspaceResources({ workspace, environments, disabled, save, taskContextMaxBytes, t }: PropsLocale<typeof NS> & {
+export function WorkspaceResources({ workspace, environments, disabled, save, taskContextMaxBytes, environmentOnly, t }:
+PropsLocale<typeof NS> & {
   workspace: NonNullable<WorkbenchConfiguration['workspace']>
   environments: WorkbenchConfiguration['environments']
+  environmentOnly?: boolean
   disabled: boolean
   taskContextMaxBytes: number
   save(this: void, input: {
@@ -51,14 +53,14 @@ export function WorkspaceResources({ workspace, environments, disabled, save, ta
       </label>
     </details>
     <p className={css.summaryHint}>{t('workspaceResourcesHint')}</p>
-    <details><summary>{t('taskContextDefaults')}</summary>
+    {!environmentOnly && <details><summary>{t('taskContextDefaults')}</summary>
       <p>{t('taskContextDefaultHint')}</p>
       <TaskContextFields t={t} value={taskContext} onChange={setTaskContext} disabled={disabled} maxBytes={taskContextMaxBytes} />
-    </details>
+    </details>}
     <button disabled={disabled || !Number.isSafeInteger(maxAttempts) || maxAttempts < 1
       || !!taskContextIssue(taskContext, taskContextMaxBytes)}
     onClick={() => void save({ expectedRevision: workspace.revision, environmentIds, maxAttempts, taskContext })}>
-      {t('saveWorkspaceResources')}
+      {t(environmentOnly ? 'newAnalysis' : 'saveWorkspaceResources')}
     </button>
   </div>
 }

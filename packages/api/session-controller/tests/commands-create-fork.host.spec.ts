@@ -57,6 +57,21 @@ async function baseContext(): Promise<Context> {
 }
 
 describe('Session creation failures', () => {
+  it('honors and disposes plugin reservations for otherwise reusable blank conversations', async () => {
+    const ctx = await baseContext()
+    ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [], archivedSessionIds: [] } as never)
+    const createSession = vi.fn(publishedSession(ctx, SessionId('new')))
+    const controller = new SessionCommandController(ctx, controllerAgents(ctx, { createSession }), '/workspace')
+    const release = controller.registerReuseGuard(id => id !== SessionId('reserved'))
+    try {
+      await controller.create({})
+      const reusable = createSession.mock.calls[0]![0].reusable
+      expect(reusable(SessionId('reserved'))).toBe(false)
+      expect(reusable(SessionId('ordinary'))).toBe(true)
+      release()
+      expect(reusable(SessionId('reserved'))).toBe(true)
+    } finally { await ctx.fiber.dispose() }
+  })
   it('creates in the default cwd without a named identity when no explicit target is supplied', async () => {
     const ctx = await baseContext()
     ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [], archivedSessionIds: [] } as never)

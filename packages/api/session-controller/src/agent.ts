@@ -494,7 +494,7 @@ export class ApiSessionAgentController {
       return (await this.ctx.agents.resume({
         resumeSessionId: sessionId,
         agentOptions: this.agentOptions(),
-        setup: this.reuseSetup(composition),
+        setup: this.reuseSetup(composition, request.reusable),
       })).agent
     } catch (error: unknown) {
       if (error instanceof ApiSessionStartedSinceObserved) return this.createMinted(request.cwd, composition)
@@ -528,9 +528,9 @@ export class ApiSessionAgentController {
   }
 
   /** Setup that re-checks blankness under the acquired writer, then records a preset change before publication. */
-  private reuseSetup(composition: ApiSessionComposition): AgentSetup {
+  private reuseSetup(composition: ApiSessionComposition, reusable: (id: SessionId) => boolean): AgentSetup {
     return async (agentCtx, agent) => {
-      if (!this.isBlank(agent.session)) throw new ApiSessionStartedSinceObserved()
+      if (!this.isBlank(agent.session) || !reusable(agent.id)) throw new ApiSessionStartedSinceObserved()
       const commit = await composition.setup(agentCtx, agent)
       const target = composition.agentPreset
       if (target !== undefined && this.presetForSession(agent.session) !== target) {

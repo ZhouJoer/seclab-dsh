@@ -172,6 +172,7 @@ export function apply(ctx: Context): void {
     })
   }
   const renameSession: SessionRenameDialogInjected['renameSession'] = async (sessionId, title) => {
+    if (await sessions.renameDisplayTitle(sessionId, title)) return
     const result = await sessions.using(
       sessionId,
       { source: 'workspaceOperation' },
@@ -302,6 +303,7 @@ export function apply(ctx: Context): void {
         },
         'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
         'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+        'sidebar.session.row.badge': { kind: 'list', scope: 'root' },
         'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
       },
       store: viewStore,

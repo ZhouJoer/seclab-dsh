@@ -242,7 +242,7 @@ function sessionVisible(
   archivedFilter: ArchivedFilter,
 ): boolean {
   if (session.origin === 'subagent') return false
-  if (session.blank && session.id !== current) return false
+  if (session.blank && !session.reserved && session.id !== current) return false
   switch (archivedFilter) {
     case 'default':
       return !archived.has(session.id)
@@ -279,7 +279,7 @@ function sectionMembers(
   const leading: SessionSummary[] = []
   const rest: SessionSummary[] = []
   for (const member of members) {
-    if (member.blank) placeholders.push(member)
+    if (member.blank && !member.reserved) placeholders.push(member)
     else if (!archived.has(member.id) && pinned.has(member.id)) leading.push(member)
     else rest.push(member)
   }
@@ -293,7 +293,7 @@ function sectionMembers(
  * empty title for localization and does not match a directory-name title search.
  */
 function sessionTitle(session: SessionSummary): string {
-  return session.blank ? '' : (session.title?.trim() ?? '')
+  return session.reserved ? session.displayTitle : session.blank ? '' : (session.title?.trim() ?? '')
 }
 
 /** Build one group without projecting session lineage into presentation. */
@@ -406,7 +406,7 @@ function sessionNode(
   return {
     id: s.id,
     title: sessionTitle(s),
-    blank: s.blank,
+    blank: s.blank && !s.reserved,
     running: status?.running ?? s.running,
     runningSubagentCount: runningChildCount(list, s.id, statuses),
     completed: status?.completionUnread === true,
@@ -572,7 +572,7 @@ export function deriveSearchResults(
     const summary = list.byId[id]
     // Blank placeholders never match a query (their canonical title displays
     // localized, so matching it would tie search to one language).
-    if (summary === undefined || summary.blank || !sessionVisible(summary, current, archived, archivedFilter)) continue
+    if (summary === undefined || summary.blank && !summary.reserved || !sessionVisible(summary, current, archived, archivedFilter)) continue
     if (
       sessionTitle(summary).toLowerCase().includes(q)
       || labelOf(summary).toLowerCase().includes(q)
@@ -594,7 +594,8 @@ export function deriveSearchResults(
   for (const summary of orderedLocal) include(summary)
   for (const item of content.items) {
     const summary = list.byId[item.sessionId]
-    if (summary !== undefined && !summary.blank && sessionVisible(summary, current, archived, archivedFilter)) include(summary)
+    if (summary !== undefined && (!summary.blank || summary.reserved)
+      && sessionVisible(summary, current, archived, archivedFilter)) include(summary)
   }
 
   return {

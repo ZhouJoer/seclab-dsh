@@ -1,6 +1,7 @@
 /** Mount the generated security Remote contribution and localized workbench. @module */
 import securityRemote from '@deepseek-ai/dsh-experimental-security-analysis/remote'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
+import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -15,7 +16,11 @@ import { ProjectIcon, type ProjectActions } from './project-actions.tsx'
 import { SecurityToolRow, securityToolNames } from './SecurityToolRow.tsx'
 import type { WorkbenchActions } from './Workbench.tsx'
 import { selectCoordinator } from './session-selection.ts'
-import { Dashboard, type DashboardActions } from './Dashboard.tsx'
+import type { DashboardActions } from './Dashboard.tsx'
+import { AnalysisHome, type AnalysisDestination } from './AnalysisHome.tsx'
+import { SecurityDirectory } from './directory.ts'
+import { NewAnalysisMenu, SecuritySessionBadge, SecurityConversationNavigation, SecuritySessionMenu } from './SecurityNavigation.tsx'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ImprovementToast, improvementNotifications } from './Improvements.tsx'
 import { ConversationProgressLauncher, ConversationProgressTab, ConversationProgressTitle, type ConversationProgressActions, type ConversationProgressEntryActions } from './ConversationProgress.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -39,7 +44,7 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap { securityWorkbench: unknown }
 }
 /** Services required to mount security RPC and the input dock. */
-export const inject = ['remote', 'slots', 'locale', 'sessions', 'conversation', 'layout', 'workspaces', 'uiWorkspace', 'sidebarRight', 'sidebarRightTabs']
+export const inject = ['remote', 'slots', 'locale', 'sessions', 'conversation', 'layout', 'workspaces', 'uiWorkspace', 'sidebarRight', 'sidebarRightTabs', 'resources']
 
 async function unwrap<T>(pending: Promise<RemoteResult<T>>): Promise<T> {
   const result = await pending
@@ -58,6 +63,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     for (const key of securityToolNames) scoped.slots.inject('tool.call.toolview', () =>
       scoped.slots.register({ name: 'tool.call.toolview', key, locale: NS }, SecurityToolRow))
     const remote = scoped.remote.securityWorkbench
+    scoped.effect(() => scoped.resources.register<'security-material'>({ protocol: 'security-material',
+      async *open(address, { signal }) {
+        const url = new URL(address)
+        const [project, asset] = url.pathname.slice(1).split('/').map(decodeURIComponent)
+        const result = await remote.projectMaterial(project ?? '', JSON.stringify({ assetId: asset ?? '',
+          mode: url.searchParams.get('mode'), path: url.searchParams.get('path'), offset: Number(url.searchParams.get('offset')) }))
+        if (!signal.aborted) yield result
+      },
+    }))
     const notifications = improvementNotifications()
     scoped.slots.inject('shell.overlay', () => scoped.slots.register({ name: 'shell.overlay', id: 'security-improvements-toast',
       inject: () => ({ notifications }) }, ImprovementToast))
@@ -81,6 +95,38 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       subscribeReset: listener => scoped.on('connection/reset', listener),
     }
     const panel = 'security-projects' as MainPanelId
+    const destination = createSnapshotStore<AnalysisDestination>({ kind: 'overview' })
+    const directory = new SecurityDirectory(signal => remote.followProjects(signal), async (id, title) => {
+      const snapshot = await unwrap(remote.project(id))
+      await unwrap(remote.manageProject(id, JSON.stringify({ operationId: randomUUID(), expectedRevision: snapshot.revision,
+        action: { kind: 'rename', title } })))
+    })
+    scoped.effect(() => { directory.start(); return () => directory.close() })
+    scoped.on('connection/reset', () => { directory.start() })
+    scoped.effect(() => scoped.sessions.registerPresentation(directory.presentations))
+    const openWorkbench = (projectId: string, sessionId?: SessionId) => {
+      scoped.layout.beginNavigation()
+      destination.set(projectId ? { kind: 'project', projectId, ...(sessionId ? { sessionId } : {}) } : { kind: 'overview' })
+      scoped.layout.selectPanel(panel)
+    }
+    const beginAnalysis = () => {
+      scoped.layout.beginNavigation()
+      const sessions = scoped.sessions.list.getSnapshot()
+      const current = sessions.ids.find(id => sessions.byId[id]?.retainedBy.mainView)
+      const workspaces = scoped.workspaces.list.getSnapshot().items
+      const workspaceId = workspaces.find(item => current && item.sessionIds.includes(current))?.workspaceId ?? workspaces[0]?.workspaceId
+      destination.set({ kind: 'create', ...(workspaceId ? { workspaceId } : {}) })
+      scoped.layout.selectPanel(panel)
+    }
+    const navigation = () => ({ hooks: { directory }, openWorkbench })
+    scoped.slots.inject('sidebar.session.row.badge', () => scoped.slots.register({ name: 'sidebar.session.row.badge',
+      id: 'security-analysis', locale: NS, inject: navigation }, SecuritySessionBadge))
+    scoped.slots.inject('sidebar.workspaces.session.menu.item', () => scoped.slots.register({ name: 'sidebar.workspaces.session.menu.item',
+      id: 'security-analysis', order: 210, locale: NS, inject: navigation }, SecuritySessionMenu))
+    scoped.slots.inject('conversation.session.header.navigation', () => scoped.slots.register({ name: 'conversation.session.header.navigation',
+      id: 'security-analysis', locale: NS, inject: navigation }, SecurityConversationNavigation))
+    scoped.slots.inject('sidebar.new.item', () => scoped.slots.register({ name: 'sidebar.new.item',
+      id: 'security-analysis', locale: NS, inject: () => ({ beginAnalysis }) }, NewAnalysisMenu))
     scoped.slots.inject('sidebar.panellist', () => scoped.slots.register({ name: 'sidebar.panellist', id: panel, order: 30, label: () => scoped.locale.bind(NS)('title'), locale: NS }, ProjectIcon))
     const actions: WorkbenchActions = {
       openChild: (address) => { scoped.uiWorkspace.openSession(address) },
@@ -123,8 +169,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       })
     }
     const dashboardActions: DashboardActions = {
+      beginAnalysis,
+      openChat: (id) => { scoped.uiWorkspace.openSession(id) },
+      selectDestination: (id) => { openWorkbench(id) },
+      refreshWorkspaceMaterials: id => unwrap(remote.refreshWorkspaceMaterials(id)),
       configureWorkspace: (id, input) => actions.configureWorkspace(id, input),
-      followProjects: signal => remote.followProjects(signal),
+      followProjects: signal => directory.followProjects(signal),
       httpHistory: (project, input) => unwrap(remote.httpHistory(project, input)),
       httpExchange: (project, evidence, step, part, offset) => unwrap(remote.httpExchange(project, evidence, step, part, offset)),
       httpIdentities: (project, target) => unwrap(remote.httpIdentities(project, target)),
@@ -177,8 +227,16 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.slots.inject('main', () => scoped.slots.register({
       name: 'main', key: panel, locale: NS,
       children: { 'security.workbench.session': { kind: 'single', scope: 'session' } },
-      inject: () => dashboardActions,
-    }, Dashboard))
+      inject: () => ({ ...dashboardActions, hooks: { destination },
+        configurationForWorkspace: (id: import('@deepseek-ai/dsh-api-workspace-controller/client').WorkspaceId) => unwrap(remote.configurationForWorkspace(id)),
+        configureAnalysisWorkspace: (id: import('@deepseek-ai/dsh-api-workspace-controller/client').WorkspaceId, input: string) => unwrap(remote.configureAnalysisWorkspace(id, input)),
+        startAnalysis: async (id: import('@deepseek-ai/dsh-api-workspace-controller/client').WorkspaceId, input: string) => {
+          const result = await unwrap(remote.startAnalysis(id, input))
+          await scoped.sessions.refresh()
+          return result
+        },
+      }),
+    }, AnalysisHome))
     scoped.slots.inject('security.workbench.session', () => scoped.slots.register({
       name: 'security.workbench.session', locale: NS, inject: () => actions,
     }, DashboardSession))
@@ -192,7 +250,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       inject: (): ConversationProgressActions => {
         return { ...dashboardActions,
           followSessionView: (id, signal) => remote.followSessionView(id, signal),
-          openDashboard: () => { scoped.layout.selectPanel(panel) },
+          openDashboard: (id, sessionId) => { openWorkbench(id ?? '', sessionId) },
         }
       },
     }, ConversationProgressTab))
@@ -204,7 +262,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       inject: (): ConversationProgressEntryActions => ({ followSessionView: (id, signal) => remote.followSessionView(id, signal),
         followActivity: (id, signal) => actions.followActivity(id, signal), subscribeReset: actions.subscribeReset,
         openProgress: () => { scoped.sidebarRight.openTab('security-progress') },
-        openDashboard: () => { scoped.layout.selectPanel(panel) } }),
+        openDashboard: (id, sessionId) => { openWorkbench(id ?? '', sessionId) } }),
     }, ConversationProgressLauncher))
   })
   try {

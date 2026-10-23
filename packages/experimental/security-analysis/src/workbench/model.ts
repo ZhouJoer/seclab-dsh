@@ -65,7 +65,10 @@ export const engagementSchema = z
   .object({
     id: id.transform(brandString<EngagementId>),
     title: text,
-    objective: text,
+    objective: z.string().trim(),
+    mainSessionId: id.transform(brandString<SessionId>).optional(),
+    automaticTitle: z.boolean().optional(),
+    workspaceMaterials: z.object({ root: text, assetId: id.optional() }).strict().optional(),
     environmentIds: z.array(id),
     stopped: z.boolean(),
     archived: z.boolean().optional(),

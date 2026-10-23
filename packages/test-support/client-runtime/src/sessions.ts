@@ -300,6 +300,35 @@ class TestSessionReference implements SessionReference {
  * behavior/calls/stubs) are bench-only surface.
  */
 export class TestSessions implements ISessions {
+  private readonly presentations = new Set<Parameters<ISessions['registerPresentation']>[0]>()
+
+  registerPresentation(source: Parameters<ISessions['registerPresentation']>[0]): () => void {
+    this.presentations.add(source)
+    const project = () => {
+      this.list.update((draft) => {
+        for (const [id, record] of this.records) {
+          const summary = draft.byId[id]
+          if (!summary) continue
+          const presentation = [...this.presentations].map(item => item.getSnapshot().get(id)).find(item => item)
+          summary.displayTitle = presentation?.title ?? record.summary.displayTitle
+          if (presentation?.reserved !== undefined) summary.reserved = presentation.reserved
+          else delete summary.reserved
+        }
+      })
+    }
+    const off = source.subscribe(project)
+    project()
+    return () => { off(); this.presentations.delete(source); project() }
+  }
+
+  async renameDisplayTitle(id: SessionId, title: string): Promise<boolean> {
+    for (const source of this.presentations) {
+      const presentation = source.getSnapshot().get(id)
+      if (presentation?.rename) { await presentation.rename(title); return true }
+    }
+    return false
+  }
+
   /** The useSessions catalog feed, independent of view ownership. */
   readonly list: SnapshotStore<SessionListState>
   private readonly records = new Map<SessionId, SessionRecord>()

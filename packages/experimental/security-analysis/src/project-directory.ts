@@ -3,7 +3,11 @@ import type { Engagement, WorkbenchView, CheckId, ValidationPlanId } from './wor
 
 /** Orthogonal runtime and operator-action facts for one task. */
 export interface SecurityProjectSummary {
+  /** Live workspace collection state; absent while no task view or Agent observes it. */
+  materials?: { state: 'syncing' | 'ready' | 'failed'; detail?: string }
   project: Engagement
+  /** Current associations, including inactive historical conversations. */
+  sessions: { sessionId: string; role: string; active: boolean }[]
   runningAgentCount: number
   runningInvocationCount: number
   pendingPlanIds: ValidationPlanId[]
@@ -38,7 +42,9 @@ export function projectDirectory(view: WorkbenchView, agents: ReadonlyMap<string
     const interruptedCheckIds = checks.filter(item => item.value.status === 'interrupted').map(item => item.value.id)
     const state: SecurityProjectSummary['state'] = project.archived ? 'removed' : project.stopped ? active ? 'stopping' : 'stopped'
       : active ? 'running' : interruptedCheckIds.length ? 'interrupted' : pendingPlanIds.length ? 'approval' : blockedCheckIds.length ? 'blocked' : 'idle'
-    return { project, runningAgentCount, runningInvocationCount, pendingPlanIds, blockedCheckIds, interruptedCheckIds, state,
-      next: records.filter(item => item.kind === 'checkpoint').at(-1)?.value.next ?? '' }
+    return { project, sessions: records.filter(item => item.kind === 'binding').map(({ value }) => ({
+      sessionId: value.sessionId, role: value.role, active: value.active !== false,
+    })), runningAgentCount, runningInvocationCount, pendingPlanIds, blockedCheckIds, interruptedCheckIds, state,
+    next: records.filter(item => item.kind === 'checkpoint').at(-1)?.value.next ?? '' }
   })
 }

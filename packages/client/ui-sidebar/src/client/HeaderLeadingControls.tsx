@@ -2,7 +2,7 @@
 import {
   IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the frame's shell.leading slot declaration.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SidebarRootInjected } from './contract/slots.ts'
@@ -13,6 +13,7 @@ export type HeaderLeadingControlsProps =
   PropsRuntime<'shell.leading'>
   & InjectFace<SidebarRootInjected>
   & PropsLocale<'sidebar'>
+  & PropsRenderFactories
 
 /**
  * Sidebar-open and New Session controls in the frame's window-chrome seat.
@@ -21,9 +22,9 @@ export type HeaderLeadingControlsProps =
  * lights. The frame mounts the seat only in that state and owns its
  * placement, so the occupant renders unconditionally.
  * @param props - Injected sidebar actions plus the sidebar locale seat.
- * @returns the two window-chrome controls.
+ * @returns sidebar visibility and conversation creation controls.
  */
-export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcuts, t }: HeaderLeadingControlsProps) {
+export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcuts, t, renderFactorySlot }: HeaderLeadingControlsProps) {
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   return (
@@ -50,6 +51,7 @@ export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcut
           <IconNewChatOutlineRegular size={16} />
         </button>
       </Tooltip>
+      {renderFactorySlot('sidebar.new.options', { startSession, className: css.iconButton })}
     </div>
   )
 }

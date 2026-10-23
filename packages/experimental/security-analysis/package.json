@@ -128,6 +128,7 @@
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
+    "chokidar": "5.0.0",
     "fast-xml-parser": "5.11.1",
     "fast-xml-validator": "1.4.2",
     "fflate": "^0.8.3",

@@ -43,6 +43,18 @@ function props(api: WorkbenchActions, sessionId = 'parent', running = false): Wo
     useSession: (select: (snapshot: { running: boolean }) => unknown) => select({ running }),
   } as WorkbenchProps
 }
+it('updates from parent task facts and rejects an older refresh response', async () => {
+  const api = actions()
+  const mounted = render(<Workbench {...props(api)} autoOpen />)
+  await screen.findByRole('heading', { name: 'Review the sample' })
+  const snapshot: WorkbenchView = { revision: 9, records: [recordSchema.parse({ kind: 'engagement',
+    value: { ...project.value, objective: 'Fresh task objective' } })] }
+  mounted.rerender(<Workbench {...props(api)} autoOpen snapshot={snapshot} />)
+  await screen.findByRole('heading', { name: 'Fresh task objective' })
+  fireEvent.click(screen.getAllByRole('button', { name: '刷新' })[0]!)
+  await waitFor(() => { expect(api.load).toHaveBeenCalledTimes(2) })
+  expect(screen.getByRole('heading', { name: 'Fresh task objective' })).toBeTruthy()
+})
 it('reveals advanced pages on a separate navigation track', async () => {
   render(<Workbench {...props(actions())} autoOpen />)
   await screen.findByRole('heading', { name: 'Review the sample' })

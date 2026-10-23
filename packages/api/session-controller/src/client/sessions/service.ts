@@ -25,6 +25,8 @@ import type { SessionListEntry } from './lineage.ts'
 
 /** Session list row projected from the host list RPC plus live stream increments. */
 export interface SessionSummary {
+  /** A durable business identity; an empty Session with this flag is not a provisional placeholder. */
+  reserved?: boolean
   id: SessionId
   /** Latest durable log-backed title, absent until the host projects one. */
   title?: string
@@ -232,6 +234,29 @@ class ClientSessionReference implements SessionReference {
 
 /** Host catalog and local reference allocator; view selection remains outside the Controller. */
 export class ClientSessions implements ISessions {
+  private readonly presentations = new Set<import('@deepseek-ai/dsh-client-store').ObservableSnapshot<ReadonlyMap<SessionId, import('../contract/sessions.ts').SessionPresentation>>>()
+
+  /** Register a live business presentation without opening any Session history.
+   * @param source - plugin-owned names and identity reservations.
+   * @returns disposer restoring native names and reuse eligibility. */
+  registerPresentation(source: import('@deepseek-ai/dsh-client-store').ObservableSnapshot<ReadonlyMap<SessionId, import('../contract/sessions.ts').SessionPresentation>>): () => void {
+    this.presentations.add(source)
+    const off = source.subscribe(() => { this.projectList() })
+    this.projectList()
+    return () => { off(); this.presentations.delete(source); this.projectList() }
+  }
+
+  /** Rename a business-owned display name, leaving the durable Session title intact.
+   * @param id - exact Session identity.
+   * @param title - requested display name.
+   * @returns whether a business contribution handled the edit. */
+  async renameDisplayTitle(id: SessionId, title: string): Promise<boolean> {
+    for (const source of [...this.presentations].reverse()) {
+      const presentation = source.getSnapshot().get(id)
+      if (presentation?.rename) { await presentation.rename(title); return true }
+    }
+    return false
+  }
   /**
    * The wire schema's own result bound, re-exposed for presentation plugins as
    * injected data. Not per-connection state: the `session.search` response
@@ -686,6 +711,13 @@ export class ClientSessions implements ISessions {
         origin: 'subagent',
         ...(projectionValues === undefined ? {} : { projectionValues }),
         ...(title === undefined ? {} : { title, displayTitle: title }),
+      }
+    }
+    for (const source of this.presentations) for (const [id, presentation] of source.getSnapshot()) {
+      const summary = byId[id]
+      if (summary) byId[id] = { ...summary,
+        ...(presentation.title === undefined ? {} : { displayTitle: presentation.title }),
+        ...(presentation.reserved ? { reserved: true } : {}),
       }
     }
     this.list.set({ ids, byId, phase, projectionsBySession })

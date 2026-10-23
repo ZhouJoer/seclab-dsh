@@ -225,6 +225,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: ConversationHeaderLineageOwnerProps
     }
+    /** Navigation contributed by business views, including empty conversations. */
+    'conversation.session.header.navigation': { kind: 'list'; scope: 'session' }
     /** Title-adjacent Session actions in ascending order. */
     'conversation.session.header.actions': {
       kind: 'list'
@@ -577,6 +579,7 @@ export type ConversationSessionHeaderSlotProps =
   & PropsRenderSlots<
     'conversation.session.header.lineage'
     | 'conversation.session.header.actions'
+    | 'conversation.session.header.navigation'
     | 'conversation.session.header.utilities'
     | 'conversation.session.header.corner'
   >

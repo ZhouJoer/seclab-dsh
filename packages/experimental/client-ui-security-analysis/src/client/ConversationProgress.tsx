@@ -10,7 +10,7 @@ import css from './Dashboard.module.css'
 /** Read-only Session selection and workbench navigation injected by the plugin. */
 export interface ConversationProgressActions extends ActivityActions {
   followSessionView(session: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView>
-  openDashboard(): void
+  openDashboard(projectId?: string, sessionId?: SessionId): void
 }
 
 type Props = ConversationProgressActions & PropsLocale<typeof NS> & { sessionId: SessionId }
@@ -86,13 +86,13 @@ export function ConversationProgressEntry(props: EntryProps) {
       {props.t('activityTools')} <span className={css.countBadge}>{error ? '—' : count ?? '—'}</span>
       {(running || childRunning) && <span className={css.runningDot} role="img" aria-label={props.t('running')} />}
     </button>
-    <button onClick={() => { props.openDashboard() }}>{props.t('dashboardEntry')} ↗</button>
+    <button onClick={() => { props.openDashboard(project, props.sessionId) }}>{props.t('dashboardEntry')} ↗</button>
   </div>
 }
 
-/** Keep a visible chat entry outside the workbench's embedded assistant.
+/** Keep a visible progress entry in the native conversation.
  * @param props - session-scoped framework seats and security actions.
- * @returns a compact tool-count entry outside the embedded workbench assistant.
+ * @returns a compact tool-count entry in the native conversation.
  */
 export function ConversationProgressLauncher(props: ConversationProgressEntryActions & PropsLocale<typeof NS> & PropsRuntime<'conversation.input.dock'>) {
   const panel = props.usePanelInfo(value => value.activePanelId)

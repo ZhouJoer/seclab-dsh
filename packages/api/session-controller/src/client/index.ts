@@ -50,7 +50,7 @@ export type {
   SubmissionHandle,
 } from './contract/session.ts'
 export type {
-  ISessions, SessionReference, SessionRetainInfo, SessionRetainOptions, SessionTarget,
+  ISessions, SessionReference, SessionRetainInfo, SessionRetainOptions, SessionTarget, SessionPresentation,
 } from './contract/sessions.ts'
 export { MutableSessionEventSource } from './contract/events.ts'
 export type {

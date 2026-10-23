@@ -46,7 +46,13 @@ export interface WorkbenchActions extends ActivityActions, ToolPreferenceActions
 /** Framework-derived input dock props. */
 export type WorkbenchProps = Pick<PropsRuntime<'conversation.input.dock'>, 'sessionId' | 'useSession'> &
   PropsLocale<typeof NS> &
-  WorkbenchActions & { autoOpen?: boolean; initialTab?: 'overview' | 'planApprovals' | 'checks'; focusCheckId?: string | undefined }
+  WorkbenchActions & {
+    autoOpen?: boolean
+    settingsOnly?: boolean
+    snapshot?: WorkbenchView
+    initialTab?: 'overview' | 'planApprovals' | 'checks' | 'environments'
+    focusCheckId?: string | undefined
+  }
 type Tab = 'overview' | 'assets' | 'checks' | 'findings' | 'environments' | 'knowledge' | 'evidence' | 'reviews' | 'reports' | 'planApprovals'
 const tabKeys: Tab[] = ['overview', 'findings', 'evidence', 'reports', 'planApprovals']
 const advancedTabKeys: Tab[] = ['assets', 'checks', 'environments', 'reviews', 'knowledge']
@@ -93,6 +99,10 @@ export function Workbench(props: WorkbenchProps) {
     setShared(false)
   }, [sessionId])
   useEffect(() => {
+    const snapshot = props.snapshot
+    if (snapshot) setView(previous => snapshot.revision >= previous.revision ? snapshot : previous)
+  }, [sessionId, props.snapshot])
+  useEffect(() => {
     const next = props.initialTab ?? 'overview'
     setTab(next)
     if (advancedTabKeys.includes(next)) setAdvancedOpen(true)
@@ -107,7 +117,7 @@ export function Workbench(props: WorkbenchProps) {
       if (document.activeElement === element) focusedCheck.current = target
     })
     return () => { cancelAnimationFrame(frame) }
-  }, [sessionId, tab, props.focusCheckId, view.revision])
+  }, [sessionId, tab, props.focusCheckId, view.revision, configuration, open])
   const perform = async (action: () => Promise<void>) => {
     setBusy(count => count + 1)
     setError('')
@@ -123,7 +133,7 @@ export function Workbench(props: WorkbenchProps) {
     const current = ++generation.current
     const [next, config] = await Promise.all([props.load(sessionId), props.configuration(sessionId)])
     if (generation.current === current && activeSession.current === sessionId) {
-      setView(next)
+      setView(previous => next.revision >= previous.revision ? next : previous)
       setConfiguration(config)
     }
   }
@@ -275,7 +285,7 @@ export function Workbench(props: WorkbenchProps) {
           <div className={css.workspace}>
             <nav className={css.tabs} aria-label={t('title')}>
               <div className={css.primaryTabs}>
-                {tabKeys.map(item => (
+                {(props.settingsOnly ? ['environments', 'checks', 'planApprovals', 'reviews', 'knowledge'] as const : tabKeys).map(item => (
                   <button
                     key={item}
                     aria-pressed={tab === item}
@@ -288,7 +298,7 @@ export function Workbench(props: WorkbenchProps) {
                   </button>
                 ))}
               </div>
-              <div className={css.advancedNavigation} data-open={advancedOpen}>
+              {!props.settingsOnly && <div className={css.advancedNavigation} data-open={advancedOpen}>
                 <button className={css.advancedToggle} aria-expanded={advancedOpen} onClick={() => {
                   setAdvancedOpen(value => !value)
                 }}>
@@ -305,7 +315,7 @@ export function Workbench(props: WorkbenchProps) {
                     ))}
                   </div>
                 </div>
-              </div>
+              </div>}
             </nav>
             <div className={css.main}>
               {error && (

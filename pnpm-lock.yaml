@@ -8387,6 +8387,9 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:*
         version: link:../../client/locale
+      '@deepseek-ai/dsh-client-resources':
+        specifier: workspace:*
+        version: link:../../client/resources
       '@deepseek-ai/dsh-client-store':
         specifier: workspace:*
         version: link:../../client/store
@@ -9149,6 +9152,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      chokidar:
+        specifier: 5.0.0
+        version: 5.0.0
       fast-xml-parser:
         specifier: 5.11.1
         version: 5.11.1

@@ -2387,6 +2387,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'matching committed records and the observed revision.',
       },
       {
+        signature: '@Remote(\'configurationForWorkspace\') async configurationForWorkspace(workspaceId: string): Promise<WorkbenchConfiguration>',
+        description: 'Read creation settings without allocating an empty conversation.',
+        parameters: [{ name: 'workspaceId', description: 'existing native workspace identity.' }],
+        returns: 'resolved environment choices and deployment budgets.',
+      },
+      {
+        signature: '@Remote(\'configureAnalysisWorkspace\') async configureAnalysisWorkspace(workspaceId: string, input: string): Promise<WorkbenchConfiguration>',
+        description: 'Save the default environment selection before creating a task.',
+        parameters: [{ name: 'workspaceId', description: 'existing native workspace identity.' }, { name: 'input', description: 'revision-checked workspace settings.' }],
+        returns: 'resolved settings after the durable write.',
+      },
+      {
+        signature: '@Remote(\'startAnalysis\') async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }>',
+        description: 'Create an associated task and blank native conversation without sending a message.',
+        parameters: [{ name: 'workspaceId', description: 'explicitly selected native workspace.' }, { name: 'input', description: 'stable operation and Session identities, localized initial title and selected environments.' }],
+        returns: 'durable identities; repeating the same request recovers the existing task.',
+      },
+      {
+        signature: '@Remote(\'refreshWorkspaceMaterials\') async refreshWorkspaceMaterials(projectId: string): Promise<void>',
+        description: 'Retry automatic directory collection while preserving the last successful snapshot.',
+        parameters: [{ name: 'projectId', description: 'task whose configured source should be rescanned.' }],
+        returns: 'completion after a fresh snapshot is published.',
+      },
+      {
         signature: '@Remote(\'configuration\') async configuration(agent: Agent): Promise<WorkbenchConfiguration>',
         description: 'List operator-configured environments before project creation.',
         parameters: [{ name: 'agent', description: 'authenticated Web session.' }],
@@ -2434,6 +2458,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'projectId', description: 'project whose records establish artifact ownership.' }, { name: 'sha256', description: 'digest of a referenced artifact.' }],
         returns: 'digest-verified text with the configured output limit.',
       },
+      {
+        signature: '@Remote(\'projectMaterial\') async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView>',
+        description: 'Browse saved project materials without changing Session or evidence records.',
+        parameters: [{ name: 'projectId', description: 'project authorizing the asset read.' }, { name: 'input', description: 'serialized asset identity, snapshot path, operation and offset.' }],
+        returns: 'a directory page or bounded file preview.',
+      },
     ],
   },
   {
@@ -2470,6 +2500,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Create one ordinary Session for a new conversation, reusing the named blank Session while it is reusable.',
         parameters: [{ name: 'request', description: 'optional blank Session to reuse, location, and Agent preset.' }],
         returns: 'the created or reused Session identity and its preset when configured.',
+      },
+      {
+        signature: 'registerReuseGuard(guard: (sessionId: SessionId) => boolean): () => void',
+        description: 'Reserve business-owned empty conversations against ordinary creation reuse.',
+        parameters: [{ name: 'guard', description: 'false when a Session already belongs to a durable business object.' }],
+        returns: 'disposer for the registering plugin\'s lifetime.',
       },
       {
         signature: '@Remote(\'selectModel\') selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>',
@@ -6645,6 +6681,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MatcherValue = string | number | boolean | null | RegExp | readonly (string | number | boolean | null)[];',
   },
   {
+    name: 'MaterialBrowserView',
+    declaration: 'export type MaterialBrowserView = {\n    kind: \'directory\';\n    entries: MaterialEntry[];\n    next: number | null;\n    total: number;\n} | {\n    kind: \'text\';\n    path: string;\n    size: number;\n    text: string;\n    truncated: boolean;\n} | {\n    kind: \'image\';\n    path: string;\n    size: number;\n    url: string;\n} | {\n    kind: \'binary\';\n    path: string;\n    size: number;\n    hex: string;\n};',
+  },
+  {
+    name: 'MaterialEntry',
+    declaration: 'export type MaterialEntry = {\n    kind: \'directory\';\n    path: string;\n    fileCount: number;\n} | {\n    kind: \'file\';\n    path: string;\n    size: number;\n};',
+  },
+  {
     name: 'McpResourceProvider',
     declaration: 'export interface McpResourceProvider {\n    request(request: McpResourceRequest, exec: ToolExecution): Promise<JsonValue>;\n}',
   },
@@ -7538,7 +7582,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityProjectSummary',
-    declaration: 'export interface SecurityProjectSummary {\n    project: Engagement;\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
+    declaration: 'export interface SecurityProjectSummary {\n    materials?: {\n        state: \'syncing\' | \'ready\' | \'failed\';\n        detail?: string;\n    };\n    project: Engagement;\n    sessions: {\n        sessionId: string;\n        role: string;\n        active: boolean;\n    }[];\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
   },
   {
     name: 'SecurityRecord',

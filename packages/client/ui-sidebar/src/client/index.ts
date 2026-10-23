@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the Session root standard-props merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SidebarPanelMetadata, SidebarRootInjected } from './contract/slots.ts'
+import { NewSessionOptions } from './NewSessionOptions.tsx'
 import { HeaderLeadingControls } from './HeaderLeadingControls.tsx'
 import { SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
@@ -73,6 +74,8 @@ export function apply(ctx: ClientContext): void {
     },
     hooks: { panels, shortcuts: ctx.shortcuts.catalog },
   })
+  ctx.slots.registerFactory({ name: 'sidebar.new.options', scope: 'root', locale: NS,
+    children: { 'sidebar.new.item': { kind: 'list', scope: 'root' } } }, NewSessionOptions)
   ctx.slots.inject('sidebar', () => ctx.slots.register({
     name: 'sidebar',
     locale: NS,

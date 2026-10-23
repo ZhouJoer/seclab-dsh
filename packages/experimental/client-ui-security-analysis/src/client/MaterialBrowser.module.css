@@ -1,0 +1,24 @@
+.browser { min-width: 0; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; overflow: hidden; background: var(--dsw-alias-bg-layer-1); }
+.heading { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
+.heading h3 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.columns { display: grid; grid-template-columns: minmax(180px, 32%) minmax(0, 1fr); min-height: 240px; }
+.tree { padding: 8px; border-right: 1px solid var(--dsw-alias-border-l2); overflow: auto; max-height: 65vh; }
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul ul { padding-left: 14px; }
+.tree summary { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px; font-size: 13px; }
+.tree summary::before { content: '›'; flex: none; }
+.tree details[open] > summary::before { transform: rotate(90deg); }
+.tree summary svg { flex: none; }
+.tree summary span,.file span { min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.tree .file { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 8px; text-align: left; border: 0; border-radius: 4px; background: transparent; font-size: 13px; }
+.tree .file[aria-pressed='true'] { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-link); }
+.browser small { color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 400; white-space: nowrap; }
+.preview { min-width: 0; overflow: auto; padding: 16px; }
+.preview header { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.preview strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.preview img { display: block; max-width: 100%; max-height: 55vh; object-fit: contain; }
+.preview pre { max-height: 55vh; overflow: auto; }
+.empty { padding: 16px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
+.loading { display: grid; place-items: center; min-height: 120px; }
+@media (hover: hover) { .tree .file:hover,.tree summary:hover { background: var(--dsw-alias-interactive-bg-hover); } }
+@media (max-width: 700px) { .columns { grid-template-columns: minmax(0, 1fr); } .tree { border-right: 0; border-bottom: 1px solid var(--dsw-alias-border-l2); max-height: 32vh; } }

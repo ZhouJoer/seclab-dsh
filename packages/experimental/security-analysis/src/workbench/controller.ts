@@ -1,5 +1,7 @@
 /** Security command validation and durable project authority. @module */
 import { createHash, randomUUID } from 'node:crypto'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import assert from 'node:assert/strict'
 import { z } from 'zod'
 import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
@@ -448,6 +450,73 @@ export class SecurityController {
     return record.value
   }
 
+  /** Create an empty task and its primary conversation in one durable commit.
+   * @param sessionId - fresh authenticated conversation.
+   * @param operationId - stable identity retained across retries.
+   * @param root - explicitly selected workspace directory.
+   * @param input - stable operator-selected title and environments.
+   * @param resolve - resolve workspace defaults only for the first successful commit.
+   * @returns committed task scope. */
+  async createWorkspaceTask(sessionId: SessionId, operationId: string, root: string,
+    input: { title: string; environmentIds: string[] },
+    resolve: () => Promise<Pick<Extract<SecurityCommand['action'], { kind: 'create' }>, 'maxAttempts' | 'moduleSelection' | 'taskContext'>>): Promise<WorkbenchView> {
+    await this.journal.commit(operationId, undefined, { sessionId, root, input }, async (view) => {
+      if (view.records.some(item => item.kind === 'binding' && item.value.sessionId === sessionId))
+        throw new Error('Conversation already belongs to an analysis task')
+      const action = { ...await resolve(), ...input, kind: 'create' as const, objective: '' }
+      return this.createRecords(sessionId, action).map(record => record.kind === 'engagement'
+        ? { ...record, value: { ...record.value, mainSessionId: sessionId, automaticTitle: true, workspaceMaterials: { root } } }
+        : record)
+    })
+    return this.view(sessionId)
+  }
+
+  /** Fill an empty task objective from a committed operator message.
+   * @param sessionId - primary conversation receiving the message.
+   * @param messageId - durable message identity used for retry deduplication.
+   * @param objective - actual user text; blank text changes nothing.
+   * @returns completion after the task update is committed. */
+  async describeWorkspaceTask(sessionId: SessionId, messageId: string, objective: string): Promise<void> {
+    if (!objective.trim()) return
+    const binding = this.binding(sessionId)
+    if (!binding) return
+    const project = this.projects(true).find(item => item.id === binding.engagementId)
+    if (!project || project.objective || project.mainSessionId !== sessionId) return
+    await this.journal.commit(`workspace-objective:${sessionId}:${messageId}`, undefined, { sessionId, messageId, objective }, (view) => {
+      const current = this.project(view, binding.engagementId)
+      if (current.objective) return [{ kind: 'engagement', value: current }]
+      return [{ kind: 'engagement', value: { ...current, objective: objective.trim(),
+        ...(current.automaticTitle ? { title: objective.trim().replace(/[\r\n][\s\S]*$/u, '').slice(0, 120), automaticTitle: false } : {}) } }]
+    })
+  }
+
+  /** Publish a workspace snapshot without changing any previously referenced asset.
+   * @param targets - tasks and their fixed workspace roots, checked again at commit.
+   * @param prepare - cancellable snapshot producer, held through artifact cleanup exclusion.
+   * @returns completion after the current material pointer is committed. */
+  async syncWorkspaceMaterials(targets: readonly { projectId: string; root: string }[], prepare: () => Promise<import('./model.ts').Artifact>): Promise<void> {
+    await this.withArtifactWrite(async () => {
+      const artifact = await prepare()
+      for (const { projectId, root } of targets) {
+        const project = this.projects().find(item => item.id === projectId)
+        if (!project || project.workspaceMaterials?.root !== root) continue
+        const records = this.projectView(projectId).records
+        const existing = records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'source'
+        && item.value.inputSource?.kind === 'path' && item.value.inputSource.path === root && item.value.artifact.sha256 === artifact.sha256)
+        if (existing?.kind === 'asset' && existing.value.id === project.workspaceMaterials.assetId) continue
+        const assetId = existing?.kind === 'asset' ? existing.value.id : randomUUID()
+        await this.journal.commit(randomUUID(), undefined, { projectId, root, artifact }, (view) => {
+          const current = this.project(view, projectId)
+          if (current.archived || current.workspaceMaterials?.root !== root) return [{ kind: 'engagement', value: current }]
+          return [ ...(existing ? [] : [{ kind: 'asset' as const, value: sourceAssetSchema.parse({
+            id: assetId, engagementId: projectId, kind: 'source', label: root, identity: 'measured', artifact,
+            inputSource: { kind: 'path', path: root },
+          }) }]), { kind: 'engagement', value: { ...current, workspaceMaterials: { root, assetId } } }]
+        })
+      }
+    })
+  }
+
   /** List projects for operator selection.
    * @param includeArchived - include removed projects for explicit restoration.
    * @returns project labels available to the local operator, never delegated tool callers. */
@@ -490,7 +559,7 @@ export class SecurityController {
         const { taskContext: _previous, ...retained } = project
         return [{ kind: 'engagement', value: { ...retained, ...(taskContext ? { taskContext } : {}) } }]
       }
-      if (request.action.kind === 'rename') return [{ kind: 'engagement', value: { ...project, title: request.action.title } }]
+      if (request.action.kind === 'rename') return [{ kind: 'engagement', value: { ...project, title: request.action.title, automaticTitle: false } }]
       if (request.action.kind === 'restore') return [{ kind: 'engagement', value: { ...project, archived: false } }]
       return [{ kind: 'engagement', value: { ...project, archived: true, stopped: true } },
         ...view.records.filter(item => item.kind === 'binding').filter(item => item.value.engagementId === projectId)
@@ -527,6 +596,8 @@ export class SecurityController {
       if (!project || this.binding(sessionId)?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
       const samples = view.records.filter(item => item.kind === 'asset')
         .map(item => item.value).filter(asset => !('parentId' in asset && asset.parentId))
+        .filter(asset => !project.workspaceMaterials || !('kind' in asset) || asset.kind !== 'source'
+          || asset.inputSource?.kind !== 'path' || asset.inputSource.path !== project.workspaceMaterials.root)
       const inputs: Asset[] = []
       for (const sample of samples) {
         if ('kind' in sample && sample.kind === 'web')
@@ -557,6 +628,10 @@ export class SecurityController {
             ? retained.moduleSelection : { mode: 'auto', modules: [], reason: '' } })
         const next = records.find(item => item.kind === 'engagement')
         assert(next?.kind === 'engagement')
+        if (retained.workspaceMaterials) {
+          next.value = { ...next.value, mainSessionId: brandString<SessionId>(destination), automaticTitle: false,
+            workspaceMaterials: { root: retained.workspaceMaterials.root } }
+        }
         for (const input of inputs) records.push(...await this.importedRecords(assetSchema.parse({
           ...input, id: randomUUID(), engagementId: next.value.id,
         })))

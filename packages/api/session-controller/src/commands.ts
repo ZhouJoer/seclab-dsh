@@ -91,6 +91,15 @@ function latestCompletedPrefixBoundary(events: readonly SessionEvent[]): Session
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
+  private readonly reuseGuards = new Set<(sessionId: SessionId) => boolean>()
+
+  /** Register a business-owned restriction on reusing an empty conversation.
+   * @param guard - synchronous predicate; false reserves the existing identity.
+   * @returns disposer removing exactly this restriction. */
+  registerReuseGuard(guard: (sessionId: SessionId) => boolean): () => void {
+    this.reuseGuards.add(guard)
+    return () => { this.reuseGuards.delete(guard) }
+  }
   /**
    * @param ctx - Host context carrying Agent, model, attachment, title, and Workspace services.
    * @param agents - sole owner of create, resume, and Session-local model selection.
@@ -129,6 +138,7 @@ export class SessionCommandController {
         cwd,
         ...(request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset }),
         reusable: sessionId => !this.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId)
+          && [...this.reuseGuards].every(guard => guard(sessionId))
           && (workspace === undefined || workspace.sessionIds.includes(sessionId)),
       })
     } catch (error) {

@@ -885,3 +885,13 @@ it('leaves unnamed history titles empty for locale-owned row labels', () => {
   const sessions = list(item)
   expect(deriveFlat(sessions, [item.id], noRows, noAttention)[0]?.title).toBe('')
 })
+
+it('shows reserved blank tasks independently of the current blank placeholder', () => {
+  const reserved = { ...summary('analysis', 1), blank: true, reserved: true, displayTitle: 'Workspace review' }
+  const ordinary = { ...summary('ordinary', 2), blank: true }
+  const state = list(reserved, ordinary)
+  const rows = deriveFlat(state, visibleSessionIds(state, noArchive, 'default'), noRows, noAttention)
+  expect(rows.map(item => ({ id: item.id, title: item.title, blank: item.blank }))).toEqual([
+    { id: 'analysis', title: 'Workspace review', blank: false },
+  ])
+})

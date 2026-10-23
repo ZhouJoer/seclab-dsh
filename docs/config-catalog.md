@@ -1230,11 +1230,13 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:93`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:97`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Automatic workspace snapshots; omission uses the documented scan defaults. */
+  workspaceMaterials?: WorkspaceMaterialOptions
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -1311,6 +1313,18 @@ export interface WorkbenchConfig {
   knowledgeProvider?: string
   /** Optional dedicated refinement model; on-demand calls inherit the initiating Agent model when omitted. */
   knowledgeModel?: string
+}
+
+/** Deployment budgets for automatic workspace material collection. */
+export interface WorkspaceMaterialOptions {
+  /** Maximum entries visited by one scan and retained in its index. */
+  maxEntries: number
+  /** Maximum aggregate size of current workspace file bytes. */
+  maxBytes: number
+  /** Event coalescing delay and write-stability observation interval. */
+  debounceMs: number
+  /** Directory names excluded at every depth, independent of .gitignore. */
+  excludedDirectories: string[]
 }
 
 /** Deployment-owned collection and teardown bounds. */

@@ -8,6 +8,8 @@ Task-owned module selections resolve to Agent skill scopes and tool admission in
 
 ## Durable records
 
+`MaterialBrowserView` is the read-only `projectMaterial` result: a directory page with a next offset, text with a truncation flag, a raster image URL, or a binary hexadecimal prefix. [Material browser types](../../packages/experimental/security-analysis/src/material-browser-types.ts) define the variants; the [package reference](../../packages/experimental/security-analysis/README.md) owns snapshot scope and read limits.
+
 `WorkbenchConfiguration` is the object returned by `configuration` and `configureWorkspace`. It includes material limits, projects, providers, environments and the knowledge interval. Its workspace value is null without a workspace; the attempt limit is absent until configured. The [configuration types](../../packages/experimental/security-analysis/src/workbench-configuration-types.ts) define the browser-safe fields.
 
 `ToolboxDirectory` contains configured environment choices and one measured or explicitly unchecked `ToolboxInventory`. Its `ToolboxTool` entries separate availability, invocation method and optional provider integration. Available Docker tools expose the Host `command` and `prefixArgs`, with the original container executable and arguments in `installation` for configuration persistence. These read-only observations are not project evidence or execution authority; fields are defined in [toolbox types](../../packages/experimental/security-analysis/src/toolbox-types.ts).
@@ -305,6 +307,28 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('search') async search(agent: Agent, query: string, shared: boolean): Promise<WorkbenchView>
 
+/** Read creation settings without allocating an empty conversation.
+ * @param workspaceId - existing native workspace identity.
+ * @returns resolved environment choices and deployment budgets. */
+@Remote('configurationForWorkspace') async configurationForWorkspace(workspaceId: string): Promise<WorkbenchConfiguration>
+
+/** Save the default environment selection before creating a task.
+ * @param workspaceId - existing native workspace identity.
+ * @param input - revision-checked workspace settings.
+ * @returns resolved settings after the durable write. */
+@Remote('configureAnalysisWorkspace') async configureAnalysisWorkspace(workspaceId: string, input: string): Promise<WorkbenchConfiguration>
+
+/** Create an associated task and blank native conversation without sending a message.
+ * @param workspaceId - explicitly selected native workspace.
+ * @param input - stable operation and Session identities, localized initial title and selected environments.
+ * @returns durable identities; repeating the same request recovers the existing task. */
+@Remote('startAnalysis') async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }>
+
+/** Retry automatic directory collection while preserving the last successful snapshot.
+ * @param projectId - task whose configured source should be rescanned.
+ * @returns completion after a fresh snapshot is published. */
+@Remote('refreshWorkspaceMaterials') async refreshWorkspaceMaterials(projectId: string): Promise<void>
+
 /**
  * List operator-configured environments before project creation.
  * @param agent - authenticated Web session.
@@ -365,6 +389,13 @@ Optional security profile service; default application compositions remain indep
  * @param sha256 - digest of a referenced artifact.
  * @returns digest-verified text with the configured output limit. */
 @Remote('projectArtifact') async projectArtifact(projectId: string, sha256: string): Promise<string>
+
+/** Browse saved project materials without changing Session or evidence records.
+ * @param projectId - project authorizing the asset read.
+ * @param input - serialized asset identity, snapshot path, operation and offset.
+ * @returns a directory page or bounded file preview.
+ */
+@Remote('projectMaterial') async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView>
 ```
 
 Types: [Agent](core.md) · [SessionId](core.md)

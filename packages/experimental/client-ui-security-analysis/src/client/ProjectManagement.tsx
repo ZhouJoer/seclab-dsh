@@ -22,11 +22,12 @@ export function ProjectManagement(props: PropsLocale<typeof NS> & {
   title: string
   archived?: boolean | undefined
   disabled: boolean
+  expanded?: boolean
   manage(action: ProjectAction): Promise<boolean>
 }) {
   const { t } = props
   const [title, setTitle] = useState(props.title)
-  return <details className={css.secondaryDetails}><summary>{t('manageProject')}</summary>
+  return <details className={css.secondaryDetails} open={props.expanded}><summary>{t('manageProject')}</summary>
     <div className={css.form}><label className={css.field}>{t('projectName')}<input value={title} disabled={props.disabled} onChange={(event) => { setTitle(event.target.value) }} /></label>
       <button disabled={props.disabled || !title.trim() || title.trim() === props.title} onClick={() => void props.manage({ kind: 'rename', title: title.trim() })}>{t('renameProject')}</button>
       {props.archived ? <><p>{t('restoreProjectHint')}</p><button disabled={props.disabled} onClick={() => void props.manage({ kind: 'restore' })}>{t('restoreProject')}</button>

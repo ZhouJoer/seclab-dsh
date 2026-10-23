@@ -136,6 +136,8 @@ interface RetainedSession {
 }
 
 class FakeSessions implements ISessions {
+  readonly registerPresentation = vi.fn<ISessions['registerPresentation']>(() => () => {})
+  readonly renameDisplayTitle = vi.fn<ISessions['renameDisplayTitle']>(async () => false)
   readonly list: MutableSource<SessionListState>
   readonly create: ReturnType<typeof vi.fn<ISessions['create']>>
   readonly fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
