@@ -6,6 +6,21 @@ import { taskContextZh, taskContextEn } from './task-context-locales.ts'
 export const NS = 'security-workbench'
 /** Chinese operator-facing security copy. */
 export const zh = {
+  materialsFiles: '材料文件', materialsPreview: '文件预览', materialsSelectFile: '选择文件查看内容',
+  materialsEmptyFolder: '此目录还没有可用文件', materialsEmptyFile: '空文件', materialsMoreFiles: '显示更多文件',
+  materialsFileUnavailable: '暂时无法预览此文件，它可能已从最新材料中移除',
+  materialsBinaryPreview: '二进制文件，以下是文件开头的十六进制内容',
+  analysisChat: '聊天', analysisViews: '任务视图', analysisSettings: '任务设置', analysisMore: '更多功能',
+  enterAnalysisChat: '进入聊天', newAnalysisName: '新安全分析', analysisEnvironmentHint: '选择运行环境后，在聊天中描述任务',
+  workspaceMaterials: '工作目录材料', materialsSyncing: '正在同步工作目录', materialsReady: '工作目录已同步',
+  materialsFailed: '工作目录更新失败，已保存的材料仍可使用', materialsWaiting: '打开任务后自动同步工作目录',
+  renameAnalysis: '重命名分析任务', analysisEmptyHint: '在聊天中描述任务，工作目录文件会自动加入材料库',
+  restartTask: '重新开始任务', restartTaskConfirm: '保留设置并重新开始', restartTaskPending: '正在结束旧轮次…',
+  restartTaskHint: '保留目标、授权材料、任务偏好和工具设置。\n新轮次清空分析上下文、证据和审批，旧轮次保留在历史中。已记录来源的本地材料重新读取，上传材料沿用已保存内容，工作区文件保持不变。\n准备完成后，你可以编辑目标、调整材料，再点击发送开始分析。',
+  restartSavedMaterials: '以下历史材料未记录原始路径，将沿用已保存的内容，无需重新选择：',
+  restartTaskFailed: '未能准备新轮次。请重试；如果仍然失败，可展开详情查看原因',
+  restartErrorDetails: '查看错误详情',
+  restartTaskReady: '新轮次已准备好，设置已保留。点击发送开始分析',
   skillUsageTitle: '技能使用', skillUsageRefresh: '刷新',
   skillUsageFailed: '无法读取技能统计，请重试', skillUsagePartial: '统计不完整：无法读取的会话数 / 无法归属任务的读取数',
   skillUsageEmpty: '暂无使用记录', skillUsageReads: '读取', skillUsageErrors: '失败',
@@ -548,6 +563,21 @@ export const zh = {
 export type SecurityKey = keyof typeof zh
 /** English operator-facing security copy. */
 export const en: Record<SecurityKey, string> = {
+  materialsFiles: 'Material files', materialsPreview: 'File preview', materialsSelectFile: 'Select a file to preview',
+  materialsEmptyFolder: 'No files available in this folder', materialsEmptyFile: 'Empty file', materialsMoreFiles: 'Show more files',
+  materialsFileUnavailable: 'This file cannot be previewed. It may have been removed from the latest materials.',
+  materialsBinaryPreview: 'Binary file. The hexadecimal prefix is shown below.',
+  analysisChat: 'Chat', analysisViews: 'Task views', analysisSettings: 'Task settings', analysisMore: 'More features',
+  enterAnalysisChat: 'Open chat', newAnalysisName: 'New security analysis', analysisEnvironmentHint: 'Select an environment, then describe your task in chat',
+  workspaceMaterials: 'Workspace materials', materialsSyncing: 'Synchronizing workspace', materialsReady: 'Workspace synchronized',
+  materialsFailed: 'Workspace update failed; saved materials remain available', materialsWaiting: 'Workspace synchronizes when you open this task',
+  renameAnalysis: 'Rename analysis task', analysisEmptyHint: 'Describe your task in chat. Workspace files are added to materials automatically.',
+  restartTask: 'Restart task', restartTaskConfirm: 'Keep settings and restart', restartTaskPending: 'Stopping the previous round…',
+  restartTaskHint: 'Keep the objective, authorization materials, preferences and tool settings.\nStart without analysis context, evidence or approvals; keep the previous round in history. Reread local materials with recorded paths and reuse saved uploads. Workspace files stay unchanged.\nOnce ready, edit the objective or adjust materials, then select Send to start analysis.',
+  restartSavedMaterials: 'These historical materials have no recorded source path. Their saved content will be reused without reselection:',
+  restartTaskFailed: 'Could not prepare the new round. Try again, or expand the details to inspect the cause.',
+  restartErrorDetails: 'View error details',
+  restartTaskReady: 'New round ready with settings retained. Select Send to begin analysis.',
   skillUsageTitle: 'Skill usage', skillUsageRefresh: 'Refresh',
   skillUsageFailed: 'Could not read skill usage. Retry.', skillUsagePartial: 'Incomplete: unavailable Sessions / reads with unknown task attribution',
   skillUsageEmpty: 'No usage yet', skillUsageReads: 'Reads', skillUsageErrors: 'Failed',

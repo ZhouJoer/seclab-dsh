@@ -49,8 +49,10 @@ describe('container probing', () => {
       throw new Error('unexpected probe: ' + script)
     })
     const checks = await probeTargetReachability(new Context(), environment, limits, signal, ['http://127.0.0.1:18082/'])
-    expect(checks).toEqual([{ targetOrigin: 'http://127.0.0.1:18082/', status: 'reachable',
-      reachableAs: 'http://host.docker.internal:18082/', checkedAt: expect.any(Number) }])
+    expect(checks.map(({ checkedAt: _checkedAt, ...check }) => check)).toEqual([
+      { targetOrigin: 'http://127.0.0.1:18082/', status: 'reachable', reachableAs: 'http://host.docker.internal:18082/' },
+    ])
+    expect(checks[0]?.checkedAt).toBeTypeOf('number')
     expect(run.mock.calls[0]?.[3]).toEqual(['exec', 'kali-linux', 'sh', '-c', expect.stringContaining('command -v')])
     expect(run).toHaveBeenCalledTimes(3)
   })
@@ -58,8 +60,10 @@ describe('container probing', () => {
     run.mockImplementation(async (_ctx, _env, _id, args) =>
       ok(String(args.at(-1)).includes('command -v') ? 'default via 172.17.0.1 dev eth0' : ''))
     const checks = await probeTargetReachability(new Context(), environment, limits, signal, ['http://localhost:8080/'])
-    expect(checks).toEqual([{ targetOrigin: 'http://localhost:8080/', status: 'unknown',
-      detail: 'No HTTP client found in the container', checkedAt: expect.any(Number) }])
+    expect(checks.map(({ checkedAt: _checkedAt, ...check }) => check)).toEqual([
+      { targetOrigin: 'http://localhost:8080/', status: 'unknown', detail: 'No HTTP client found in the container' },
+    ])
+    expect(checks[0]?.checkedAt).toBeTypeOf('number')
     expect(run).toHaveBeenCalledTimes(1)
   })
   it('reports unreachable when every derived candidate stays silent', async () => {

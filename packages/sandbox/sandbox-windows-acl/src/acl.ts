@@ -22,10 +22,10 @@
  */
 
 import { createHash } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { allocOverlapped, allocPtrSlot, decodePtr, decodeUint8At, decodeUint16At, decodeUint32At, getTempPath, isInvalidHandle, isNullPtr, ptrAddress, sameSidAt, throwLastError, throwWin32 } from './ffi.ts'
+import { allocOverlapped, allocPtrSlot, allocUint32, decodePtrAt, decodePtr, decodeUint32, decodeUint8At, decodeUint16At, decodeUint32At, getTempPath, isInvalidHandle, isNullPtr, ptrAddress, sameSidAt, throwLastError, throwWin32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import * as abi from './win32-abi.ts'
 
@@ -213,7 +213,7 @@ type LabelEdit = { kind: 'apply'; acl: NativePtr } | { kind: 'clear' } | { kind:
 /**
  * Shared tail of grantWrite and revokeWrite: merge `entries` into `oldAcl`
  * (null = no explicit DACL yet; SetEntriesInAclW builds one from scratch),
- * free the descriptor before applying the merged ACL, apply the merged DACL
+ * retain the descriptor until applying the merged ACL, apply the merged DACL
  * together with the label edit in one SetNamedSecurityInfoW call, then free
  * every ACL this call owns — checking each call and reporting with the
  * caller's label. The entry count derives from the buffer, so a grant can
@@ -234,6 +234,7 @@ function mergeAndApply(
   labelEdit: LabelEdit,
   descriptor: NativePtr | null,
   label: string,
+  propagate = false,
 ): void {
   const newAclSlot = allocPtrSlot()
   const mergeResult = api.setEntriesInAclW(entries.length / abi.EXPLICIT_ACCESS_W_SIZE, entries, oldAcl, newAclSlot)
@@ -249,20 +250,75 @@ function mergeAndApply(
     throwWin32(api, 'SetEntriesInAclW', api.getLastError(), `${label}(${path}): null new ACL`)
   }
 
-  // The descriptor block (oldAcl included) is dead after the merge — free it
-  // before applying, exactly like the POC.
-  const freedDescriptor = descriptor !== null ? api.localFree(descriptor) : null
-  const applyResult = api.setNamedSecurityInfoW(
+  // Retain the original DACL until temporary label access has been removed.
+  let freedDescriptor: NativePtr | null = null
+  let freedNew: NativePtr | null = null
+  let freedLabel: NativePtr | null = null
+  let applyResult = propagate ? 5 : api.setNamedSecurityInfoW(
     path, abi.SE_FILE_OBJECT,
     labelEdit.kind === 'keep' ? abi.DACL_SECURITY_INFORMATION : abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION,
     null, null, newAcl, labelEdit.kind === 'apply' ? labelEdit.acl : null,
   )
-  const freedNew = api.localFree(newAcl)
-  const freedLabel = labelEdit.kind === 'apply' ? api.localFree(labelEdit.acl) : null
+  try {
+    if (applyResult === 5 && label === 'grantWrite' && labelEdit.kind === 'apply') {
+      applyResult = applyWithLabelAccess(api, path, oldAcl, newAcl, labelEdit.acl, propagate)
+    }
+  } finally {
+    freedDescriptor = descriptor !== null ? api.localFree(descriptor) : null
+    freedNew = api.localFree(newAcl)
+    freedLabel = labelEdit.kind === 'apply' ? api.localFree(labelEdit.acl) : null
+  }
   if (applyResult !== abi.ERROR_SUCCESS) throwWin32(api, 'SetNamedSecurityInfoW', applyResult, `${label}(${path})`)
   if (freedDescriptor !== null && !isNullPtr(freedDescriptor)) throwLastError(api, 'LocalFree', `${label}(${path}) descriptor`)
   if (!isNullPtr(freedNew)) throwLastError(api, 'LocalFree', `${label}(${path}) new ACL`)
   if (freedLabel !== null && !isNullPtr(freedLabel)) throwLastError(api, 'LocalFree', `${label}(${path}) label ACL`)
+}
+
+/** Temporarily allow Host label writes; tree propagation retains that permission until child labels have been applied. */
+function applyWithLabelAccess(api: Win32Bindings, path: string, oldAcl: NativePtr | null,
+  newAcl: NativePtr | null, labelAcl: NativePtr, propagate: boolean): number {
+  const processHandle = api.openProcess(abi.PROCESS_QUERY_INFORMATION, 0, process.pid)
+  if (isNullPtr(processHandle)) throwLastError(api, 'OpenProcess', 'workspace label provisioning')
+  const tokenSlot = allocPtrSlot()
+  const opened = api.openProcessToken(processHandle, abi.TOKEN_QUERY, tokenSlot)
+  const openError = opened === 0 ? api.getLastError() : 0
+  api.closeHandle(processHandle)
+  if (opened === 0) throwWin32(api, 'OpenProcessToken', openError, path)
+  const token = decodePtr(tokenSlot)
+  if (token === null) throw new Error('Workspace label provisioning received no process token')
+  try {
+    const needed = allocUint32()
+    api.getTokenInformation(token, abi.TokenUser, null, 0, needed)
+    const size = decodeUint32(needed)
+    if (size < abi.SID_AND_ATTRIBUTES_SIZE) throwLastError(api, 'GetTokenInformation', 'TokenUser size')
+    const user = Buffer.alloc(size)
+    if (api.getTokenInformation(token, abi.TokenUser, user, size, needed) === 0)
+      throwLastError(api, 'GetTokenInformation', 'TokenUser')
+    const sid = decodePtrAt(user, 0)
+    if (sid === null) throw new Error('Workspace label provisioning received no user SID')
+    const temporarySlot = allocPtrSlot()
+    const merged = api.setEntriesInAclW(1, buildExplicitAccess(sid, abi.GRANT_ACCESS, abi.WRITE_OWNER,
+      propagate ? abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT : 0), oldAcl, temporarySlot)
+    if (merged !== abi.ERROR_SUCCESS) throwWin32(api, 'SetEntriesInAclW', merged, path)
+    const temporary = decodePtr(temporarySlot)
+    if (temporary === null) throw new Error('Workspace label provisioning received no temporary DACL')
+    try {
+      const granted = api.setNamedSecurityInfoW(path, abi.SE_FILE_OBJECT, abi.DACL_SECURITY_INFORMATION, null, null, temporary, null)
+      if (granted !== abi.ERROR_SUCCESS) return granted
+      let applied = api.setNamedSecurityInfoW(path, abi.SE_FILE_OBJECT,
+        propagate ? abi.LABEL_SECURITY_INFORMATION : abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION,
+        null, null, propagate ? null : newAcl, labelAcl)
+      if (propagate && applied === abi.ERROR_SUCCESS) {
+        applied = api.setNamedSecurityInfoW(path, abi.SE_FILE_OBJECT, abi.DACL_SECURITY_INFORMATION, null, null, newAcl, null)
+      }
+      if (applied !== abi.ERROR_SUCCESS) {
+        const restored = api.setNamedSecurityInfoW(path, abi.SE_FILE_OBJECT, abi.DACL_SECURITY_INFORMATION, null, null, oldAcl, null)
+        if (restored !== abi.ERROR_SUCCESS) throwWin32(api, 'SetNamedSecurityInfoW', restored,
+          `Could not restore temporary label permission on ${path}; initialization stopped (original error ${applied})`)
+      }
+      return applied
+    } finally { api.localFree(temporary) }
+  } finally { api.closeHandle(token) }
 }
 
 /**
@@ -283,7 +339,8 @@ function mergeAndApply(
  * @param sidPtr - the trustee SID to match.
  * @returns whether the exact entry is already present.
  */
-function hasExactEntry(acl: NativePtr, aceType: number, inheritance: number, mask: number, sidPtr: NativePtr): boolean {
+function hasExactEntry(acl: NativePtr, aceType: number, inheritance: number, mask: number, sidPtr: NativePtr,
+  inherited = false): boolean {
   const aclSize = decodeUint16At(acl, 2)
   const aceCount = decodeUint16At(acl, 4)
   if (aclSize < 8 || aclSize > 1_048_576) return false // implausible: fall back to the merge path
@@ -293,7 +350,7 @@ function hasExactEntry(acl: NativePtr, aceType: number, inheritance: number, mas
     const aceSize = decodeUint16At(acl, offset + 2)
     if (aceSize < 8 || offset + aceSize > aclSize) return false // implausible: fall back to the merge path
     const exact = decodeUint8At(acl, offset) === aceType
-      && decodeUint8At(acl, offset + 1) === inheritance
+      && (decodeUint8At(acl, offset + 1) & (inherited ? ~abi.INHERITED_ACE : 0xff)) === inheritance
       && decodeUint32At(acl, offset + 4) === mask
     if (exact && sameSidAt(acl, offset + 8, sidPtr, 0)) return true
     offset += aceSize
@@ -365,14 +422,15 @@ function hasForeignGrant(oldAcl: NativePtr, sidPtr: NativePtr): boolean {
  * identical descriptor across the whole tree (eager inheritance; minutes on
  * large workspaces). Otherwise read-merge-write, so pre-existing explicit ACEs
  * survive (same shape as {@link revokeWrite}). Runs under the per-path lock.
- * The directory must be owned by the caller AND grant WRITE_OWNER (the label
- * lives in the SACL; owner-implicit rights cover only READ_CONTROL and
- * WRITE_DAC) — a Full-control workspace satisfies both.
+ * The caller must have WRITE_DAC. If WRITE_OWNER is absent, provisioning
+ * temporarily grants that right to the Host user on this directory only;
+ * the final DACL removes it in the same call that sets the Low label.
  * @param api - the binding table.
  * @param path - the directory whose DACL and label gain the grant (the workspace or temp root).
  * @param sidPtr - the capability SID the ACE names.
  * @param lowLabelSidPtr - the Low integrity SID the mandatory label names.
  * @param worldSidPtr - the Everyone SID the ambient-delete deny names.
+ * @param propagate - refresh inheritance with temporary Host label access throughout the tree.
  */
 export function grantWrite(
   api: Win32Bindings,
@@ -380,10 +438,11 @@ export function grantWrite(
   sidPtr: NativePtr,
   lowLabelSidPtr: NativePtr,
   worldSidPtr: NativePtr,
+  propagate = false,
 ): void {
   withPathLock(api, path, () => {
     const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
-    if (oldAcl !== null && labelAcl !== null
+    if (!propagate && oldAcl !== null && labelAcl !== null
       && hasExactGrant(oldAcl, sidPtr) && hasExactDeny(oldAcl, worldSidPtr)
       && hasExactLabel(labelAcl, lowLabelSidPtr)) {
       // The exact ACE, deny, and label stand: releasing the descriptor is the whole operation.
@@ -408,9 +467,64 @@ export function grantWrite(
         buildExplicitAccess(worldSidPtr, abi.DENY_ACCESS, abi.FILE_DELETE_CHILD, abi.CONTAINER_INHERIT_ACE),
         buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK),
       ]),
-      oldAcl, { kind: 'apply', acl: label }, descriptor, 'grantWrite',
+      oldAcl, { kind: 'apply', acl: label }, descriptor, 'grantWrite', propagate,
     )
   })
+}
+
+/**
+ * Provision and verify the inheriting subtree before a restricted process can
+ * start. Existing exact grants avoid mutation, but not descendant validation:
+ * Windows can report a successful root update while skipping child objects.
+ * Protected DACL subtrees and symbolic links are outside inheritance.
+ * @param api - the binding table.
+ * @param path - the granted directory.
+ * @param sidPtr - the workspace or private-temp capability.
+ * @param lowLabelSidPtr - the Low integrity SID.
+ * @param worldSidPtr - the Everyone SID.
+ */
+export function grantWriteTree(api: Win32Bindings, path: string, sidPtr: NativePtr,
+  lowLabelSidPtr: NativePtr, worldSidPtr: NativePtr): void {
+  grantWrite(api, path, sidPtr, lowLabelSidPtr, worldSidPtr)
+  if (findIncompleteDescendant(api, path, sidPtr, lowLabelSidPtr, worldSidPtr) === undefined) return
+  grantWrite(api, path, sidPtr, lowLabelSidPtr, worldSidPtr, true)
+  const incomplete = findIncompleteDescendant(api, path, sidPtr, lowLabelSidPtr, worldSidPtr)
+  if (incomplete !== undefined) {
+    throwWin32(api, 'SetNamedSecurityInfoW', 5, `Incomplete sandbox permission inheritance: ${incomplete}`)
+  }
+}
+
+/** Return the first inheriting object missing a capability, delete deny, or Low label. */
+function findIncompleteDescendant(api: Win32Bindings, root: string, sid: NativePtr,
+  low: NativePtr, world: NativePtr): string | undefined {
+  const pending = [root]
+  for (let directory = pending.pop(); directory !== undefined; directory = pending.pop()) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue
+      const path = join(directory, entry.name)
+      const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
+      try {
+        // SECURITY_DESCRIPTOR.Control is at offset 2 in both absolute and
+        // self-relative descriptors; SE_DACL_PROTECTED is 0x1000.
+        if (descriptor !== null && (decodeUint16At(descriptor, 2) & 0x1000) !== 0) continue
+        const inheritance = entry.isDirectory() ? abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT : 0
+        const ready = oldAcl !== null && labelAcl !== null
+          && hasExactEntry(oldAcl, abi.ACCESS_ALLOWED_ACE_TYPE, inheritance, abi.GRANT_MASK, sid, true)
+          && hasExactEntry(labelAcl, abi.SYSTEM_MANDATORY_LABEL_ACE_TYPE, inheritance,
+            abi.SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, low, true)
+          && (!entry.isDirectory() || hasExactEntry(oldAcl, abi.ACCESS_DENIED_ACE_TYPE,
+            abi.CONTAINER_INHERIT_ACE, abi.FILE_DELETE_CHILD, world, true))
+        if (!ready) return path
+        if (entry.isDirectory()) pending.push(path)
+      } finally {
+        if (descriptor !== null) {
+          const freed = api.localFree(descriptor)
+          if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWriteTree(${path}) descriptor`)
+        }
+      }
+    }
+  }
+  return undefined
 }
 
 /**

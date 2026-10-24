@@ -12,7 +12,7 @@
  * @module @deepseek-ai/dsh-sandbox-windows-acl/grant
  */
 
-import { grantWrite, revokeWrite } from './acl.ts'
+import { grantWriteTree, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32Sync } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import { makeWellKnownSid } from './token.ts'
@@ -90,7 +90,7 @@ export class AclWriteGrant {
   /**
    * Grant the write ACE, the ambient-delete deny, and the Low mandatory label
    * on one directory (idempotent: an already-standing exact ACE, deny, and
-   * label skip the eager full-tree re-propagation — see {@link grantWrite})
+   * label skip mutation when descendants also pass {@link grantWriteTree})
    * and record the path for {@link dispose} unless it is standing. The path is
    * recorded BEFORE the grant: a post-apply throw (a LocalFree failure after
    * SetNamedSecurityInfoW succeeded) must still revoke it, and revoking an
@@ -104,7 +104,7 @@ export class AclWriteGrant {
    */
   add(path: string, standing = false): void {
     ;(standing ? this.standingPaths : this.revocablePaths).push(path)
-    grantWrite(this.api, path, this.sidPtr, this.lowLabelSidPtr, this.worldSidPtr)
+    grantWriteTree(this.api, path, this.sidPtr, this.lowLabelSidPtr, this.worldSidPtr)
   }
 
   /** Every directory currently carrying the grant, in grant order. */

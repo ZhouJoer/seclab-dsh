@@ -24,6 +24,9 @@
 
 - id: tool-jobs
   name: '@deepseek-ai/dsh-tool-jobs'
+  config:
+    waitMode: activity
+    maxWaitTimeoutMs: 60000
 
 - id: command-goal
   name: '@deepseek-ai/dsh-command-goal'

@@ -5,9 +5,8 @@ import { dirname, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { expect, it, onTestFinished } from 'vitest'
-import { load } from 'js-yaml'
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
-import { prepareSecurityToolsPatch, readSecurityEnvironments, writeSecurityEnvironments } from './security-tools-config.ts'
+import { resolveEnvironmentConfiguration } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
+import { readSecurityEnvironments, writeSecurityEnvironments } from './security-tools-config.ts'
 
 const cliDeadlineMs = 30_000
 
@@ -212,34 +211,38 @@ it('reports a stopped external container without saving installations or startin
   }
 })
 
-it('merges configured environments and task defaults into the source profile while preserving expressions', async () => {
+it('merges file environments and task defaults without changing effective workbench preferences', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-environment-overlay-'))
   try {
-    const environments = join(directory, 'security-environments.json'), tools = join(directory, 'tools.json')
-    const template = join(directory, 'template.yml')
-    await writeFile(template, '- id: security-workbench\n  config:\n    root: !!js process.cwd()\n    taskIntake:\n      defaultEnvironmentIds: [local]\n    environments:\n      - id: local\n        kind: local\n        cwd: !!js process.cwd()\n        tools: []\n')
+    const environments = join(directory, 'security-environments.json')
+    const configuration = { environmentConfigurationPath: environments, analysisTurnTokens: 12345, evolution: { auto: false }, root: join(directory, 'data'),
+      taskIntake: { workspaces: [], maxAttempts: 3, defaultEnvironmentIds: ['local'] },
+      environments: [{ id: 'local', kind: 'local' as const, label: 'Local', cwd: directory, tools: [] }] }
+    expect(resolveEnvironmentConfiguration(configuration)).toEqual(configuration)
+    expect(() => resolveEnvironmentConfiguration({
+      ...configuration, environments: [...configuration.environments, ...configuration.environments],
+    })).toThrow('Environment IDs must be unique')
     await writeFile(environments, JSON.stringify({ environments: [{ id: 'remote', kind: 'docker', label: 'Kali', cwd: '.',
       externalContainer: { name: 'kali-test', workdir: '/tmp' },
       tools: [{ id: 'docker', command: 'docker', versionArgs: ['--version'], source: 'Operator installation' }],
     }], defaultEnvironmentIds: ['local', 'remote'] }))
-    const overlay = await readFile(prepareSecurityToolsPatch(template, tools), 'utf8')
-    const entries = load(overlay, { schema: entryListSchema }) as {
-      config: { environments: { id: string; cwd: string }[]; taskIntake: object }
-    }[]
-    expect(entries[0]?.config.environments.map(environment => environment.id)).toEqual(['local', 'remote'])
-    expect(entries[0]?.config.environments[1]?.cwd).toBe(directory)
-    expect(entries[0]?.config.taskIntake).toMatchObject({ defaultEnvironmentIds: ['local', 'remote'] })
-    expect(overlay).toContain('!!js process.cwd()')
+    const resolved = resolveEnvironmentConfiguration(configuration)
+    expect(resolved.environments.map(environment => environment.id)).toEqual(['local', 'remote'])
+    expect(resolved.environments[1]?.cwd).toBe(directory)
+    expect(resolved.taskIntake).toMatchObject({ defaultEnvironmentIds: ['local', 'remote'] })
+    expect(resolved).toMatchObject({ analysisTurnTokens: 12345, evolution: { auto: false }, root: configuration.root })
+    expect(() => resolveEnvironmentConfiguration({ ...configuration, environmentConfigurationPath: './relative.json' })).toThrow('must be absolute')
+    expect(() => resolveEnvironmentConfiguration({ ...configuration, environmentConfigurationPath: '' })).toThrow('must be absolute')
+    expect(() => resolveEnvironmentConfiguration({ ...configuration, taskIntake: undefined })).toThrow('require taskIntake')
     await writeFile(environments, JSON.stringify({ environments: [], defaultEnvironmentIds: ['unknown'] }))
-    expect(() => prepareSecurityToolsPatch(template, tools)).toThrow('Unknown default security environment: unknown')
+    expect(() => resolveEnvironmentConfiguration(configuration)).toThrow('Unknown default security environment: unknown')
     await writeFile(environments, JSON.stringify({ environments: [], defaultEnvironmentIds: ['local'], httpEnvironmentId: 'remote' }))
-    expect(() => prepareSecurityToolsPatch(template, tools)).toThrow('httpEnvironmentId must name a selected local or docker environment: remote')
+    expect(() => resolveEnvironmentConfiguration(configuration)).toThrow('httpEnvironmentId must name a selected local or docker environment: remote')
     await writeFile(environments, JSON.stringify({ environments: [{ id: 'remote', kind: 'docker', label: 'Kali', cwd: '.',
       externalContainer: { name: 'kali-test', workdir: '/tmp' },
       tools: [{ id: 'docker', command: 'docker', versionArgs: ['--version'], source: 'Operator installation' }],
     }], defaultEnvironmentIds: ['local', 'remote'], httpEnvironmentId: 'remote' }))
-    expect((load(await readFile(prepareSecurityToolsPatch(template, tools), 'utf8'), { schema: entryListSchema }) as {
-      config: { taskIntake: { httpEnvironmentId?: string } } }[])[0]?.config.taskIntake.httpEnvironmentId).toBe('remote')
+    expect(resolveEnvironmentConfiguration({ ...configuration, taskIntake: { ...configuration.taskIntake, httpEnvironmentId: 'local' } }).taskIntake.httpEnvironmentId).toBe('remote')
   } finally {
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   }

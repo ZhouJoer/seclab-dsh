@@ -1,5 +1,8 @@
 /** Security command validation and durable project authority. @module */
 import { createHash, randomUUID } from 'node:crypto'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import assert from 'node:assert/strict'
 import { z } from 'zod'
 import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
 import { moduleSelectionSchema, moduleAllowsOperation } from '../analysis-modules.ts'
@@ -135,11 +138,13 @@ export class SecurityController {
     } finally { this.purging = undefined; gate.resolve() }
   }
   private readonly delegated = new Map<AbortController, { project: string; done: Promise<unknown> }>()
+  private readonly releasingEnvironments = new Set<string>()
   private readonly active = new Map<
     string,
     { project: string; environment: string; plan: string; controller: AbortController; done: Promise<void> }
   >()
   private lease(project: string, environment: string, plan: string, key: string | null) {
+    if (this.disposed || this.releasingEnvironments.has(environment)) throw new Error('Security environment is closing')
     const id = key ?? randomUUID()
     if (this.active.has(environment) || this.active.has(id)) throw new Error('Analysis instance is already leased')
     const controller = new AbortController()
@@ -198,6 +203,7 @@ export class SecurityController {
    * @returns disposer releasing the live registration.
    */
   trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void {
+    if (this.disposed) throw new Error('Security workbench is closing')
     if (this.project(this.journal.view(), project).stopped) controller.abort(new Error('Project is stopped'))
     this.delegated.set(controller, { project, done })
     return () => { this.delegated.delete(controller) }
@@ -210,6 +216,7 @@ export class SecurityController {
    * @returns the lifecycle result.
    */
   async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = ''): Promise<T> {
+    if (this.disposed || this.releasingEnvironments.has(environmentId)) throw new Error('Security environment is closing')
     if ([...this.active.values()].some(run => run.environment === environmentId)) throw new Error('Environment is already leased by another operation')
     const controller = new AbortController()
     const settled = Promise.withResolvers<undefined>()
@@ -219,6 +226,22 @@ export class SecurityController {
     } finally {
       this.active.delete(environmentId)
       settled.resolve(undefined)
+    }
+  }
+  /** Cancel consumers before releasing environments owned by one provider activation.
+   * @param environmentIds - environments whose resources are being released.
+   * @param release - resource cleanup, called after admitted consumers settle.
+   * @returns completion after cleanup; other environments remain available.
+   */
+  async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void> {
+    for (const id of environmentIds) this.releasingEnvironments.add(id)
+    try {
+      const runs = [...this.active.values()].filter(run => environmentIds.includes(run.environment))
+      for (const run of runs) run.controller.abort(new Error('Security environment provider disposed'))
+      await Promise.allSettled(runs.map(run => run.done))
+      await release()
+    } finally {
+      for (const id of environmentIds) this.releasingEnvironments.delete(id)
     }
   }
   /**
@@ -283,8 +306,8 @@ export class SecurityController {
       signal.throwIfAborted()
       const engagementId = authorize()
       return [{ kind: 'evidence', value: evidenceSchema.parse({
-        id: randomUUID(), engagementId, assetId, title: 'Script analysis log',
-        summary: 'Recorded native tool interaction. Target association is analyst-declared; complete process output and runtime validation are not established.',
+        id: randomUUID(), engagementId, assetId, title: 'Analysis tool log',
+        summary: 'Recorded analysis tool interaction. Target association is analyst-declared; complete output and approved runtime validation are not established.',
         artifact, provider: 'session-tool', operation: 'analysis-log', toolVersion: 'recorded-session',
         request: { callIds }, requestHash, source: { sessionId, callId: callIds[0], channel: 'tool' },
         incomplete: true, createdAt: Date.now(),
@@ -427,6 +450,73 @@ export class SecurityController {
     return record.value
   }
 
+  /** Create an empty task and its primary conversation in one durable commit.
+   * @param sessionId - fresh authenticated conversation.
+   * @param operationId - stable identity retained across retries.
+   * @param root - explicitly selected workspace directory.
+   * @param input - stable operator-selected title and environments.
+   * @param resolve - resolve workspace defaults only for the first successful commit.
+   * @returns committed task scope. */
+  async createWorkspaceTask(sessionId: SessionId, operationId: string, root: string,
+    input: { title: string; environmentIds: string[] },
+    resolve: () => Promise<Pick<Extract<SecurityCommand['action'], { kind: 'create' }>, 'maxAttempts' | 'moduleSelection' | 'taskContext'>>): Promise<WorkbenchView> {
+    await this.journal.commit(operationId, undefined, { sessionId, root, input }, async (view) => {
+      if (view.records.some(item => item.kind === 'binding' && item.value.sessionId === sessionId))
+        throw new Error('Conversation already belongs to an analysis task')
+      const action = { ...await resolve(), ...input, kind: 'create' as const, objective: '' }
+      return this.createRecords(sessionId, action).map(record => record.kind === 'engagement'
+        ? { ...record, value: { ...record.value, mainSessionId: sessionId, automaticTitle: true, workspaceMaterials: { root } } }
+        : record)
+    })
+    return this.view(sessionId)
+  }
+
+  /** Fill an empty task objective from a committed operator message.
+   * @param sessionId - primary conversation receiving the message.
+   * @param messageId - durable message identity used for retry deduplication.
+   * @param objective - actual user text; blank text changes nothing.
+   * @returns completion after the task update is committed. */
+  async describeWorkspaceTask(sessionId: SessionId, messageId: string, objective: string): Promise<void> {
+    if (!objective.trim()) return
+    const binding = this.binding(sessionId)
+    if (!binding) return
+    const project = this.projects(true).find(item => item.id === binding.engagementId)
+    if (!project || project.objective || project.mainSessionId !== sessionId) return
+    await this.journal.commit(`workspace-objective:${sessionId}:${messageId}`, undefined, { sessionId, messageId, objective }, (view) => {
+      const current = this.project(view, binding.engagementId)
+      if (current.objective) return [{ kind: 'engagement', value: current }]
+      return [{ kind: 'engagement', value: { ...current, objective: objective.trim(),
+        ...(current.automaticTitle ? { title: objective.trim().replace(/[\r\n][\s\S]*$/u, '').slice(0, 120), automaticTitle: false } : {}) } }]
+    })
+  }
+
+  /** Publish a workspace snapshot without changing any previously referenced asset.
+   * @param targets - tasks and their fixed workspace roots, checked again at commit.
+   * @param prepare - cancellable snapshot producer, held through artifact cleanup exclusion.
+   * @returns completion after the current material pointer is committed. */
+  async syncWorkspaceMaterials(targets: readonly { projectId: string; root: string }[], prepare: () => Promise<import('./model.ts').Artifact>): Promise<void> {
+    await this.withArtifactWrite(async () => {
+      const artifact = await prepare()
+      for (const { projectId, root } of targets) {
+        const project = this.projects().find(item => item.id === projectId)
+        if (!project || project.workspaceMaterials?.root !== root) continue
+        const records = this.projectView(projectId).records
+        const existing = records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'source'
+        && item.value.inputSource?.kind === 'path' && item.value.inputSource.path === root && item.value.artifact.sha256 === artifact.sha256)
+        if (existing?.kind === 'asset' && existing.value.id === project.workspaceMaterials.assetId) continue
+        const assetId = existing?.kind === 'asset' ? existing.value.id : randomUUID()
+        await this.journal.commit(randomUUID(), undefined, { projectId, root, artifact }, (view) => {
+          const current = this.project(view, projectId)
+          if (current.archived || current.workspaceMaterials?.root !== root) return [{ kind: 'engagement', value: current }]
+          return [ ...(existing ? [] : [{ kind: 'asset' as const, value: sourceAssetSchema.parse({
+            id: assetId, engagementId: projectId, kind: 'source', label: root, identity: 'measured', artifact,
+            inputSource: { kind: 'path', path: root },
+          }) }]), { kind: 'engagement', value: { ...current, workspaceMaterials: { root, assetId } } }]
+        })
+      }
+    })
+  }
+
   /** List projects for operator selection.
    * @param includeArchived - include removed projects for explicit restoration.
    * @returns project labels available to the local operator, never delegated tool callers. */
@@ -469,7 +559,7 @@ export class SecurityController {
         const { taskContext: _previous, ...retained } = project
         return [{ kind: 'engagement', value: { ...retained, ...(taskContext ? { taskContext } : {}) } }]
       }
-      if (request.action.kind === 'rename') return [{ kind: 'engagement', value: { ...project, title: request.action.title } }]
+      if (request.action.kind === 'rename') return [{ kind: 'engagement', value: { ...project, title: request.action.title, automaticTitle: false } }]
       if (request.action.kind === 'restore') return [{ kind: 'engagement', value: { ...project, archived: false } }]
       return [{ kind: 'engagement', value: { ...project, archived: true, stopped: true } },
         ...view.records.filter(item => item.kind === 'binding').filter(item => item.value.engagementId === projectId)
@@ -487,6 +577,71 @@ export class SecurityController {
    */
   async importMaterials(sessionId: string, input: unknown, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
     return this.withArtifactWrite(() => this.importMaterialsImpl(sessionId, input, defaultTaskContext))
+  }
+  /** Start a fresh project from user inputs after draining the old round.
+   * @param sessionId - source coordinator.
+   * @param destination - fresh Session reserved by the operator service.
+   * @param operationId - durable retry identity.
+   * @param replacements - selected paths, or null to explicitly reuse a saved material.
+   * @param stopAgents - stop and await every Agent belonging to the old project.
+   * @returns the new project, with no evidence or execution approvals inherited.
+   */
+  async restart(sessionId: string, destination: string, operationId: string,
+    replacements: Record<string, string | null>, stopAgents: () => Promise<void>): Promise<WorkbenchView> {
+    const completed = this.binding(destination)
+    if (completed) return this.view(destination)
+    return this.withArtifactWrite(async () => {
+      const view = this.view(sessionId)
+      const project = view.records.find(item => item.kind === 'engagement')?.value
+      if (!project || this.binding(sessionId)?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+      const samples = view.records.filter(item => item.kind === 'asset')
+        .map(item => item.value).filter(asset => !('parentId' in asset && asset.parentId))
+        .filter(asset => !project.workspaceMaterials || !('kind' in asset) || asset.kind !== 'source'
+          || asset.inputSource?.kind !== 'path' || asset.inputSource.path !== project.workspaceMaterials.root)
+      const inputs: Asset[] = []
+      for (const sample of samples) {
+        if ('kind' in sample && sample.kind === 'web')
+          throw new Error('Managed laboratory inputs must be recreated before restarting this task')
+        if ('kind' in sample && sample.kind === 'external-web') { inputs.push(sample); continue }
+        const replacement = replacements[sample.id]
+        const source = replacement === null ? { kind: 'stored' as const }
+          : replacement ? { kind: 'path' as const, path: replacement } : sample.inputSource
+        if (!source) throw new Error('Reselect the original file or directory for: ' + sample.label)
+        if (source.kind === 'path') {
+          const measured = await prepareMaterials(this.artifacts, source,
+            { bytes: this.options.maxArtifactBytes, entries: this.options.maxDerivedAssets })
+          for (const material of measured) inputs.push(assetSchema.parse({ ...material, id: randomUUID(), engagementId: project.id }))
+        } else {
+          await this.artifacts.read(sample.artifact)
+          inputs.push({ ...sample, inputSource: source })
+        }
+      }
+      await this.journal.commit(operationId + ':stop', undefined, { sessionId, destination }, current => [
+        { kind: 'engagement', value: { ...this.project(current, project.id), stopped: true } },
+      ])
+      await Promise.all([stopAgents(), this.cancelExecutions(project.id)])
+      await this.journal.commit(operationId, undefined, { sessionId, destination }, async (current) => {
+        const retained = this.project(current, project.id)
+        const records = this.createRecords(destination, { kind: 'create', title: retained.title,
+          objective: retained.objective, environmentIds: retained.environmentIds, maxAttempts: retained.maxAttempts,
+          taskContext: retained.taskContext, moduleSelection: retained.moduleSelection?.mode === 'manual'
+            ? retained.moduleSelection : { mode: 'auto', modules: [], reason: '' } })
+        const next = records.find(item => item.kind === 'engagement')
+        assert(next?.kind === 'engagement')
+        if (retained.workspaceMaterials) {
+          next.value = { ...next.value, mainSessionId: brandString<SessionId>(destination), automaticTitle: false,
+            workspaceMaterials: { root: retained.workspaceMaterials.root } }
+        }
+        for (const input of inputs) records.push(...await this.importedRecords(assetSchema.parse({
+          ...input, id: randomUUID(), engagementId: next.value.id,
+        })))
+        records.push({ kind: 'engagement', value: { ...retained, archived: true, stopped: true } })
+        for (const item of current.records) if (item.kind === 'binding' && item.value.engagementId === project.id)
+          records.push({ kind: 'binding', value: { ...item.value, active: false } })
+        return records
+      })
+      return this.view(destination)
+    })
   }
   private async importMaterialsImpl(sessionId: string, input: unknown, defaultTaskContext?: TaskContext): Promise<WorkbenchView> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),

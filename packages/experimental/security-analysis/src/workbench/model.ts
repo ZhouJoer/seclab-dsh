@@ -29,6 +29,11 @@ const text = z.string().trim().min(1)
 const id = text.max(128)
 const json: z.ZodType<JsonValue> = z.json()
 const digest = z.string().regex(/^[a-f0-9]{64}$/u)
+/** Operator input origin; stored inputs reuse immutable bytes when a task restarts. */
+export const materialSourceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('path'), path: text }).strict(),
+  z.object({ kind: z.literal('stored') }).strict(),
+])
 /** Four assessment stages, independent for each check. */
 export const phaseSchema = z.enum(['recon', 'surface', 'assessment', 'validation'])
 /** A research direction may span turns and recur after other phases. */
@@ -60,7 +65,10 @@ export const engagementSchema = z
   .object({
     id: id.transform(brandString<EngagementId>),
     title: text,
-    objective: text,
+    objective: z.string().trim(),
+    mainSessionId: id.transform(brandString<SessionId>).optional(),
+    automaticTitle: z.boolean().optional(),
+    workspaceMaterials: z.object({ root: text, assetId: id.optional() }).strict().optional(),
     environmentIds: z.array(id),
     stopped: z.boolean(),
     archived: z.boolean().optional(),
@@ -79,6 +87,7 @@ export const fileAssetSchema = z
     format: z.enum(['pe', 'elf', 'apk', 'dex', 'jar', 'other']),
     identity: z.enum(['measured', 'operator-declared']),
     parentId: id.optional(),
+    inputSource: materialSourceSchema.optional(),
   })
   .strict()
 /** A laboratory endpoint is an operator declaration, not an immutable file identity. */
@@ -97,6 +106,7 @@ export const sourceAssetSchema = z.object({
   kind: z.literal('source'),
   id: id.transform(brandString<AssetId>), engagementId: id, label: text,
   artifact: artifactSchema, identity: z.literal('measured'),
+  inputSource: materialSourceSchema.optional(),
 }).strict()
 /** Existing file records retain their original persisted representation. */
 export const assetSchema = z.union([fileAssetSchema, webAssetSchema, sourceAssetSchema, externalWebAssetSchema])

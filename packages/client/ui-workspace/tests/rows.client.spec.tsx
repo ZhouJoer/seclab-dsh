@@ -670,7 +670,7 @@ describe('workspace browser rows', () => {
       // The placeholder has no content yet: no row verbs (neither list is
       // asked for anything), no "now" stamp.
       expect(screen.queryByRole('button', { name: /会话.*的操作/ })).toBeNull()
-      expect(rendered).not.toHaveBeenCalled()
+      expect(rendered.mock.calls).toEqual([['sidebar.session.row.badge']])
       expect(screen.queryByText('刚刚')).toBeNull()
       // The hover card keeps title + status but drops the timestamp line.
       const wrapper = screen.getByRole('treeitem').parentElement as HTMLElement
@@ -1141,14 +1141,16 @@ describe('session row schedule seats', () => {
     expect(renderSlot).toHaveBeenCalledWith('sidebar.session.row.leading', { sessionId: idle.id })
     // Priority replacement: the idle row shows the clock seat INSTEAD of a dot.
     expect(row.querySelector('[data-state]')).toBeNull()
-    // The seat sits in the leading 16px cell, before the clipped title: the
-    // cell is the row's first element, and the title follows the cell.
+    // Status and association controls precede the flexible title so trailing
+    // actions cannot move either control under the pointer.
     const assertPlacement = (): void => {
       const cell = screen.getByRole('treeitem')
         .querySelector('[data-seat="sidebar.session.row.leading"]')?.parentElement
       expect(cell?.previousElementSibling ?? null).toBeNull()
-      expect(cell?.nextElementSibling?.textContent).toBe('Idle Session')
-      expect(cell?.nextElementSibling?.nextElementSibling?.textContent).toBe('刚刚')
+      const badge = cell?.nextElementSibling
+      expect(badge?.getAttribute('data-seat')).toBe('sidebar.session.row.badge')
+      expect(badge?.nextElementSibling?.textContent).toBe('Idle Session')
+      expect(badge?.nextElementSibling?.nextElementSibling?.textContent).toBe('刚刚')
     }
     assertPlacement()
     // Rerender through the same row: the seat stays leading without the flat

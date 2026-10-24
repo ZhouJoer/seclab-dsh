@@ -8,6 +8,8 @@
     "src"
   ],
   "references": [
+    { "path": "../../api/session-controller/tsconfig.host.json" },
+    { "path": "../../workspace/workspace" },
     { "path": "../../core/scope" },
     { "path": "../../session/session-projection" },
     { "path": "../../credentials/credentials" },

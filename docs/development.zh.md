@@ -36,6 +36,10 @@ pnpm install
 
 安装过程还会通过 `scripts/install-lefthook.mjs` 配置 worktree 本地的 Lefthook 钩子。[worktree 本地钩子 Agent Note](../.agents/notes/implemented/process/2026-07-27-worktree-local-lefthook.zh.md) 负责钩子路径的安全约定。
 
+钩子通过 `node scripts/run-lefthook.mjs` 启动。在 Windows 上，此启动器和安装程序将已安装的原生 Lefthook 写入新建的私有临时副本，从副本运行，并在退出后移除副本。这可避免工作区继承的 Low 完整性标签降低宿主钩子进程的完整性；工作区权限和调用者令牌保持不变。POSIX 安装和自定义命令 shim 仍在原位置执行。更新启动器配置后，重新运行下方安装命令以刷新现有钩子，无需设置 `LEFTHOOK_BIN` 覆盖值。
+
+Windows 安装过程还会将 pnpm 的原生 esbuild 平台包复制到 `%USERPROFILE%\.cache\dsh\host-esbuild` 下各仓库独立的缓存，并将其虚拟存储目录替换为目录联接。此位置避开了 [MSIX AppData 重定向](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes)，使打包应用和普通编辑器都能解析到同一组文件。副本包含已安装包的原始字节，并在替换前逐一校验；依赖版本保持不变。工作区权限传播会跳过这些链接，使宿主构建工具位于沙箱可写树之外。重新安装依赖时，`postinstall` 会刷新链接。缓存必须保持在沙箱可写根之外；受限安装进程无法配置此宿主缓存。
+
 [DevTools 前端](../packages/experimental/inspector/README.zh.md#use-this-package)通过固定版本的 npm 源码包和 Vite 在本地编译。依赖安装完成后，构建不需要网络连接或安装浏览器。workspace 与发布包的安装过程都不运行 DevTools 资源下载 hook；发布的 Inspector 包包含已构建的前端。
 
 如果依赖是从缓存恢复或 `postinstall` 被跳过而导致钩子缺失，请手动安装：

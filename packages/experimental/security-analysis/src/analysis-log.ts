@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { z } from 'zod'
+import { isSecurityBrowserTool } from './browser-tools.ts'
 
 class UncapturableAnalysisCall extends Error {}
 
@@ -27,7 +28,8 @@ export function analysisCallPage(events: readonly SessionEvent[], inherited: num
   maxBytes: number, jobId?: string): { calls: AnalysisCall[]; nextOffset: number | null } {
   const calls: AnalysisCall[] = []
   for (const event of events) {
-    if (event.type !== 'tool/call' || event.seq < inherited || !['bash', 'pwsh', 'job_output'].includes(event.data.name)) continue
+    if (event.type !== 'tool/call' || event.seq < inherited ||
+      !(['bash', 'pwsh', 'job_output'].includes(event.data.name) || isSecurityBrowserTool(event.data.name))) continue
     const result = events.find(item => item.type === 'tool/result' && item.seq >= inherited
       && item.seq > event.seq && item.data.message.toolCallId === event.data.callId)
     if (result?.type !== 'tool/result') continue
@@ -72,7 +74,8 @@ export function analysisLog(events: readonly SessionEvent[], inherited: number, 
     const call = calls.find(event => event.data.callId === id)
     const result = results.find(event => event.data.message.toolCallId === id)
     if (!call || !result || result.seq <= call.seq) throw new UncapturableAnalysisCall('Analysis call must have a committed result in this Session; omit callIds to list capturable call IDs. Background job IDs are not call IDs')
-    if (!['bash', 'pwsh', 'job_output'].includes(call.data.name)) throw new Error('Only native shell and job output can be captured')
+    if (!(['bash', 'pwsh', 'job_output'].includes(call.data.name) || isSecurityBrowserTool(call.data.name)))
+      throw new Error('Only native shell, job output and admitted Playwright calls can be captured')
     selected.add(call.seq); selected.add(result.seq)
     return { call, result }
   }
@@ -93,7 +96,7 @@ export function analysisLog(events: readonly SessionEvent[], inherited: number, 
         const args = z.object({ job_id: z.string() }).parse(JSON.parse(candidate.data.arguments))
         if (args.job_id === job) pair(candidate.data.callId)
       }
-    } else {
+    } else if (['bash', 'pwsh'].includes(call.data.name)) {
       const blocks = result.data.message.content
       const started = blocks.length === 1 && blocks[0]?.type === 'text'
         && blocks[0].text.trim().startsWith('started background job ')

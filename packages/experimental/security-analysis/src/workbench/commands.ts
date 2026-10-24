@@ -33,7 +33,7 @@ const actions = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('create'),
       title: text,
-      objective: text,
+      objective: z.string().trim(),
       environmentIds: z.array(text),
       maxAttempts: z.number().int().positive(),
       target: externalTargetInput.optional(),

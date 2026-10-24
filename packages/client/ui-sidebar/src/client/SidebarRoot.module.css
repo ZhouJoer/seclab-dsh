@@ -393,6 +393,10 @@
 
 /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
    corners); collapsed it renders as the rail's plain icon control. */
+.collapsed .newSessionGroup { flex-direction: column; gap: 4px; }
+.newSessionGroup { display: flex; align-items: center; }
+.newSessionGroup > :first-child { flex: 1; min-width: 0; }
+.newSessionOptions { display: inline-flex; padding: 6px; border: 0; background: transparent; color: inherit; border-radius: 6px; cursor: pointer; }
 .newSession {
   container-type: inline-size;
   position: relative;

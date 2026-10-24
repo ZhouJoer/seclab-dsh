@@ -80,6 +80,15 @@ pnpm security
 
 通过 DSH 打印的认证链接访问 `http://127.0.0.1:3081`。[安全 Web profile](../../../packages/experimental/security-web-profile/README.zh.md) 定义默认端口及 `--port` 覆盖方式。角色选择与安装管理见[角色和工具](../../../packages/experimental/security-analysis/README.zh.md#roles-tasks-and-tool-management)；后续工作与验收条件见[路线图](../../roadmaps/security-analysis.zh.md)。
 
+<a id="browser-login"></a>
+### 在 Web 工作流中登录网页
+
+使用 `pnpm security --patch apps/cli/config/examples/security-analysis/browser.cordis.yml --no-open` 启用现有 Playwright MCP 集成。需要可用的 Chromium；自动发现不适用时，将 `security-browser-playwright.config.executablePath` 设为已安装的 Chrome/Chromium 程序路径。配置覆盖会替换整个 config，因此须保留 `mode: launch` 和 `headless`。需要自己在浏览器窗口输入凭据、MFA 或验证码时，设置 `headless: false`。
+
+创建或恢复 Session，选中 Web 分析模块，让助手打开登录页、完成允许的表单操作，再继续处理登录后的页面。导航可能返回快照文件链接；`browser_snapshot` 可直接返回当前页面内容。协调者与 Web 分析员可用的操作相同，但各 Session 拥有独立浏览器和登录状态。当前活动 Session 的后续轮次保留登录；恢复、fork 或 Host 重启会创建新的浏览器状态。普通登录无需为每次点击创建验证计划；需要审批的安全验证仍走独立流程。
+
+需要保存观察时，让助手使用匹配的资产 ID 调用 `security_capture_analysis`，先列出调用，再选择导航或快照调用。凭据输入调用无需复制到证据中；提供给模型或浏览器工具的输入仍进入普通 Session 日志。将操作记录用于验证前，请阅读[浏览器权限与证据限制](../../../packages/experimental/security-analysis/README.zh.md#tool-inventory-and-acceptance)。
+
 ## 2. 开始分析
 
 

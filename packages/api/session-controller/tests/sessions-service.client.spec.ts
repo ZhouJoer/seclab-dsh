@@ -1,4 +1,6 @@
 /** Client catalog projection, explicitly retained scopes, streams, and Host operations. */
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SessionPresentation } from '../src/client/contract/sessions.ts'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
@@ -79,6 +81,20 @@ async function feedList(b: Bench, rows: FeedRow[]): Promise<void> {
 }
 
 describe('list store projection', () => {
+  it('projects shared business titles and restores native titles on disposal', async ({ bench }) => {
+    const b = bench()
+    await feedList(b, [{ id: 's1', blank: true, projections: { title: 'Native title' } }])
+    const rename = vi.fn(async () => {})
+    const source = createSnapshotStore<ReadonlyMap<SessionId, SessionPresentation>>(new Map([[sid('s1'), { title: 'Task title', reserved: true, rename }]]))
+    const release = b.svc.registerPresentation(source)
+    expect(b.svc.list.getSnapshot().byId[sid('s1')]).toMatchObject({ title: 'Native title', displayTitle: 'Task title', reserved: true })
+    expect(await b.svc.renameDisplayTitle(sid('s1'), 'Renamed')).toBe(true)
+    expect(rename).toHaveBeenCalledWith('Renamed')
+    release()
+    expect(b.svc.list.getSnapshot().byId[sid('s1')]?.displayTitle).toBe('Native title')
+    expect(b.svc.list.getSnapshot().byId[sid('s1')]?.reserved).toBeUndefined()
+    expect(await b.svc.renameDisplayTitle(sid('s1'), 'Native')).toBe(false)
+  })
   it('publishes format-status changes and preserves a newer update over an in-flight list', async ({ bench }) => {
     const b = bench()
     const historical = {

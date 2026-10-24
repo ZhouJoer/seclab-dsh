@@ -8,7 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { DatabaseSync } from 'node:sqlite'
-import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
+import { StorageError, UNIT_NAME_RE, storageBackendServiceKey, retainStorageConsumers } from '@deepseek-ai/dsh-storage'
 import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@deepseek-ai/dsh-storage'
 import { openDatabase, recordTableName, type JournalMode } from './schema.ts'
 import { SqliteKvUnit } from './unit.ts'
@@ -150,19 +150,22 @@ export class SqliteStorageBackend implements StorageBackend {
 }
 
 /**
- * Register the SQLite backend as `sqlite` on the storage hub. The disposer
- * unregisters the name first, then closes the backend.
+ * Register the SQLite backend as `sqlite` on the storage hub. Cleanup awaits
+ * consumers before unregistering the backend and closing the database.
  * @param ctx - Plugin context (must inject `storage`).
  * @param config - Validated plugin configuration.
  */
 export function apply(ctx: Context, config: Config) {
   const backend = new SqliteStorageBackend(config)
-  ctx.effect(() => {
-    const dispose = ctx.storage.backend.register('sqlite', backend)
-    return async () => {
-      dispose()
-      await backend.close()
-    }
+  ctx.effect(function* () {
+    yield ctx.effect(() => {
+      const dispose = ctx.storage.backend.register('sqlite', backend)
+      return async () => {
+        dispose()
+        await backend.close()
+      }
+    }, 'storage-sqlite.registerBackend')
+    yield retainStorageConsumers(ctx, storageBackendServiceKey('sqlite'))
+    yield ctx.provide(storageBackendServiceKey('sqlite'), backend)
   }, 'storage-sqlite.registerBackend')
-  ctx.provide(storageBackendServiceKey('sqlite'), backend)
 }

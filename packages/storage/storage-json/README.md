@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Plugin and root Context teardown await consumers and their final writes before closing storage resources; consumers still own their handles. See [storage cleanup ordering](../storage/README.md#use-this-package).
+
 Use this package when a composition needs readable, editable JSON storage. Route the relevant domains to backend `json`; each domain specification selects the `single` or `per-record` layout.
 
 ### When to choose it

@@ -1,6 +1,6 @@
 # Password attack selection
 
-Lockout policy is established before any online attack; offline work runs to the agreed time budget. Record command lines, wordlists, rules and cracked-material provenance as evidence.
+Lockout policy is established before any online attack; offline work runs to the agreed time budget. Record command lines, wordlists, rules and the source of cracked material as evidence.
 
 | Scenario | Tool chain | Notes |
 | --- | --- | --- |

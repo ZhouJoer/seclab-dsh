@@ -21,7 +21,7 @@ declare module '@deepseek-ai/dsh-jobs' {
 }
 
 const testToolSignal = new AbortController().signal
-const waitTimedOut = 'Wait timed out; the background job is still running. Report its status instead of repeating an unchanged wait. A completion notification will arrive when it finishes.\n[status: running]'
+const waitTimedOut = '(no new output)\n[status: running]'
 
 const agentRegistryDisposers = new WeakMap<Agent, () => Promise<void>>()
 const agentScopeFibers = new WeakMap<Agent, { dispose: () => Promise<void> }>()
@@ -519,7 +519,7 @@ describe('job_output', () => {
   })
 
   it('returns buffered output without waiting for job settlement', async () => {
-    const { ctx } = await setup()
+    const { ctx } = await setup({ waitMode: 'activity' })
     const p = producer()
     ctx.jobs.start(p.spec)
     p.append('ready')
@@ -534,8 +534,32 @@ describe('job_output', () => {
     }
   })
 
-  it.each(['output', 'progress'] as const)('returns on new %s and preserves the later completion notice', async (kind) => {
+  it('keeps waiting through buffered output and progress in completion mode', async () => {
     const { ctx } = await setup()
+    const p = producer()
+    const id = ctx.jobs.start(p.spec)
+    p.append('partial')
+    const wait = vi.spyOn(ctx.jobs, 'wait')
+    const pending = call(ctx, 'job_output', { job_id: id, wait: true, timeout_ms: 900_000 })
+    let returned = false
+    void pending.then(() => { returned = true })
+    try {
+      await tick()
+      expect(wait).toHaveBeenCalledWith(id, 600_000, undefined, testToolSignal)
+      p.progress('1/2 files')
+      await tick()
+      expect(returned).toBe(false)
+      p.settle({ status: 'completed', result: 'done' })
+      expect(text(await pending)).toContain('[status: completed')
+    } finally {
+      p.settle({ status: 'completed' })
+      await pending
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each(['output', 'progress'] as const)('returns on new %s and preserves the later completion notice', async (kind) => {
+    const { ctx } = await setup({ waitMode: 'activity' })
     const inject = vi.fn()
     const owner = await fakeAgent(ctx, 'output-owner', { inject })
     const p = producer({ owner: owner.id })
@@ -577,8 +601,8 @@ describe('job_output', () => {
     expect(text(result)).toBe(waitTimedOut)
   })
 
-  it('returns control after one minute when a model requests a ten-minute wait by default', async () => {
-    const { ctx } = await setup()
+  it('caps activity waits at the explicitly configured one-minute limit', async () => {
+    const { ctx } = await setup({ waitMode: 'activity', maxWaitTimeoutMs: 60_000 })
     const p = producer()
     ctx.jobs.start(p.spec)
     vi.useFakeTimers()
@@ -590,7 +614,7 @@ describe('job_output', () => {
       expect(returned).toBe(false)
       await vi.advanceTimersByTimeAsync(1)
       expect(returned).toBe(true)
-      expect(text(await pending)).toBe(waitTimedOut)
+      expect(text(await pending)).toContain('Wait timed out; the background job is still running.')
       expect(p.cancels).toEqual([])
     } finally {
       p.settle({ status: 'completed' })

@@ -47,6 +47,15 @@ export interface SessionRetainInfo {
 
 /** The sessions-service face injected as `ctx.sessions`. */
 export interface ISessions {
+  /** Register plugin-owned display names and durable empty-conversation identities.
+   * @param source - observable presentation map; original Session titles remain intact.
+   * @returns disposer restoring ordinary Session presentation. */
+  registerPresentation(source: ObservableSnapshot<ReadonlyMap<SessionId, SessionPresentation>>): () => void
+  /** Delegate a displayed-name edit when a business object owns that name.
+   * @param id - exact conversation identity.
+   * @param title - operator's new name.
+   * @returns true after delegated success, false when the native title owns the edit. */
+  renameDisplayTitle(id: SessionId, title: string): Promise<boolean>
   /** Host catalog and local reference-source counts; navigation belongs to view owners. */
   readonly list: ObservableSnapshot<SessionListState>
   /**
@@ -165,4 +174,11 @@ export interface ISessions {
    * @returns the live binding, or undefined without a retained generation.
    */
   binding(id: SessionId): SessionBinding | undefined
+}
+
+/** Plugin-owned presentation; reservation keeps an empty business task visible and prevents reuse. */
+export interface SessionPresentation {
+  title?: string
+  reserved?: boolean
+  rename?(title: string): Promise<void>
 }

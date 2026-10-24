@@ -8,6 +8,8 @@
 
 ## 持久化记录
 
+`MaterialBrowserView` 是 `projectMaterial` 的只读结果：带下一页偏移量的目录列表、带截断标记的文本、位图 URL，或二进制文件的十六进制前缀。[材料浏览类型](../../packages/experimental/security-analysis/src/material-browser-types.ts)定义各个分支；[包参考](../../packages/experimental/security-analysis/README.zh.md)说明快照范围和读取限制。
+
 `WorkbenchConfiguration` 是 `configuration` 与 `configureWorkspace` 返回的对象，包含材料限制、项目、provider、环境和经验整理间隔。没有工作区时，其 workspace 值为 null；尝试次数在配置前缺省。[配置类型](../../packages/experimental/security-analysis/src/workbench-configuration-types.ts)定义浏览器可用字段。
 
 `ToolboxDirectory` 包含已配置的环境选项和一份实测或显式未检测的 `ToolboxInventory`。其中的 `ToolboxTool` 条目分别描述可用性、调用方式和可选 provider 集成。可用 Docker 工具提供宿主 `command` 和 `prefixArgs`，并在 `installation` 中保留原始容器可执行文件与参数，供配置持久化使用。这些只读观察不属于项目证据或执行权限；字段定义见[工具箱类型](../../packages/experimental/security-analysis/src/toolbox-types.ts)。
@@ -89,6 +91,13 @@ Optional security profile service; default application compositions remain indep
  * @returns complete project list, including removed projects.
  */
 @Remote('manageProject') async manageProject(projectId: string, input: string): Promise<string>
+
+/** Archive one round and prepare a fresh conversation without sending a prompt.
+ * @param agent - authenticated source coordinator.
+ * @param input - JSON material choices: replacement paths or null to reuse saved content.
+ * @returns the durable destination and retained objective for the composer.
+ */
+@Remote('restartTask') async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }>
 
 /** Attach user-selected materials without granting model access to their live paths.
  * @param agent - authenticated top-level conversation.
@@ -253,11 +262,11 @@ Optional security profile service; default application compositions remain indep
 @Remote('view') async view(agent: Agent): Promise<WorkbenchView>
 
 /** Follow the project selected by this Session, including selection during a running turn.
- * @param agent - carrier-resolved agent.
+ * @param sessionId - authenticated Session identity; reading does not activate an Agent.
  * @param signal - connection lifetime.
  * @returns initial selection and committed selection changes.
  */
-@Remote({ mode: 'stream' }) async *followSessionView(agent: Agent, signal: AbortSignal): AsyncIterable<WorkbenchView>
+@Remote({ mode: 'stream', resources: { session: (sessionId: SessionId) => sessionId } }) async *followSessionView(sessionId: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView>
 
 /**
  * Apply a user-authored command including approval gestures.
@@ -297,6 +306,28 @@ Optional security profile service; default application compositions remain indep
  * @returns matching committed records and the observed revision.
  */
 @Remote('search') async search(agent: Agent, query: string, shared: boolean): Promise<WorkbenchView>
+
+/** Read creation settings without allocating an empty conversation.
+ * @param workspaceId - existing native workspace identity.
+ * @returns resolved environment choices and deployment budgets. */
+@Remote('configurationForWorkspace') async configurationForWorkspace(workspaceId: string): Promise<WorkbenchConfiguration>
+
+/** Save the default environment selection before creating a task.
+ * @param workspaceId - existing native workspace identity.
+ * @param input - revision-checked workspace settings.
+ * @returns resolved settings after the durable write. */
+@Remote('configureAnalysisWorkspace') async configureAnalysisWorkspace(workspaceId: string, input: string): Promise<WorkbenchConfiguration>
+
+/** Create an associated task and blank native conversation without sending a message.
+ * @param workspaceId - explicitly selected native workspace.
+ * @param input - stable operation and Session identities, localized initial title and selected environments.
+ * @returns durable identities; repeating the same request recovers the existing task. */
+@Remote('startAnalysis') async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }>
+
+/** Retry automatic directory collection while preserving the last successful snapshot.
+ * @param projectId - task whose configured source should be rescanned.
+ * @returns completion after a fresh snapshot is published. */
+@Remote('refreshWorkspaceMaterials') async refreshWorkspaceMaterials(projectId: string): Promise<void>
 
 /**
  * List operator-configured environments before project creation.
@@ -358,6 +389,13 @@ Optional security profile service; default application compositions remain indep
  * @param sha256 - digest of a referenced artifact.
  * @returns digest-verified text with the configured output limit. */
 @Remote('projectArtifact') async projectArtifact(projectId: string, sha256: string): Promise<string>
+
+/** Browse saved project materials without changing Session or evidence records.
+ * @param projectId - project authorizing the asset read.
+ * @param input - serialized asset identity, snapshot path, operation and offset.
+ * @returns a directory page or bounded file preview.
+ */
+@Remote('projectMaterial') async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView>
 ```
 
 Types: [Agent](core.zh.md) · [SessionId](core.zh.md)

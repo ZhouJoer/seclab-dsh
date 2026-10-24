@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+插件卸载和根 Context 卸载都会先等待消费者的最后写入，再关闭存储资源；消费者仍负责关闭自己的句柄。详见[存储清理顺序](../storage/README.zh.md#use-this-package)。
+
 当组合需要可读、可编辑的 JSON 存储时使用本包。把相关领域路由到 `json` 后端；每个领域规范选择 `single` 或 `per-record` 布局。
 
 ### 何时选择

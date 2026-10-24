@@ -9,7 +9,7 @@
 import { mkdir } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
+import { StorageError, UNIT_NAME_RE, storageBackendServiceKey, retainStorageConsumers } from '@deepseek-ai/dsh-storage'
 import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@deepseek-ai/dsh-storage'
 import { openSingleUnit } from './single-unit.ts'
 import { openPerRecordUnit } from './per-record-unit.ts'
@@ -108,12 +108,15 @@ function validateDescriptor(descriptor: KvUnitDescriptor): void {
  */
 export function apply(ctx: Context, config: Config) {
   const backend = new JsonStorageBackend(config.root)
-  ctx.effect(() => {
-    const unregister = ctx.storage.backend.register('json', backend)
-    return async () => {
-      unregister()
-      await backend.close()
-    }
+  ctx.effect(function* () {
+    yield ctx.effect(() => {
+      const unregister = ctx.storage.backend.register('json', backend)
+      return async () => {
+        unregister()
+        await backend.close()
+      }
+    })
+    yield retainStorageConsumers(ctx, storageBackendServiceKey('json'))
+    yield ctx.provide(storageBackendServiceKey('json'), backend)
   })
-  ctx.provide(storageBackendServiceKey('json'), backend)
 }

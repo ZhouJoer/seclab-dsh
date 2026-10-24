@@ -8,6 +8,10 @@ export const TOKEN_ASSIGN_PRIMARY = 0x0001
 export const TOKEN_DUPLICATE = 0x0002
 /** Token right required to read token information. */
 export const TOKEN_QUERY = 0x0008
+/** Directory right required to set its mandatory integrity label. */
+export const WRITE_OWNER = 0x00080000
+/** TOKEN_INFORMATION_CLASS value for the process user's SID. */
+export const TokenUser = 1
 /** Token right required to replace the token default DACL. */
 export const TOKEN_ADJUST_DEFAULT = 0x0080
 /** Group attribute identifying the token logon SID. */

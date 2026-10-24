@@ -81,6 +81,7 @@ function fakeSessions(ctx: Context): { sessions: ISessions; binding: SessionBind
     [Symbol.dispose]() {},
   }
   const sessions: ISessions = {
+    registerPresentation: () => () => {}, renameDisplayTitle: async () => false,
     list,
     searchResultLimit: 50,
     create: () => Promise.reject(new Error('unused fake Sessions operation')),

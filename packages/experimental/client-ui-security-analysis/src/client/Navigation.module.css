@@ -1,0 +1,5 @@
+.badge { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 4px; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); border-radius: 4px; cursor: pointer; }
+.views { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.views span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.views button { padding: 4px 8px; color: inherit; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.views button[aria-current] { background: var(--dsw-alias-interactive-bg-hover); }

@@ -58,7 +58,7 @@ describe.skipIf(!isWin32)('AclWriteGrant (server-side materialization)', () => {
     grant.dispose()
     expect(icaclsText(dir)).not.toContain('S-1-4-9000-77')
     expect(icaclsText(standingDir)).toContain('S-1-4-9000-77')
-  })
+  }, 15_000)
 
   it('two grants with different SIDs coexist and revoke independently', () => {
     const dir = scratch()

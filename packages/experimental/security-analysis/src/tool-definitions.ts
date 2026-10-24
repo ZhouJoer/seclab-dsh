@@ -74,7 +74,7 @@ export function orderTools(tools: readonly ToolDefinition[], ids: readonly strin
 /** Operator selections require checked adapters without granting execution authority. */
 export const toolPreferencesSchema = z.object({ toolIds: z.array(id).max(100), tags: strings,
   collectionIds: z.array(id).max(100) }).strict()
-/** Transient preferences copied to a delegated session at creation. */
+/** Persisted operator preferences copied to delegated sessions and fresh task rounds. */
 export type ToolPreferences = z.infer<typeof toolPreferencesSchema>
 /** Preference choices without probes; unavailable tools remain visible with their prerequisites. */
 export interface ToolPreferenceOptions {

@@ -1,5 +1,6 @@
 /** Task-owned capability selection shared by model discovery and execution. @module */
 import { z } from 'zod'
+import { isSecurityBrowserTool } from './browser-tools.ts'
 
 /** Stable module identities; common investigation capabilities are always present. */
 export const analysisModuleIdSchema = z.enum(['reverse.android', 'reverse.native', 'web', 'iot', 'pentest'])
@@ -61,6 +62,7 @@ export function moduleSkills(selection?: ModuleSelection): string[] {
  * @returns whether the module permits this tool independently of role and permissions.
  */
 export function moduleAllowsTool(name: string, selection?: ModuleSelection): boolean {
+  if (isSecurityBrowserTool(name)) return selection?.modules.includes('web') === true
   const owners = analysisModules.filter(module => module.tools.some(id => name.replaceAll('-', '_') === 'security_' + id.replaceAll('-', '_')))
   return !owners.length || owners.some(module => selection?.modules.includes(module.id))
 }

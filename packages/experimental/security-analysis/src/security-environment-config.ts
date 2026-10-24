@@ -1,6 +1,8 @@
 /** Shared deployment validation for Host and container analysis environments. @module */
 import Schema from '@deepseek-ai/schemastery'
-import { isAbsolute } from 'node:path'
+import { dirname, isAbsolute, resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
+import type { TaskIntakeConfig } from './task-bootstrap.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
 
 /** Operator fields shared by the profile schema and standalone environment files. */
@@ -57,4 +59,74 @@ export function parseSecurityEnvironments(input: unknown): SecurityEnvironment[]
   const environments = parse(input)
   validateSecurityEnvironments(environments)
   return environments
+}
+
+/** Environments merged by identity into the security profile. */
+export interface SecurityEnvironmentsConfiguration {
+  environments: SecurityEnvironment[]
+  defaultEnvironmentIds?: string[]
+  /** Declares which selected HTTP environment registers literal-IP targets when several are eligible. */
+  httpEnvironmentId?: string
+}
+
+/** Read environment declarations with the same validation as the workbench.
+ * @param path - operator-owned JSON file; an absent file contributes no environments.
+ * @returns validated declarations with relative working directories resolved beside the file.
+ */
+export function readSecurityEnvironments(path: string): SecurityEnvironmentsConfiguration {
+  let input: string
+  try { input = readFileSync(path, 'utf8') } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { environments: [] }
+    throw error
+  }
+  const data: unknown = JSON.parse(input)
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !('environments' in data))
+    throw new Error(`${path}: expected an object with an environments array`)
+  const environments = parseSecurityEnvironments(Array.isArray(data.environments) ? data.environments.map((environment: unknown) => {
+    if (environment && typeof environment === 'object' && 'cwd' in environment && typeof environment.cwd === 'string' && environment.cwd.trim())
+      return { ...environment, cwd: resolve(dirname(path), environment.cwd) }
+    return environment
+  }) : data.environments)
+  if (!('defaultEnvironmentIds' in data)) return { environments }
+  const defaults: unknown = data.defaultEnvironmentIds
+  if (!Array.isArray(defaults) || defaults.length === 0 ||
+    !defaults.every((id: unknown): id is string => typeof id === 'string' && id.length > 0) || new Set(defaults).size !== defaults.length)
+    throw new Error(`${path}: defaultEnvironmentIds must be a nonempty array of unique environment IDs`)
+  const declaredHttp: unknown = (data as { httpEnvironmentId?: unknown }).httpEnvironmentId
+  if (declaredHttp !== undefined && (typeof declaredHttp !== 'string' || !declaredHttp))
+    throw new Error(`${path}: httpEnvironmentId must be a nonempty environment ID`)
+  return { environments, defaultEnvironmentIds: defaults,
+    ...(declaredHttp === undefined ? {} : { httpEnvironmentId: declaredHttp }) }
+}
+
+/** Resolve the explicitly selected environment file before the workbench starts.
+ * @param config - effective plugin configuration after all profile patch layers.
+ * @returns configuration with file environments and optional intake defaults applied.
+ */
+export function resolveEnvironmentConfiguration<T extends {
+  environmentConfigurationPath?: string
+  environments: SecurityEnvironment[]
+  taskIntake?: TaskIntakeConfig | undefined
+}>(config: T): T {
+  if (config.environmentConfigurationPath === undefined) return config
+  if (!isAbsolute(config.environmentConfigurationPath)) throw new Error('environmentConfigurationPath must be absolute')
+  validateSecurityEnvironments(config.environments)
+  const configured = readSecurityEnvironments(config.environmentConfigurationPath)
+  const environments = new Map(config.environments.map(environment => [environment.id, environment]))
+  for (const environment of configured.environments) environments.set(environment.id, environment)
+  if (configured.defaultEnvironmentIds && !config.taskIntake)
+    throw new Error('Default environments require taskIntake in the workbench configuration')
+  const taskIntake = configured.defaultEnvironmentIds && config.taskIntake
+    ? { ...config.taskIntake, defaultEnvironmentIds: configured.defaultEnvironmentIds } : config.taskIntake
+  if (configured.httpEnvironmentId) {
+    if (!taskIntake) throw new Error('httpEnvironmentId requires taskIntake in the workbench configuration')
+    const declared = environments.get(configured.httpEnvironmentId)
+    if (!declared || (declared.kind !== 'local' && declared.kind !== 'docker'))
+      throw new Error(`httpEnvironmentId must name a selected local or docker environment: ${configured.httpEnvironmentId}`)
+    taskIntake.httpEnvironmentId = configured.httpEnvironmentId
+  }
+  for (const id of taskIntake?.defaultEnvironmentIds ?? []) {
+    if (!environments.has(id)) throw new Error('Unknown default security environment: ' + id)
+  }
+  return { ...config, environments: [...environments.values()], taskIntake }
 }

@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { readToolSettings, standaloneTool, writeSecurityToolsFile, type SecurityToolPin, type SecurityToolSettings } from './local-tools.ts'
 import { toolboxCatalog } from './toolbox.ts'
 import type { ToolDefinition } from './tool-definitions.ts'
-import type { ToolboxConfiguration, ToolboxFiles } from './toolbox-types.ts'
+import type { ToolboxConfiguration, ToolboxFiles, ToolboxInventory } from './toolbox-types.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
 import { supportsAdapterEnvironment, toolAdapters, type ToolAdapterDefinition } from './tool-adapter-catalog.ts'
 
@@ -64,6 +64,32 @@ export class LocalToolConfiguration {
       else { standaloneTool(id, this.catalog()); this.editableEnvironment(environmentId) }
     }
     return document
+  }
+  /** Save unique measured local installations without selecting adapters or replacing pins.
+   * @param inventory - completed version probes in one environment.
+   * @param expectedRevision - configuration captured before probing.
+   * @returns whether any installations were saved.
+   */
+  reconcile(inventory: ToolboxInventory, expectedRevision: string): boolean {
+    if (this.path === undefined || inventory.kind !== 'local') return false
+    const document = this.document()
+    if (revision(document) !== expectedRevision) throw new Error('Tool configuration changed during discovery; inspect again')
+    const pins = document.installations[inventory.environmentId] ?? {}
+    let changed = false
+    for (const row of inventory.tools) {
+      const definition = this.catalog().find(item => item.id === row.id)
+      if (!definition || definition.dependency || definition.provider || !definition.commands.length
+        || this.defaults.get(inventory.environmentId)?.some(item => item.id === row.id)
+        || pins[row.id] || row.status !== 'available' || row.candidates || !isAbsolute(row.command)) continue
+      pins[row.id] = { command: row.command, prefixArgs: row.prefixArgs ?? [], versionArgs: definition.args }
+      changed = true
+    }
+    if (changed) {
+      document.installations[inventory.environmentId] = pins
+      writeSecurityToolsFile(this.path, JSON.stringify(document, null, 2) + '\n')
+      this.apply(document)
+    }
+    return changed
   }
   /** Require an environment supporting managed adapter execution.
    * @param id - configured environment identity.

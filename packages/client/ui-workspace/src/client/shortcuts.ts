@@ -91,7 +91,7 @@ export function installWorkspaceShortcuts(
     const target = current()
     return target === undefined || target.blank || context.modal !== null || ctx.layout.panelInfo.getSnapshot().activePanelId !== null
       ? { status: 'blocked', reason: t('shortcut.noSession') }
-      : { status: 'handled', run: () => { controls.rename(target.id, target.title?.trim() ?? '') } }
+      : { status: 'handled', run: () => { controls.rename(target.id, (target.reserved ? target.displayTitle : target.title)?.trim() ?? '') } }
   })
   register('session.fork', () => t('menu.fork'), ['fork session'], 'KeyF', ['primary', 'alt'], ['primary', 'shift'], () => {
     const target = current()

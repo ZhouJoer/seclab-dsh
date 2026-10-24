@@ -8,8 +8,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { CaptureControls } from './CaptureControls.tsx'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconRefreshOutlineRegular, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ProjectManagement } from './ProjectManagement.tsx'
+import { RestartTask } from './RestartTask.tsx'
 import { ProjectModules } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { Improvements, type ImprovementActions } from './Improvements.tsx'
@@ -22,7 +23,7 @@ import type { NS } from './locales.ts'
 import css from './Dashboard.module.css'
 import { useProjectActivity } from './useProjectActivity.ts'
 import { InvestigationGraph } from './InvestigationGraph.tsx'
-import { TechnicalDetails } from './TechnicalDetails.tsx'
+import { MaterialBrowser } from './MaterialBrowser.tsx'
 import { EvidencePreview } from './EvidencePreview.tsx'
 import { CoveragePanel } from './CoveragePanel.tsx'
 import { ReportExportButton } from './ReportExportButton.tsx'
@@ -34,6 +35,12 @@ type Project = Extract<WorkbenchView['records'][number], { kind: 'engagement' }>
 type Tab = 'graphTitle' | 'overview' | 'activityEntry' | 'assets' | 'findings' | 'evidence' | 'reports' | 'laboratories' | 'improvements' | 'httpTitle'
 /** Native Session ownership and project-scoped reads injected by the plugin. */
 export interface DashboardActions extends ProjectActions, ActivityActions, ImprovementActions, HttpActions {
+  beginAnalysis(): void
+  openChat(id: SessionId): void
+  selectDestination(projectId: string): void
+  refreshWorkspaceMaterials(projectId: string): Promise<void>
+  /** Omission displays the task overview; supplying a destination opens that exact task. */
+  destination?: { projectId: string; sessionId?: SessionId } | undefined
   followProjects(this: void, signal: AbortSignal): AsyncIterable<SecurityProjectSummary[]>
   observe(id: SessionId, input: string): Promise<WorkbenchView>
   projectArtifact(projectId: string, hash: string): Promise<string>
@@ -45,6 +52,9 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   resumeProject(id: SessionId): Promise<void>
   createWorkspace(path: string): Promise<WorkspaceId>
   configureWorkspace(sessionId: SessionId, input: string): Promise<WorkbenchConfiguration>
+  restartTask(sessionId: SessionId, paths: Record<string, string | null>):
+  Promise<{ sessionId: SessionId; projectId: string; objective: string }>
+  openRestartDraft(sessionId: SessionId, objective: string): Promise<void>
 }
 type Props = DashboardActions & PropsLocale<typeof NS> & PropsRuntime<'main'> & PropsRenderSlots<'security.workbench.session'>
 /** Render project facts and explicit analysis actions.
@@ -74,7 +84,8 @@ export function Dashboard(props: Props) {
   const states = { running: 'taskRunning', stopping: 'taskStopping', stopped: 'taskStopped', interrupted: 'taskInterrupted', approval: 'taskApproval', blocked: 'taskBlocked', idle: 'taskIdle', removed: 'taskRemoved' } as const
   const [selected, setSelected] = useState('')
   const [section, setSection] = useState<'tasks' | 'removed' | 'toolbox' | 'improvements'>('tasks')
-  const [tab, setTab] = useState<Tab>('graphTitle')
+  const [tab, setTab] = useState<Tab>('overview')
+  const [graphOpened, setGraphOpened] = useState(false)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('all')
   const [evidenceQuery, setEvidenceQuery] = useState('')
@@ -87,12 +98,12 @@ export function Dashboard(props: Props) {
   const contextWorkspace = contextSettings?.config.workspace
   const [stopping, setStopping] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   const [workspace, setWorkspace] = useState<WorkspaceId>()
   const [path, setPath] = useState('')
   const [sessionId, setSessionId] = useState<SessionId>()
   const [reference, setReference] = useState<SessionReference>()
-  const [assistant, setAssistant] = useState(false)
+  const [restartOpen, setRestartOpen] = useState(false)
+  const restartTrigger = useRef<HTMLButtonElement>(null)
   const [advanced, setAdvanced] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [focusCheckId, setFocusCheckId] = useState<string>()
@@ -124,7 +135,11 @@ export function Dashboard(props: Props) {
   } })
   const findings = view.records.filter(item => item.kind === 'finding')
   const evidence = view.records.filter(item => item.kind === 'evidence')
-  const assets = view.records.filter(item => item.kind === 'asset')
+  const assets = view.records.filter(item => item.kind === 'asset').filter((item) => {
+    const source = project?.workspaceMaterials
+    return !source || !('kind' in item.value) || item.value.kind !== 'source'
+      || item.value.inputSource?.kind !== 'path' || item.value.inputSource.path !== source.root || item.value.id === source.assetId
+  })
   const reports = view.records.filter(item => item.kind === 'report')
   const blocked = view.records.filter(item => item.kind === 'check').filter(item => ['blocked', 'interrupted'].includes(item.value.status))
   const pendingPlans = view.records.filter(item => item.kind === 'plan' && item.value.status === 'draft')
@@ -159,10 +174,10 @@ export function Dashboard(props: Props) {
     return () => { generation.current++; readGeneration.current++ }
   }, [selected])
   useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') { setAssistant(false); setAdvanced(false) } }
-    if (assistant || advanced) window.addEventListener('keydown', close)
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') { setAdvanced(false) } }
+    if (advanced) window.addEventListener('keydown', close)
     return () => { window.removeEventListener('keydown', close) }
-  }, [assistant, advanced])
+  }, [advanced])
   useEffect(() => props.subscribeReset(() => { readGeneration.current++; void perform(refresh) }), [selected, props.subscribeReset])
   useEffect(() => {
     if (tab !== 'assets') return
@@ -202,13 +217,19 @@ export function Dashboard(props: Props) {
   }, [selected, tab, evidenceId, selectedReport, format, recommendationsAvailable, view.revision, readEpoch])
   const navigate = (id = '') => {
     generation.current++; readGeneration.current++
-    setSelected(id); setView({ revision: 0, records: [] }); setTab('graphTitle'); setCreating(false)
-    setSessionId(undefined); setReference(undefined); setAssistant(false); setAdvanced(false)
+    setSelected(id); setView({ revision: 0, records: [] }); setTab('overview'); setGraphOpened(false)
+    setSessionId(undefined); setReference(undefined); setAdvanced(false)
     setMissingSession(false); setFocusCheckId(undefined)
     setContextSettings(undefined)
+    setRestartOpen(false)
     setEvidenceId(''); setEvidenceQuery(''); setReportId(''); setError(''); setBusy(false); setStopping(false)
     setDeleting('')
   }
+  useEffect(() => {
+    const target = props.destination?.projectId ?? ''
+    if (target !== selected) navigate(target)
+    if (props.destination?.sessionId) setSessionId(props.destination.sessionId)
+  }, [props.destination])
   const manageDeletion = async (item: Project, revision?: number) => {
     let request = item.archived ? purgeRequests.current.get(item.id) : undefined
     if (!request) {
@@ -253,7 +274,8 @@ export function Dashboard(props: Props) {
     }
     if (resume) await props.resumeProject(id)
     if (current !== generation.current) return
-    setSessionId(id); setAssistant(!resume && !showAdvanced && showAssistant); setAdvanced(showAdvanced); setReviewOpen(showReviews)
+    setSessionId(id); setAdvanced(showAdvanced); setReviewOpen(showReviews)
+    if (!showAdvanced && showAssistant && !resume) props.openChat(id)
     setFocusCheckId(checkId); setMissingSession(false)
     await refresh()
   }
@@ -270,9 +292,9 @@ export function Dashboard(props: Props) {
   return <section ref={root} className={css.root} aria-label={t('title')}>
     <div className={css.main}>
       <header className={css.topbar}><h1>{t('dashboardTitle')}</h1>
-        <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { navigate(); setCreating(true); setSection('tasks') }}>{t('newAnalysis')}</button></div>
+        <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button></div>
       </header>
-      <nav className={css.navigation} aria-label={t('dashboardNavigation')}>{(['tasks', 'removed', 'toolbox', 'improvements'] as const).map(key => <button key={key} aria-current={section === key ? 'page' : undefined} onClick={() => { navigate(); setSection(key) }}>{t(key === 'tasks' ? 'dashboardTasks' : key === 'removed' ? 'removedProjects' : key === 'improvements' ? 'evoTitle' : 'toolbox')}</button>)}</nav>
+      {!selected && <nav className={css.navigation} aria-label={t('dashboardNavigation')}>{(['tasks', 'removed', 'toolbox', 'improvements'] as const).map(key => <button key={key} aria-current={section === key ? 'page' : undefined} onClick={() => { navigate(); setSection(key) }}>{t(key === 'tasks' ? 'dashboardTasks' : key === 'removed' ? 'removedProjects' : key === 'improvements' ? 'evoTitle' : 'toolbox')}</button>)}</nav>}
       {directoryError && <p role="status">{t('taskDirectoryUnavailable')}<button onClick={() =>{  setDirectoryEpoch(value => value + 1) }}>{t('dashboardRetry')}</button></p>}
       {error && <div className={css.error} role="alert">{error}<button disabled={busy} onClick={() => void perform(refresh)}>{t('dashboardRetry')}</button></div>}
       {deletedProject && <div className={css.deletionNotice} role="status"><span>{t('deleteProjectDone')} · {deletedProject.title}</span>
@@ -283,15 +305,7 @@ export function Dashboard(props: Props) {
           setProjects(JSON.parse(items) as Project[]); setDeletedProject(undefined)
         })}>{t('deleteProjectUndo')}</button><button onClick={() => { setDeletedProject(undefined) }}>{t('close')}</button></div>}
       {purgedTitle && <div className={css.deletionNotice} role="status"><span>{t('purgeProjectDone')} · {purgedTitle}</span><button onClick={() => { setPurgedTitle('') }}>{t('close')}</button></div>}
-      {section === 'improvements' ? <Improvements {...props} tasks={projects} /> : section === 'toolbox' ? <Toolbox {...props} /> : creating ? <>
-        <button className={css.back} onClick={() =>{  navigate() }}>{t('dashboardBack')}</button>
-        {!sessionId && <section className={css.creation}><h2>{t('newAnalysis')}</h2>{workspacePicker}<button className={css.primary} disabled={busy || !selectedWorkspace} onClick={() => void perform(async () => {
-          const current = generation.current
-          if (!selectedWorkspace) return
-          const id = await props.createSession(selectedWorkspace)
-          if (current === generation.current) setSessionId(id)
-        })}>{t('dashboardUseWorkspace')}</button></section>}
-      </> : !selected ? <>
+      {section === 'improvements' ? <Improvements {...props} tasks={projects} /> : section === 'toolbox' ? <Toolbox {...props} /> : !selected ? <>
         <div className={css.stats}>{([['dashboardTotal', projects.length], ['dashboardStopped', projects.filter(item => !item.archived && item.stopped).length], ['dashboardRemoved', projects.filter(item => item.archived).length]] as const).map(([label, count]) => <article key={label}><span>{t(label)}</span><strong>{count}</strong></article>)}</div>
         <section className={css.panel}><div className={css.listHeader}><h2 ref={listHeading} tabIndex={-1}>{t(section === 'removed' ? 'removedProjects' : 'dashboardTasks')} <span>{visible.length}</span></h2><div className={css.filters}><input aria-label={t('dashboardSearch')} placeholder={t('dashboardSearch')} value={query} onChange={(event) => { setQuery(event.target.value) }} /><select aria-label={t('dashboardStatus')} value={status} onChange={(event) => { setStatus(event.target.value) }}><option value="all">{t('dashboardAll')}</option>{Object.entries(states).map(([state, key]) => <option key={state} value={state}>{t(key)}</option>)}</select></div></div>
           {loading ? <p className={css.empty} role="status">{t('dashboardLoading')}</p> : !visible.length ? <div className={css.empty}><span className={css.emptyIcon} aria-hidden="true">◇</span><h3>{t(query || status !== 'all' ? 'dashboardNoResults' : 'dashboardEmpty')}</h3><p>{t(query || status !== 'all' ? 'dashboardFilterHint' : 'dashboardEmptyHint')}</p></div> :
@@ -299,19 +313,18 @@ export function Dashboard(props: Props) {
               data-deleting={deleting === item.id} key={item.id}
               onAnimationEnd={(event) => { if (event.target === event.currentTarget && deleting === item.id) finishRemoval(item) }}>
               <div className={css.taskClip}><div className={css.taskCard}>
-                <button className={css.taskRow} disabled={deleting === item.id} onClick={() => { navigate(item.id) }}><span className={css.taskIcon} aria-hidden="true">◇</span><span className={css.taskText}><strong>{item.title}</strong><span>{item.objective}</span></span><span className={item.stopped ? css.stopped : css.badge}>{directoryError ? t('taskDirectoryUnavailable') : t(states[directory.find(entry => entry.project.id === item.id)?.state ?? (item.stopped ? 'stopped' : 'idle')])}{!!directory.find(entry => entry.project.id === item.id)?.pendingPlanIds.length && <> · {t('taskApproval')}</>}</span><span aria-hidden="true">→</span></button>
+                <button className={css.taskRow} disabled={deleting === item.id} onClick={() => { navigate(item.id); props.selectDestination(item.id) }}><span className={css.taskIcon} aria-hidden="true">◇</span><span className={css.taskText}><strong>{item.title}</strong><span>{item.objective}</span></span><span className={item.stopped ? css.stopped : css.badge}>{directoryError ? t('taskDirectoryUnavailable') : t(states[directory.find(entry => entry.project.id === item.id)?.state ?? (item.stopped ? 'stopped' : 'idle')])}{!!directory.find(entry => entry.project.id === item.id)?.pendingPlanIds.length && <> · {t('taskApproval')}</>}</span><span aria-hidden="true">→</span></button>
                 <ProjectDeletion t={t} title={item.title} disabled={busy || !!deleting} permanent={!!item.archived}
                   remove={() => removeFromList(item)} deleted={() => { setDeleting(item.id) }} />
               </div></div>
             </article>)}</div>}
         </section>
       </> : <>
-        <button className={css.back} onClick={() =>{  navigate() }}>{t('dashboardBack')}</button>
+        <button className={css.back} onClick={() =>{ props.selectDestination(''); navigate() }}>{t('dashboardBack')}</button>
         {loading && <p role="status">{t('dashboardLoading')}</p>}
         {project && <>
-          <header className={css.detailHeader}><div><span className={project.stopped ? css.stopped : css.badge}>{t(states[directory.find(entry => entry.project.id === project.id)?.state ?? (project.stopped ? 'stopped' : 'idle')])}</span><h2 title={project.title}>{project.title}</h2>{project.objective !== project.title && <p title={project.objective}>{project.objective}</p>}</div></header><div className={css.intervention}>
-            <button aria-pressed={tab === 'improvements'} onClick={() => { setTab('improvements') }}>{t('evoTitle')}</button>
-            {!project.archived && <><button disabled={busy} onClick={() => void perform(() => connect(false, false, true))}>{t('advancedDetails')}</button><button disabled={stopping || project.stopped} onClick={() => {
+          <header className={css.detailHeader}><div><span className={project.stopped ? css.stopped : css.badge}>{t(states[directory.find(entry => entry.project.id === project.id)?.state ?? (project.stopped ? 'stopped' : 'idle')])}</span><h2 title={project.title}>{project.title}</h2>{!!project.objective && project.objective !== project.title && <p title={project.objective}>{project.objective}</p>}</div></header><div className={css.intervention}>
+            {!project.archived && <>{project.objective && <button disabled={stopping || project.stopped} onClick={() => {
               const current = generation.current
               setStopping(true)
               void (async () => {
@@ -320,69 +333,94 @@ export function Dashboard(props: Props) {
                 } catch (error) { if (current === generation.current) setError(String(error)) }
                 finally { if (current === generation.current) setStopping(false) }
               })()
-            }}>{t(stopping ? 'activityStopping' : 'stop')}</button><button className={css.primary} disabled={busy} onClick={() =>{  if (assistant) setAssistant(false); else void perform(() => connect(false)) }}>{t(assistant ? 'dashboardHideAssistant' : 'dashboardAssistant')}</button></>}
-            {!project.archived && <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button>}
+            }}>{t(stopping ? 'activityStopping' : 'stop')}</button>}<button className={css.primary} disabled={busy} onClick={() =>{  void perform(() => connect(false)) }}>{t('analysisChat')}</button></>}
+            {!project.archived && project.objective && <><button ref={restartTrigger} className={css.restartAction}
+              disabled={busy || stopping}
+              aria-expanded={restartOpen} aria-controls={restartOpen ? 'security-restart-confirmation' : undefined}
+              onClick={() => { setRestartOpen(value => !value) }}><IconRefreshOutlineRegular size={16} />{t('restartTask')}</button>
+            <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button></>}
           </div>
-          <ProjectModules key={project.id + JSON.stringify(project.moduleSelection)} t={t} value={project.moduleSelection}
-            disabled={busy || !!project.archived} save={async (selection) => {
+          {!project.archived && restartOpen && <RestartTask key={project.id} t={t} view={view} disabled={busy || stopping}
+            close={() => { setRestartOpen(false); restartTrigger.current?.focus() }}
+            restart={async (paths) => {
               const current = generation.current
-              await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
-                action: { kind: 'modules', selection } }))
-              if (current === generation.current) await refresh()
-            }} />
-          <ProjectTaskContext key={project.id + JSON.stringify(project.taskContext)} t={t}
-            value={project.taskContext} maxBytes={contextSettings?.config.taskContextMaxBytes}
-            workspace={contextSettings?.config.workspace ?? undefined} disabled={busy || !!project.archived} loading={busy}
-            prepare={() => { if (!busy) void perform(async () => {
-              const current = generation.current
-              const id = sessionId ?? await props.findSession(selected)
-              if (current !== generation.current) return
-              if (!id) { setMissingSession(true); return }
-              const retained = props.retainSession(id)
+              setBusy(true)
               try {
-                await retained.ready
-                const config = await props.configuration(id)
-                if (current === generation.current) setContextSettings({ session: id, config })
-              } finally { retained.release() }
-            }) }}
-            saveDefaults={!contextSettings || contextWorkspace?.maxAttempts === undefined ? undefined
-              : taskContext => perform(async () => {
+                const id = sessionId ?? await props.findSession(project.id)
+                if (current !== generation.current) return
+                if (!id) throw new Error(t('dashboardMissingSession'))
+                const next = await props.restartTask(id, paths)
+                if (current !== generation.current) return
+                navigate(next.projectId); setSessionId(next.sessionId)
+                await props.openRestartDraft(next.sessionId, next.objective)
+                props.notifyImprovement(t('restartTaskReady'))
+              } finally { if (current === generation.current) setBusy(false) }
+            }} />}
+          <details><summary>{t('analysisSettings')}</summary>
+            <button disabled={busy || !!project.archived} onClick={() => void perform(() => connect(false, false, true))}>{t('environments')}</button>
+            <ProjectModules key={project.id + JSON.stringify(project.moduleSelection)} t={t} value={project.moduleSelection}
+              disabled={busy || !!project.archived} save={async (selection) => {
                 const current = generation.current
-                const settings = contextWorkspace
-                const retained = props.retainSession(contextSettings.session)
+                await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                  action: { kind: 'modules', selection } }))
+                if (current === generation.current) await refresh()
+              }} />
+            <ProjectTaskContext key={project.id + JSON.stringify(project.taskContext)} t={t}
+              value={project.taskContext} maxBytes={contextSettings?.config.taskContextMaxBytes}
+              workspace={contextSettings?.config.workspace ?? undefined} disabled={busy || !!project.archived} loading={busy}
+              prepare={() => { if (!busy) void perform(async () => {
+                const current = generation.current
+                const id = sessionId ?? await props.findSession(selected)
+                if (current !== generation.current) return
+                if (!id) { setMissingSession(true); return }
+                const retained = props.retainSession(id)
                 try {
                   await retained.ready
-                  const config = await props.configureWorkspace(contextSettings.session, JSON.stringify({
-                    expectedRevision: settings.revision, environmentIds: settings.environmentIds,
-                    maxAttempts: settings.maxAttempts, taskContext }))
-                  if (current === generation.current) setContextSettings({ session: contextSettings.session, config })
+                  const config = await props.configuration(id)
+                  if (current === generation.current) setContextSettings({ session: id, config })
                 } finally { retained.release() }
-              })}
-            save={taskContext => perform(async () => {
-              const current = generation.current
-              await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(),
-                expectedRevision: view.revision, action: { kind: 'task-context', taskContext } }))
-              if (current === generation.current) await refresh()
-            })} />
+              }) }}
+              saveDefaults={!contextSettings || contextWorkspace?.maxAttempts === undefined ? undefined
+                : taskContext => perform(async () => {
+                  const current = generation.current
+                  const settings = contextWorkspace
+                  const retained = props.retainSession(contextSettings.session)
+                  try {
+                    await retained.ready
+                    const config = await props.configureWorkspace(contextSettings.session, JSON.stringify({
+                      expectedRevision: settings.revision, environmentIds: settings.environmentIds,
+                      maxAttempts: settings.maxAttempts, taskContext }))
+                    if (current === generation.current) setContextSettings({ session: contextSettings.session, config })
+                  } finally { retained.release() }
+                })}
+              save={taskContext => perform(async () => {
+                const current = generation.current
+                await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(),
+                  expectedRevision: view.revision, action: { kind: 'task-context', taskContext } }))
+                if (current === generation.current) await refresh()
+              })} />
+          </details>
           {!project.archived && pendingPlans.length > 0 && <div className={css.notice}>
             <p role="status">{t('pendingPlanHint')} ({pendingPlans.length})</p>
           </div>}
           {project.stopped && !project.archived && <div className={css.notice}><p>{t('dashboardStoppedHint')}</p><button disabled={busy} onClick={() => void perform(() => connect(true, true))}>{t('resume')}</button></div>}
           {missingSession && <div className={css.notice}><p>{t('dashboardMissingSession')}</p>{workspacePicker}<button className={css.primary} disabled={busy || !selectedWorkspace} onClick={() => void perform(() => connect(true, project.stopped))}>{t('dashboardContinue')}</button></div>}
-          <nav className={css.detailTabs} aria-label={t('dashboardDetailNavigation')}>{(['graphTitle', 'overview', 'activityEntry', 'assets', 'httpTitle', 'findings', 'evidence', 'reports'] as const).map(key => <button key={key} aria-pressed={tab === key} onClick={() => { setTab(key); setEvidenceId('') }}>{t(key === 'overview' ? 'dashboardOverview' : key === 'assets' ? 'dashboardMaterials' : key)}</button>)}<button aria-pressed={tab === 'laboratories'} onClick={() =>{  setTab('laboratories') }}>{t('laboratories')}</button></nav>
+          <nav className={css.detailTabs} aria-label={t('dashboardDetailNavigation')}>{(['overview', 'assets', 'findings', 'evidence', 'reports'] as const).map(key => <button key={key} aria-pressed={tab === key} onClick={() => { setTab(key); setEvidenceId('') }}>{t(key === 'overview' ? 'dashboardOverview' : key === 'assets' ? 'dashboardMaterials' : key)}</button>)}</nav><details><summary>{t('analysisMore')}</summary><div className={css.actions}>{(['graphTitle', 'activityEntry', 'httpTitle', 'laboratories', 'improvements'] as const).map(key => <button key={key} onClick={() => { if (key === 'graphTitle') setGraphOpened(true); setTab(key) }}>{t(key === 'improvements' ? 'evoTitle' : key)}</button>)}</div></details>
           {tab === 'httpTitle' && <HttpWorkbench key={project.id} {...props} project={selected} session={sessionId} view={view} disabled={project.stopped || !!project.archived} connect={() => void perform(() => connect(false, false, false, false, undefined, false))} changed={setView} />}
           {tab === 'laboratories' && <ProjectLaboratories t={t} view={view} busy={busy} run={async (action, id) => { await perform(async () => { const current = generation.current; const next = await props.laboratory(selected, action, id); if (current === generation.current) setView(next) }) }} />}
-          <div hidden={tab !== 'graphTitle'}><button onClick={() => { setTab('overview'); requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('#security-check-coverage')?.focus()) }}>{t('coverageTitle')}</button><InvestigationGraph key={project.id} {...props} httpRead={props} view={view} activity={activity} project={project.id}
-            openPlans={() => { void perform(() => connect(false, false, true, true)) }} /></div>
+          <div hidden={tab !== 'graphTitle'}>{graphOpened && <><button onClick={() => { setTab('overview'); requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('#security-check-coverage')?.focus()) }}>{t('coverageTitle')}</button><InvestigationGraph key={project.id} {...props} httpRead={props} view={view} activity={activity} project={project.id}
+            openPlans={() => { void perform(() => connect(false, false, true, true)) }} /></>}</div>
           {tab === 'activityEntry' && <ActivityTimeline key={project.id} {...props} activity={activity} project={project.id} view={view}
             openEvidence={(id) => { setEvidenceId(id); setTab('evidence') }} openFinding={() =>{  setTab('findings') }} openPlans={() => void perform(() => connect(false, false, true, true))}
             changed={(next) =>{  setView(previous => next.revision >= previous.revision ? next : previous) }} />}
           {tab === 'improvements' && <Improvements key={project.id} {...props} projectId={project.id} disabled={project.stopped || !!project.archived} />}
+          {project.workspaceMaterials && (tab === 'overview' || tab === 'assets') && <div className={css.materialStatus} role="status" title={project.workspaceMaterials.root}><span>{t(directory.find(item => item.project.id === project.id)?.materials?.state === 'failed' ? 'materialsFailed' : directory.find(item => item.project.id === project.id)?.materials?.state === 'ready' ? 'materialsReady' : directory.find(item => item.project.id === project.id)?.materials?.state === 'syncing' ? 'materialsSyncing' : 'materialsWaiting')}</span>{directory.find(item => item.project.id === project.id)?.materials?.state === 'failed' && <button disabled={busy} onClick={() => void perform(() => props.refreshWorkspaceMaterials(project.id))}>{t('dashboardRetry')}</button>}</div>}
+          {tab === 'overview' && !project.objective && <p className={css.empty}>{t('analysisEmptyHint')}</p>}
           {tab === 'overview' && <>
-            <div className={css.stats}>{([['confirmedFindings', findings.filter(item => item.value.status === 'confirmed').length], ['pendingFindings', findings.filter(item => ['suspected', 'inconclusive'].includes(item.value.status)).length], ['evidence', evidence.length], ['blockedChecks', blocked.length]] as const).map(([label, count]) => <article key={label}><span>{t(label)}</span><strong>{count}</strong></article>)}</div>
-            <div className={css.overviewGrid}><section className={css.panel}><h3>{t('findings')}</h3>{findings.length ? findings.slice(0, 5).map(item => <button className={css.summaryRow} key={item.value.id} onClick={() =>{  setTab('findings') }}><strong>{item.value.title}</strong><span className={css.badge}>{t(item.value.status)}</span></button>) : <p className={css.muted}>{t('dashboardNoFindings')}</p>}</section><CoveragePanel t={t} evidence={evidence} coverage={activity.coverage} revision={view.revision} disabled={busy || !!project.archived}
-              openCheck={(id) => { void perform(() => connect(false, false, true, false, id)) }}
-              openEvidence={(id) => { setTab('evidence'); setEvidenceId(id) }} /></div>
+            {(!!project.objective || findings.length > 0 || evidence.length > 0) && <><div className={css.stats}>{([['confirmedFindings', findings.filter(item => item.value.status === 'confirmed').length], ['pendingFindings', findings.filter(item => ['suspected', 'inconclusive'].includes(item.value.status)).length], ['evidence', evidence.length], ['blockedChecks', blocked.length]] as const).map(([label, count]) => <article key={label}><span>{t(label)}</span><strong>{count}</strong></article>)}</div>
+              <div className={css.overviewGrid}><section className={css.panel}><h3>{t('findings')}</h3>{findings.length ? findings.slice(0, 5).map(item => <button className={css.summaryRow} key={item.value.id} onClick={() =>{  setTab('findings') }}><strong>{item.value.title}</strong><span className={css.badge}>{t(item.value.status)}</span></button>) : <p className={css.muted}>{t('dashboardNoFindings')}</p>}</section><CoveragePanel t={t} evidence={evidence} coverage={activity.coverage} revision={view.revision} disabled={busy || !!project.archived}
+                openCheck={(id) => { void perform(() => connect(false, false, true, false, id)) }}
+                openEvidence={(id) => { setTab('evidence'); setEvidenceId(id) }} /></div></>}
             <div className={css.panel}><ProjectManagement key={project.id + project.title} t={t} title={project.title}
               archived={project.archived} disabled={busy} manage={action => perform(async () => {
                 const current = generation.current
@@ -392,14 +430,13 @@ export function Dashboard(props: Props) {
                 if (current !== generation.current) return
                 if (action.kind === 'archive' || action.kind === 'purge') {
                   setDeletedProject(action.kind === 'archive' ? project : undefined); setPurgedTitle(action.kind === 'purge' ? project.title : '')
-                  setProjects(JSON.parse(items) as Project[]); navigate()
+                  setProjects(JSON.parse(items) as Project[]); props.selectDestination(''); navigate()
                 }
                 else await refresh()
               })} /></div>
           </>}
-          {tab === 'assets' && <section className={css.panel}>{assets.length ? assets.map(item => <article className={css.record} key={item.value.id}>
-            <h3>{item.value.label}</h3><span className={css.muted}>{'format' in item.value ? item.value.format : item.value.kind}</span>
-            {'artifact' in item.value && <><p>{item.value.artifact.size} {t('dashboardBytes')}</p><TechnicalDetails value={item.value.artifact} t={t} /></>}
+          {tab === 'assets' && <section className={css.panel}>{assets.length ? assets.map(item => <article className={css.record} key={project.workspaceMaterials?.assetId === item.value.id ? 'workspace-materials' : item.value.id}>
+            {'artifact' in item.value ? <MaterialBrowser t={t} useResource={props.useResource} project={project.id} asset={item.value.id} label={item.value.label} directory={'kind' in item.value} /> : <><h3>{item.value.label}</h3><span className={css.muted}>{item.value.kind}</span></>}
             {!('kind' in item.value) && <CaptureControls t={t} disabled={busy || project.stopped || Boolean(project.archived)}
               environments={captureEnvironments.filter(environment => project.environmentIds.includes(environment.id))}
               analyze={async (operation, protocol, environmentId) => { await perform(async () => {
@@ -421,10 +458,9 @@ export function Dashboard(props: Props) {
           {tab === 'reports' && <section className={css.panel}>{reports.length ? <><div className={css.listHeader}><label>{t('revision')}<select value={selectedReport} onChange={(event) =>{  setReportId(event.target.value); setFormat('markdown') }}>{reports.map(item => <option value={item.value.id} key={item.value.id}>{t('revision')} {item.value.revision}</option>)}</select></label><select aria-label={t('dashboardReportFormat')} value={format} onChange={(event) =>{  setFormat(event.target.value as typeof format) }}><option value="markdown">{t('markdownReport')}</option><option value="json">{t('jsonReport')}</option>{reports.find(item => item.value.id === selectedReport)?.value.findingsMarkdown && <option value="findingsMarkdown">{t('findingsReport')}</option>}</select><ReportExportButton projectId={selected} reportId={selectedReport} t={t} notify={props.notifyImprovement} /></div><div className={css.report}>{reading ? <p role="status">{t('dashboardLoading')}</p> : format === 'json' ? <pre>{report}</pre> : <MarkdownText text={report} labels={{ code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }} />}</div>{!reading && recommendations && <article className={css.reportCard} aria-label={t('recommendationsReport')}><MarkdownText text={recommendations} labels={{ code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }} /></article>}</> : <p className={css.empty}>{t('dashboardNoReports')}</p>}</section>}
         </>}
       </>}
-      {reference && reference.sessionId === sessionId && creating && <props.SessionProvider session={reference}>{props.renderSlot('security.workbench.session', { creating: true, assistantOpen: false, advancedOpen: false, changed: () => void perform(refresh), started: (id) => { setCreating(false); setSelected(id); setAssistant(true) } })}</props.SessionProvider>}
     </div>
-    {reference && reference.sessionId === sessionId && !creating && <aside className={css.assistant} data-expanded={expanded}
-      style={{ width: `${expanded ? 100 : assistantWidth}%` }} hidden={!assistant && !advanced} aria-label={t('dashboardAssistant')}>
+    {reference && reference.sessionId === sessionId && <aside className={css.assistant} data-expanded={expanded}
+      style={{ width: `${expanded ? 100 : assistantWidth}%` }} hidden={!advanced} aria-label={t('analysisSettings')}>
       {!expanded && <div className={css.assistantResize} role="separator" tabIndex={0} aria-orientation="vertical"
         aria-label={t('resizeAssistant')} aria-valuemin={25} aria-valuemax={85} aria-valuenow={assistantWidth}
         onPointerDown={(event) => {
@@ -447,9 +483,9 @@ export function Dashboard(props: Props) {
           if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
           event.preventDefault(); setAssistantWidth(value => Math.min(85, Math.max(25, value + (event.key === 'ArrowLeft' ? 5 : -5))))
         }} />}
-      <header><strong>{t(reviewOpen && advanced ? 'planApprovals' : advanced ? 'advancedDetails' : 'dashboardAssistant')}</strong>
+      <header><strong>{t(reviewOpen ? 'planApprovals' : 'analysisSettings')}</strong>
         <div className={css.actions}><button onClick={() => { setExpanded(value => !value) }}>{t(expanded ? 'restoreAssistant' : 'expandAssistant')}</button>
-          <button onClick={() => { setAssistant(false); setAdvanced(false); void perform(refresh) }}>{t('close')}</button></div></header>
-      <props.SessionProvider session={reference}>{props.renderSlot('security.workbench.session', { creating: false, assistantOpen: assistant, advancedOpen: advanced, reviewOpen, focusCheckId, changed: () => void perform(refresh), started: () => {} })}</props.SessionProvider></aside>}
+          <button onClick={() => { setAdvanced(false); void perform(refresh) }}>{t('close')}</button></div></header>
+      <props.SessionProvider session={reference}>{props.renderSlot('security.workbench.session', { advancedOpen: advanced, reviewOpen, focusCheckId, snapshot: view })}</props.SessionProvider></aside>}
   </section>
 }

@@ -34,6 +34,10 @@ pnpm install
 
 The install also configures worktree-local Lefthook hooks through `scripts/install-lefthook.mjs`. The [worktree-local hooks Agent Note](../.agents/notes/implemented/process/2026-07-27-worktree-local-lefthook.md) owns the hook-path safety contract.
 
+Hooks invoke `node scripts/run-lefthook.mjs`. On Windows, this launcher and the installer run the installed native Lefthook from a fresh private temporary copy, then remove it after exit. This keeps a workspace's inherited Low integrity label from lowering a host hook process; workspace permissions and the caller's token stay unchanged. POSIX installations and custom command shims execute in place. After updating the launcher configuration, rerun the installation command below to refresh existing hooks; no `LEFTHOOK_BIN` override is needed.
+
+Windows installation also copies pnpm's native esbuild platform packages into a repository-specific `%USERPROFILE%\.cache\dsh\host-esbuild` cache and replaces their virtual-store directories with junctions. This location avoids [MSIX AppData redirection](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes), so packaged applications and ordinary editors can resolve the same files. Copies contain the exact installed package bytes, verified before replacement; dependency versions remain unchanged. Workspace permission propagation skips these links, keeping host build tools outside the writable sandbox tree. Reinstalling dependencies refreshes the links through `postinstall`. Cache contents must remain outside sandbox write roots; a confined install cannot provision that host cache.
+
 The [DevTools frontend](../packages/experimental/inspector/README.md#use-this-package) is compiled locally from a pinned npm source package and Vite. After dependencies are installed, its build needs no network access or browser installation. Workspace and published-package installation run no DevTools resource-download hook; published Inspector packages contain the built frontend.
 
 If the hooks are missing because dependencies were restored from cache or `postinstall` was skipped, install them manually:

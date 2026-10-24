@@ -1,4 +1,4 @@
-"""Exercise the relocated Office payload with its own isolated interpreter."""
+"""Exercise the relocated Python payload with its own isolated interpreter."""
 
 import csv
 import importlib.metadata
@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ import numpy
 # NumPy testing helpers require this native extension even without upstream test directories.
 import numpy._core._multiarray_tests
 import pandas
+import pefile
 from docx import Document
 from docx.shared import Inches as DocxInches
 from openpyxl import Workbook, load_workbook
@@ -46,6 +48,27 @@ def check_interpreters():
         subprocess.run([str(python), "-I", "-B", "-m", "pip", "check"], check=True, timeout=30)
 
 
+def check_pe():
+    """Parse a synthetic PE image and compute its checksum without executing it."""
+    image = bytearray(0x400)
+    image[:2] = b"MZ"
+    struct.pack_into("<I", image, 0x3c, 0x80)
+    image[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<HHIIIHH", image, 0x84, 0x14c, 1, 0, 0, 0, 0xe0, 2)
+    struct.pack_into("<H", image, 0x98, 0x10b)
+    struct.pack_into("<III", image, 0xb4, 0x500000, 0x1000, 0x200)
+    struct.pack_into("<II", image, 0xd0, 0x3000, 0x200)
+    image[0x178:0x180] = b".text\0\0\0"
+    struct.pack_into("<IIII", image, 0x180, 0x200, 0x2000, 0x200, 0x200)
+    with pefile.PE(data=bytes(image), fast_load=True) as pe:
+        assert pe.OPTIONAL_HEADER.ImageBase == 0x500000
+        assert pe.get_offset_from_rva(0x2000) == 0x200
+        offset = pe.OPTIONAL_HEADER.get_field_absolute_offset("CheckSum")
+        struct.pack_into("<I", image, offset, pe.generate_checksum())
+    with pefile.PE(data=bytes(image), fast_load=True) as pe:
+        assert pe.verify_checksum()
+
+
 def main():
     """Check installed versions and read back editable Office documents."""
     assert sys.version_info[:3] == tuple(map(int, sys.argv[2].split("."))), sys.version
@@ -62,6 +85,7 @@ def main():
     for name, expected in versions.items():
         actual = importlib.metadata.version(name)
         assert actual == expected, (name, actual, expected)
+    check_pe()
     assert numpy.arange(4).sum() == 6
     assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3
     numpy.testing.assert_allclose(numpy.arange(4), [0, 1, 2, 3])

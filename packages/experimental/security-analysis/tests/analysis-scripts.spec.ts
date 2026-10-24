@@ -55,6 +55,12 @@ it('extracts located reverse candidates without promoting heuristics to conclusi
   expect(stderr).toContain('OK')
 })
 
+it('maps PE addresses and applies explicit manifests with the installed pefile tool', async () => {
+  const python = process.env.DSH_SECURITY_SCRIPT_PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3')
+  const { stderr } = await promisify(execFile)(python, ['-B', fileURLToPath(new URL('./pe_scripts_test.py', import.meta.url)), '-v'], { timeout: 60_000 })
+  expect(stderr).toContain('OK')
+}, 90_000)
+
 it('records bounded backtraces and stops hooks at the event limit', async () => {
   const code = await readFile(analysisScripts().find(entry => entry.kind === 'functionTrace')!.path, 'utf8')
   const send = vi.fn<(value: Record<string, unknown>) => void>(), detach = vi.fn()

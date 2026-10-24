@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "upstreamCommit": "1600d8a1e140dcde43a1a0941940a0480712c011",
+  "reviewedForkCommit": "e6f8040c620524ce61df169f5661bf0619a7d3fa",
+  "requiredSessionEvents": [
+    "helper/start",
+    "helper/end",
+    "helper/policy",
+    "helper/auto-start",
+    "helper/auto-end",
+    "advisor-jev/start",
+    "advisor-jev/end"
+  ],
+  "patches": [
+    {
+      "id": "windows-process-status",
+      "paths": [
+        "packages/subprocess/subprocess/src/windows-status.ts",
+        "packages/subprocess/subprocess/src/index.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-analysis/src/workbench/process.ts"
+      ],
+      "checks": [
+        "packages/subprocess/subprocess/tests/windows-status.spec.ts"
+      ],
+      "retireWhen": "Upstream exports equivalent Windows termination diagnostics and every consumer is updated."
+    },
+    {
+      "id": "windows-acl",
+      "paths": [
+        "packages/sandbox/sandbox-windows-acl/src"
+      ],
+      "consumers": [
+        "packages/sandbox/sandbox-windows-acl/src/index.ts"
+      ],
+      "checks": [
+        "packages/sandbox/sandbox-windows-acl/tests"
+      ],
+      "retireWhen": "Upstream ACL grants and failure cleanup pass the Windows ownership tests."
+    },
+    {
+      "id": "subagent-metrics",
+      "paths": [
+        "packages/subagent/subagent/src/types.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-analysis/src/index.ts"
+      ],
+      "checks": [
+        "packages/experimental/security-analysis/tests/workbench-loader.spec.ts"
+      ],
+      "retireWhen": "Upstream supplies equivalent child usage and completion fields without changing saved reports."
+    },
+    {
+      "id": "optional-security-build",
+      "paths": [
+        "apps/cli/package.json",
+        "packages/boot/app-boot/src/profile.ts",
+        "packages/client/tsdown.client.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-profile",
+        "packages/experimental/security-web-profile"
+      ],
+      "checks": [
+        "scripts/start-security.spec.ts"
+      ],
+      "retireWhen": "Upstream optional bundle discovery and browser bundling resolve security packages without local lists."
+    },
+    {
+      "id": "codex-consultation",
+      "paths": [
+        "packages/subagent/subagent-codex/src"
+      ],
+      "consumers": [
+        "packages/experimental/security-analysis/src"
+      ],
+      "checks": [
+        "packages/subagent/subagent-codex/tests/subagent-codex.spec.ts"
+      ],
+      "retireWhen": "Upstream supports equivalent consultation and cancellation with readable saved output."
+    },
+    {
+      "id": "required-session-events",
+      "paths": [
+        "packages/core/session/src/known-event-types.ts",
+        "packages/subagent/helper/src/types.ts",
+        "packages/experimental/advisor-jev/src"
+      ],
+      "consumers": [
+        "packages/core/session",
+        "packages/sdk",
+        "python"
+      ],
+      "checks": [
+        "snapshots/session/helper",
+        "snapshots/sdk/helper",
+        "snapshots/sdk/advisor-jev"
+      ],
+      "retireWhen": "Every supported reader recognizes required events; retain committed historical generations."
+    },
+    {
+      "id": "job-policy",
+      "paths": [
+        "packages/jobs/tool-jobs/src/index.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-profile/presets/security/agent.cordis.yml"
+      ],
+      "checks": [
+        "packages/jobs/tool-jobs/tests/tool-jobs.spec.ts"
+      ],
+      "retireWhen": "Upstream supports explicit activity waits and unbounded wake configuration; preserve security preset policy."
+    },
+    {
+      "id": "storage-consumer-drain",
+      "paths": [
+        "packages/storage/storage/src/index.ts",
+        "packages/storage/storage-domain/src/index.ts",
+        "packages/storage/storage-json/src/index.ts",
+        "packages/storage/storage-sqlite/src/index.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-analysis/src/activity-observer.ts"
+      ],
+      "checks": [
+        "packages/storage/storage-domain/tests/domain.spec.ts",
+        "packages/storage/storage-json/tests/json-backend.spec.ts",
+        "packages/storage/storage-sqlite/tests/sqlite-backend.spec.ts",
+        "packages/experimental/security-analysis/tests/workbench-loader.spec.ts"
+      ],
+      "retireWhen": "Upstream retains already-disposing consumers and completes their final writes before closing domains and storage backends."
+    }
+  ]
+}

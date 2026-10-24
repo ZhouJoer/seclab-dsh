@@ -10,7 +10,7 @@ import css from './Dashboard.module.css'
 /** Read-only Session selection and workbench navigation injected by the plugin. */
 export interface ConversationProgressActions extends ActivityActions {
   followSessionView(session: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView>
-  openDashboard(): void
+  openDashboard(projectId?: string, sessionId?: SessionId): void
 }
 
 type Props = ConversationProgressActions & PropsLocale<typeof NS> & { sessionId: SessionId }
@@ -54,7 +54,7 @@ type EntryProps = ConversationProgressEntryActions & PropsLocale<typeof NS> & { 
  * @returns a small badge without occupying transcript space.
  */
 export function ConversationProgressEntry(props: EntryProps) {
-  const { view, epoch, error } = useSelection(props)
+  const { view, setView, epoch, error } = useSelection(props)
   const project = view.records.find(item => item.kind === 'engagement')?.value.id
   const [count, setCount] = useState<number>()
   const [running, setRunning] = useState(false)
@@ -68,6 +68,9 @@ export function ConversationProgressEntry(props: EntryProps) {
       try {
         for await (const frame of current.current.followActivity(project, abort.signal)) {
           if (abort.signal.aborted) break
+          if (frame.type === 'project' || frame.type === 'snapshot') {
+            setView(previous => frame.view.revision >= previous.revision ? frame.view : previous)
+          }
           if (frame.type === 'project') continue
           setCount(frame.usage.reduce((sum, row) => sum + row.total, 0))
           setRunning(frame.usage.some(row => row.running > 0))
@@ -83,13 +86,13 @@ export function ConversationProgressEntry(props: EntryProps) {
       {props.t('activityTools')} <span className={css.countBadge}>{error ? '—' : count ?? '—'}</span>
       {(running || childRunning) && <span className={css.runningDot} role="img" aria-label={props.t('running')} />}
     </button>
-    <button onClick={() => { props.openDashboard() }}>{props.t('dashboardEntry')} ↗</button>
+    <button onClick={() => { props.openDashboard(project, props.sessionId) }}>{props.t('dashboardEntry')} ↗</button>
   </div>
 }
 
-/** Keep a visible chat entry outside the workbench's embedded assistant.
+/** Keep a visible progress entry in the native conversation.
  * @param props - session-scoped framework seats and security actions.
- * @returns a compact tool-count entry outside the embedded workbench assistant.
+ * @returns a compact tool-count entry in the native conversation.
  */
 export function ConversationProgressLauncher(props: ConversationProgressEntryActions & PropsLocale<typeof NS> & PropsRuntime<'conversation.input.dock'>) {
   const panel = props.usePanelInfo(value => value.activePanelId)

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { syncBuiltinESMExports } from 'node:module'
-import { join } from 'node:path'
+import { cp } from 'node:fs/promises'
+import { join, sep } from 'node:path'
 export const name = 'security-workbench-snapshot-fixture'
 export const inject = ['tools', 'agents', 'systemPrompt', 'storageDomain', 'subagents', 'jobs', 'subprocess', 'sessionProjectionCache']
 export async function apply(ctx) {
@@ -130,6 +131,14 @@ export async function apply(ctx) {
     assert.deepEqual(preview.conflicts, [])
     securityCtx.securityWorkbench.importToolPack(pack, preview.revision, false)
     securityCtx.on('tools/execute', async (exec, next) => {
+      if (exec.name === 'skill' && exec.arguments.name === 'security-native') {
+        const result = await next()
+        assert.notEqual(result.isError, true)
+        const resources = join(process.cwd(), '.dsh', 'security-resources')
+        await cp(new URL('../../../packages/experimental/security-analysis/resources/', import.meta.url), resources, { recursive: true })
+        return { ...result, value: { ...result.value,
+          resourceBase: { kind: 'directory', path: join(resources, 'skills').split(sep).join('/') } } }
+      }
       if (exec.name !== 'security_command' || JSON.parse(exec.arguments.command).action.kind !== 'report') return next()
       assert(exec.agent)
       clock = 1800000001000

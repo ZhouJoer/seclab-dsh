@@ -868,6 +868,11 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspectio
  */
 @Remote('create') create(request: SessionCreateRequest): Promise<SessionCreateValue>
 
+/** Reserve business-owned empty conversations against ordinary creation reuse.
+ * @param guard - false when a Session already belongs to a durable business object.
+ * @returns disposer for the registering plugin's lifetime. */
+registerReuseGuard(guard: (sessionId: SessionId) => boolean): () => void
+
 /**
  * Select one Session-local model after explicitly resuming the Session; save the default in the background.
  * @param request - Session identity and requested model selection.

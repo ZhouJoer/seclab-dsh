@@ -61,7 +61,10 @@ interface RecordDetailPage {
  * @returns identities and metadata, with an explicit continuation.
  */
 export function modelPage(view: WorkbenchView, query: RecordQuery, maxBytes: number): RecordPage {
-  const records = view.records.filter(item => query.kind === undefined || item.kind === query.kind)
+  const current = view.records.find(item => item.kind === 'engagement')?.value.workspaceMaterials
+  const records = view.records.filter(item => query.kind === undefined || item.kind === query.kind).filter(item =>
+    !current || item.kind !== 'asset' || !('kind' in item.value) || item.value.kind !== 'source'
+    || item.value.inputSource?.kind !== 'path' || item.value.inputSource.path !== current.root || item.value.id === current.assetId)
   const result: RecordPage = { revision: view.revision, records: [], total: records.length, nextOffset: null, hasMore: false }
   for (let index = query.offset; index < records.length; index++) {
     const item = records[index]

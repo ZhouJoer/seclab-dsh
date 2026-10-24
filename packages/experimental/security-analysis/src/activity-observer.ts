@@ -8,6 +8,7 @@ import type { SecurityController } from './workbench/controller.ts'
 import type { SecurityActivity, SecurityActivityStore } from './workbench/activity.ts'
 import { adapterToolId } from './tool-adapter-catalog.ts'
 import { ANALYSIS_PROGRESS_REQUIRED } from './analysis-progress.ts'
+import { isSecurityBrowserTool } from './browser-tools.ts'
 
 const foreground = z.object({ kind: z.literal('foreground'), exitCode: z.number().nullable(),
   signal: z.string().nullable(), timedOut: z.boolean(), aborted: z.boolean(),
@@ -43,9 +44,10 @@ export function analysisJobOutcome(snapshot: JobView): Pick<SecurityActivity, 's
  * @param ctx - tool and job lifecycle owner.
  * @param ready - domain initialization.
  * @param catalog - current definition reader; built-ins when omitted.
+ * @returns drain operation awaited before closing the activity store.
  */
 export function installActivityObserver(ctx: Context, ready: Promise<SecurityController>,
-  catalog: () => readonly ToolDefinition[] = () => toolboxCatalog): void {
+  catalog: () => readonly ToolDefinition[] = () => toolboxCatalog): () => Promise<void> {
   const jobs = new Map<string, { record: SecurityActivity; store: SecurityActivityStore }>()
   const pending = new Set<Promise<void>>()
   const settled = async (snapshot: JobView) => {
@@ -55,14 +57,22 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
     jobs.delete(key)
     await entry.store.finish(entry.record.id, analysisJobOutcome(snapshot))
   }
-  ctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
-    if (event.type !== 'settled') return
-    const work = settled(event.job)
-      .catch((error: unknown) => { ctx.logger.error('Security job activity could not be saved: %s', String(error)) })
-      .finally(() => { pending.delete(work) })
-    pending.add(work)
+  let closing: Promise<void> | undefined
+  const close = () => closing ??= (async () => {
+    await (await ready).dispose()
+    await Promise.all(pending)
+  })()
+  ctx.effect(function* () {
+    // Tracked identities remain observable after their Agent scope has detached.
+    yield ctx.jobs.events.subscribe({ owners: 'all' }, (event) => {
+      if (event.type !== 'settled') return
+      const work = settled(event.job)
+        .catch((error: unknown) => { ctx.logger.error('Security job activity could not be saved: %s', String(error)) })
+        .finally(() => { pending.delete(work) })
+      pending.add(work)
+    })
+    yield ctx.effect(() => close)
   })
-  ctx.effect(() => async () => { await Promise.all(pending) })
   ctx.on('tools/post-execute', async (exec, result, next) => {
     if (result.isError && result.error.message === ANALYSIS_PROGRESS_REQUIRED) return next()
     if (exec.agent && result.isError && (['security_static', 'security_execute'].includes(exec.name) || adapterToolId(exec.name))) {
@@ -83,18 +93,24 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
     return next()
   })
   ctx.on('tools/execute', async (exec, next) => {
-    if (!exec.agent || !['bash', 'pwsh'].includes(exec.name)) return next()
+    const browser = isSecurityBrowserTool(exec.name)
+    if (!exec.agent || !(['bash', 'pwsh'].includes(exec.name) || browser)) return next()
     const controller = await ready
     const projectId = controller.analysisProject(exec.agent.id)
     const store = controller.activity
     if (!projectId || !store) return next()
-    const args = z.object({ command: z.string() }).parse(exec.arguments)
-    if (/^(?:&\s+)?(?:"[^"]+"|'[^']+'|[^\s;|&]+)\s+(?:--version|-version|-v|version)\s*$/u.test(args.command.trim())) return next()
+    const command = browser ? JSON.stringify(exec.arguments) : z.object({ command: z.string() }).parse(exec.arguments).command
+    if (!browser && /^(?:&\s+)?(?:"[^"]+"|'[^']+'|[^\s;|&]+)\s+(?:--version|-version|-v|version)\s*$/u.test(command.trim())) return next()
     const record = await store.start({ projectId, sessionId: exec.agent.id, callId: exec.callId,
-      checkpointId: controller.checkpointId(exec.agent.id), tools: analysisToolCandidates(args.command, catalog()),
-      verified: false, parameters: args.command.slice(0, controller.options.maxOutputBytes) })
+      checkpointId: controller.checkpointId(exec.agent.id), tools: browser ? ['playwright-mcp'] : analysisToolCandidates(command, catalog()),
+      verified: browser, parameters: command.slice(0, controller.options.maxOutputBytes) })
     try {
       const result = await next()
+      if (browser) {
+        await store.finish(record.id, { status: exec.signal.aborted ? 'cancelled' : result.isError ? 'failed' : 'completed',
+          incomplete: true, detail: exec.name + (result.isError ? ': ' + result.error.message : '') })
+        return result
+      }
       const job = background.safeParse(result.value)
       if (!result.isError && job.success) {
         const snapshot = ctx.jobs.get(JobId(job.data.jobId), exec.agent.id)
@@ -118,4 +134,5 @@ export function installActivityObserver(ctx: Context, ready: Promise<SecurityCon
       throw error
     }
   })
+  return close
 }

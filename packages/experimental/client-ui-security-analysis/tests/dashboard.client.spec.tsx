@@ -29,13 +29,15 @@ function harness(extra: object = {}) {
   const release = vi.fn()
   const api = {
     ...deviceActions,
+    useResource: () => ({ status: 'none', value: undefined, failure: undefined }),
+    beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(), refreshWorkspaceMaterials: vi.fn(),
     configuration: vi.fn(async () => workbenchConfiguration()),
     configureWorkspace: vi.fn(async (_id: string, input: string) => workbenchConfiguration({
       workspace: { ...workbenchConfiguration().workspace!, revision: 1,
         taskContext: (JSON.parse(input) as { taskContext: TaskContext }).taskContext },
     })),
     followProjects: async function* (signal: AbortSignal) {
-      yield [alpha, beta].map(item => ({ project: item.value, runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '', state: item.value.stopped ? 'stopped' as const : 'idle' as const }))
+      yield [alpha, beta].map(item => ({ project: item.value, sessions: [], runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '', state: item.value.stopped ? 'stopped' as const : 'idle' as const }))
       if (!signal.aborted) await new Promise<void>((resolve) =>{  signal.addEventListener('abort', () =>{  resolve() }, { once: true }) })
     },
     observe: vi.fn(async (_id: string, _input: string) => ({ revision: 2, records: [alpha, evidence] })),
@@ -52,6 +54,9 @@ function harness(extra: object = {}) {
     report: vi.fn(async () => '# Report'), findSession: vi.fn(async () => 's1'),
     createSession: vi.fn(async () => 'new'), associateSession: vi.fn(async () => {}), resumeProject: vi.fn(async () => {}),
     stopProject: vi.fn(async () => {}), createWorkspace: vi.fn(async () => 'workspace'),
+    restartTask: vi.fn(async () => ({ sessionId: 'fresh', projectId: 'Beta', objective: 'Review owned code' })),
+    openRestartDraft: vi.fn(async () => {}),
+    notifyImprovement: vi.fn(),
     retainSession: vi.fn((id: string) => ({ sessionId: id, ready: Promise.resolve(), release })),
     subscribeReset: () => () => {}, manageProject: vi.fn(async (_projectId: string, _input: string) => '[]'), laboratory: vi.fn(),
     t: makeTranslate(en, common), useWorkspaces: (select: (state: object) => unknown) => select({ items: [{ workspaceId: 'workspace', path: '/owned', title: 'Owned' }] }),
@@ -62,6 +67,43 @@ function harness(extra: object = {}) {
   // The fixture supplies only framework seats consumed by this component.
   return { api, release, props: api as Parameters<typeof Dashboard>[0] }
 }
+it('confirms a restart and opens its fresh draft without sending or creating another Session', async () => {
+  const { api, props } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  const trigger = await screen.findByRole('button', { name: en.restartTask })
+  expect(trigger.parentElement?.contains(screen.getByRole('button', { name: en.analysisChat }))).toBe(true)
+  fireEvent.click(trigger)
+  expect(api.restartTask).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
+  await waitFor(() => { expect(api.openRestartDraft).toHaveBeenCalledWith('fresh', 'Review owned code') })
+  expect(api.restartTask).toHaveBeenCalledWith('s1', {})
+  expect(api.notifyImprovement).toHaveBeenCalledWith(en.restartTaskReady)
+  expect(api.createSession).not.toHaveBeenCalled()
+  expect(api.associateSession).not.toHaveBeenCalled()
+})
+it('cancels restart with Escape and returns focus to its visible entry', async () => {
+  const { api, props } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  const trigger = await screen.findByRole('button', { name: en.restartTask })
+  fireEvent.click(trigger)
+  fireEvent.keyDown(screen.getByRole('group', { name: en.restartTaskConfirm }), { key: 'Escape' })
+  expect(screen.queryByRole('group', { name: en.restartTaskConfirm })).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+  expect(api.restartTask).not.toHaveBeenCalled()
+})
+it('keeps failed restart available and separates actionable copy from technical details', async () => {
+  const restartTask = vi.fn().mockRejectedValue(new Error('HTTP 404'))
+  const { props } = harness({ restartTask })
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  fireEvent.click(await screen.findByRole('button', { name: en.restartTask }))
+  fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
+  expect((await screen.findByRole('alert')).textContent).toBe(en.restartTaskFailed)
+  expect(screen.getByText('HTTP 404', { exact: false }).closest('details')?.open).toBe(false)
+  expect(screen.getByRole('button', { name: en.restartTaskConfirm }).hasAttribute('disabled')).toBe(false)
+})
 it('reuses a configured laboratory image only after an explicit project action', async () => {
   const laboratory = vi.fn(async () => ({ revision: 2, records: [alpha] }))
   const { api, props } = harness({ laboratory })
@@ -94,9 +136,9 @@ it('shares one activity subscription across graph and timeline navigation', asyn
   render(<Dashboard {...props} followActivity={followActivity} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
   await screen.findByRole('heading', { name: 'Alpha' })
-  const navigation = screen.getByRole('navigation', { name: 'Task detail navigation' })
-  fireEvent.click(within(navigation).getByRole('button', { name: 'Tools & progress' }))
-  fireEvent.click(within(navigation).getByRole('button', { name: 'Investigation' }))
+  fireEvent.click(screen.getByText(en.analysisMore))
+  fireEvent.click(screen.getByRole('button', { name: 'Tools & progress' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Investigation' }))
   expect(followActivity).toHaveBeenCalledTimes(1)
 })
 it('places folded task context above every detail tab and edits without opening an assistant or model turn', async () => {
@@ -160,40 +202,14 @@ it('returns from evidence detail without losing the evidence filter', async () =
   fireEvent.click(screen.getByRole('button', { name: '← Back to evidence' }))
   expect((screen.getByLabelText<HTMLInputElement>('Search evidence titles or summaries')).value).toBe('Authorization')
 })
-it('retains the assistant and its draft when collapsed, and releases it on task navigation', async () => {
-  const { api, props, release } = harness()
-  const mounted = render(<Dashboard {...props} />)
-  fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
-  await screen.findByRole('heading', { name: 'Alpha' })
-  fireEvent.click(screen.getByRole('button', { name: 'Analysis assistant' }))
-  fireEvent.change(await screen.findByLabelText('Assistant draft'), { target: { value: 'Keep this draft' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Hide assistant' }))
-  expect(release).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Analysis assistant' }))
-  expect((await screen.findByLabelText<HTMLTextAreaElement>('Assistant draft')).value).toBe('Keep this draft')
-  expect(api.retainSession).toHaveBeenCalledTimes(1)
-  fireEvent.click(screen.getByRole('button', { name: '← Back to tasks' }))
-  await waitFor(() =>{  expect(release).toHaveBeenCalledTimes(1) })
-  mounted.unmount()
-  expect(release).toHaveBeenCalledTimes(1)
-})
-it('resizes and expands the assistant without discarding its draft', async () => {
-  const { props } = harness()
+it('opens the native chat without embedding a second composer', async () => {
+  const { api, props } = harness()
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
-  fireEvent.click(await screen.findByRole('button', { name: en.dashboardAssistant }))
-  const draft = await screen.findByLabelText<HTMLTextAreaElement>('Assistant draft')
-  fireEvent.change(draft, { target: { value: 'Retained while resizing' } })
-  const separator = screen.getByRole('separator', { name: en.resizeAssistant })
-  fireEvent.keyDown(separator, { key: 'ArrowLeft' })
-  expect(separator.getAttribute('aria-valuenow')).toBe('45')
-  fireEvent.keyDown(separator, { key: 'ArrowRight' })
-  expect(separator.getAttribute('aria-valuenow')).toBe('40')
-  fireEvent.click(screen.getByRole('button', { name: en.expandAssistant }))
-  expect(screen.getByRole('complementary').style.width).toBe('100%')
-  fireEvent.click(screen.getByRole('button', { name: en.restoreAssistant }))
-  expect(screen.getByRole('complementary').style.width).toBe('40%')
-  expect(draft.value).toBe('Retained while resizing')
+  fireEvent.click(await screen.findByRole('button', { name: en.analysisChat }))
+  await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s1') })
+  expect(screen.queryByRole('complementary')).toBeNull()
+  expect(api.createSession).not.toHaveBeenCalled()
 })
 it('opens plan approvals directly on the existing coordinator Session', async () => {
   const renderSlot = vi.fn(() => <div />)
@@ -207,7 +223,7 @@ it('opens plan approvals directly on the existing coordinator Session', async ()
   await screen.findByText(en.pendingPlanHint, { exact: false })
   fireEvent.click(screen.getByRole('button', { name: en.planApprovals }))
   await waitFor(() => { expect(renderSlot).toHaveBeenCalledWith('security.workbench.session', expect.objectContaining({
-    advancedOpen: true, reviewOpen: true, assistantOpen: false,
+    advancedOpen: true, reviewOpen: true,
   })) })
   expect(api.createSession).not.toHaveBeenCalled()
   expect(api.associateSession).not.toHaveBeenCalled()
@@ -217,7 +233,7 @@ it('requires an explicit continue action before creating a missing historical Se
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
   await screen.findByRole('heading', { name: 'Alpha' })
-  fireEvent.click(screen.getByRole('button', { name: 'Analysis assistant' }))
+  fireEvent.click(screen.getByRole('button', { name: en.analysisChat }))
   await screen.findByText(/No recoverable analysis session/)
   expect(api.createSession).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Continue analysis' }))
@@ -229,8 +245,8 @@ it('opens the stopped assistant without implicitly resuming its task', async () 
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Beta/ }))
   await screen.findByRole('heading', { name: 'Beta' })
-  fireEvent.click(screen.getByRole('button', { name: 'Analysis assistant' }))
-  await screen.findByLabelText('Assistant draft')
+  fireEvent.click(screen.getByRole('button', { name: en.analysisChat }))
+  await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s1') })
   expect(api.resumeProject).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Resume task' }))
   await waitFor(() =>{  expect(api.resumeProject).toHaveBeenCalledWith('s1') })
@@ -376,8 +392,8 @@ it('analyzes imported captures from materials and opens the resulting evidence',
   fireEvent.click(await screen.findByRole('button', { name: 'Materials' }))
   await screen.findByRole('option', { name: 'Windows' })
   expect(api.observe).not.toHaveBeenCalled()
-  const technical = screen.getAllByText('Technical details').find(item => item.closest('details')?.textContent?.includes('b'.repeat(64)))!
-  expect(technical.closest('details')?.open).toBe(false)
+  expect(screen.getByRole('region', { name: en.materialsPreview })).toBeTruthy()
+  expect(screen.queryByText('b'.repeat(64))).toBeNull()
   fireEvent.change(screen.getByLabelText('Capture protocol'), { target: { value: 'ble' } })
   fireEvent.click(screen.getByRole('button', { name: 'Analyze capture' }))
   await waitFor(() =>{  expect(api.observe).toHaveBeenCalledOnce() })

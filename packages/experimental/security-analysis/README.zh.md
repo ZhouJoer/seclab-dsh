@@ -19,7 +19,7 @@ kind: "package-reference"
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
 
-经认证的操作者可导入粘贴的 UTF-8 文字、上传的文件或文件夹，以及明确选择的主机文件或目录。主机路径选择仅授权本次导入，模型工具仍受已配置的导入根目录限制。所有材料保存为不可变工件，并遵守配置的字节数和条目数上限。操作者导入 Remote 也接受不含材料的初始任务和明确选择的已配置环境 ID；创建任务不会保存工作区默认配置。操作者二次确认永久删除后，提交已删除任务的 ID 和所显示的修订号。它从历史提交中清除任务记录，删除调用记录和非共享的存储工件，并重建搜索；中断的清理在重新打开时继续。共享工件引用、原始素材、工作区文件和独立聊天保留。所属靶场必须先停止或重置，再永久删除。摘要和报告使用简体中文，标识和路径保持原样。项目移除可恢复：移除会停止执行、停用项目关联并从活动列表隐藏；恢复后仍保持停止状态，且不会自动重新关联会话。 仅供操作员使用的 projectSessions 返回有效协调会话引用，客户端按可访问且未归档的 Session 目录筛选。projectArtifact 先根据所选项目校验归属，再执行现有摘要校验和输出限长读取。这些读取不打开 Session，也不修改绑定或持久记录。
+经认证的操作者可导入粘贴的 UTF-8 文字、上传的文件或文件夹，以及明确选择的主机文件或目录。主机路径选择仅授权本次导入，模型工具仍受已配置的导入根目录限制。所有材料保存为不可变工件，并遵守配置的字节数和条目数上限。操作者导入 Remote 也接受不含材料的初始任务和明确选择的已配置环境 ID；创建任务不会保存工作区默认配置。操作者二次确认永久删除后，提交已删除任务的 ID 和所显示的修订号。它从历史提交中清除任务记录，删除调用记录和非共享的存储工件，并重建搜索；中断的清理在重新打开时继续。共享工件引用、原始素材、工作区文件和独立聊天保留。所属靶场必须先停止或重置，再永久删除。摘要和报告使用简体中文，标识和路径保持原样。项目移除可恢复：移除会停止执行、停用项目关联并从活动列表隐藏；恢复后仍保持停止状态，且不会自动重新关联会话。 仅供操作员使用的 projectSessions 返回有效协调会话引用，客户端按可访问且未归档的 Session 目录筛选。projectArtifact 先根据所选项目校验归属，再执行现有摘要校验和输出限长读取。projectMaterial 分页列出快照目录的直接子项，并将所选文件预览为文本、位图或二进制文件头。每次读取都校验材料所属项目，预览路径不用于访问实时文件系统。这些读取不打开 Session，也不修改绑定或持久记录。
 
 任务通过可选 `moduleSelection` 保存 `mode`、`modules` 和 `reason`。缺省为自动模式，先提供公共调查能力。协调者通过带修订检查的 `modules` 动作选择 `reverse.android`、`reverse.native`、`web`、`iot` 或 `pentest`；手动选择只由操作者修改。`web` 与 `pentest` 都会启用 `security-kali` 渗透测试方法；逆向模块不新增任何 Kali 关联。活动专用技能按 Agent 注册，正文按需读取。模块选择同时约束专用工具和通用 provider 观察，不授予角色或执行审批。未知文件先使用公共身份检查，再选择模块。 使用 `security_scope` 的 `asset` 类型读取已导入材料，使用 `engagement` 读取任务；未知类型会报错，不会返回空页。
 
@@ -33,6 +33,8 @@ kind: "package-reference"
 
 <a id="use-this-package"></a>
 ## 使用
+
+`environmentConfigurationPath` 是可选的操作员 JSON 文件绝对路径。文件中的环境替换同 ID 的部署声明，其他环境保留。相对 `cwd` 以 JSON 所在目录解析。文件不存在时不添加配置，声明无效时启动失败。可选的 `defaultEnvironmentIds` 仅在配置了 `taskIntake` 时替换接入默认值。文件不改变预算、演进设置、数据根或工具安装文件。环境 provider 热重载会停止自身操作并清理自有容器，工作台、报告和其他环境继续可用。完整工作台卸载会取消自有 Job，并在关闭存储前保存最终活动状态。只读 `followSessionView` Remote 接收已授权的 `sessionId`，不会激活 Agent。
 
 可选的 `taskContext` 包含 `background` 和独立可选的 `authorization` 声明（`basis`、`scope`、`allowedActions`、`restrictions`，以及可选的毫秒时间戳 `expiresAt`）。仅启用授权声明时要求四个文字字段完整。声明是用户填写的信息，不代表已核验权限；它不登记资产，也不替代执行审批、角色、有效期或次数检查。缺少此字段的旧任务保持不变。
 
@@ -54,7 +56,11 @@ kind: "package-reference"
 
 内置[分析脚本库](src/analysis-scripts.ts) 将可复用文件保存在 `resources/analysis-scripts/{tshark,mqtt,dynamic,reverse}/`。编写新分析代码前，加载 `security-packet-analysis`、`security-mqtt` 或 `security-dynamic` 获取分析思路、绝对资源目录、参数和示例。离线 Python 脚本使用明确选择的 TShark 可执行文件读取 pcap/pcapng，保留 MQTT 消息边界和重组信息，并返回有界 JSON，包含输入与脚本摘要、工具版本、参数和不完整原因。时间、帧数、解码字节和结果字节上限均为必填参数。输出路径必须是尚不存在的绝对路径，结果保存在任务的 `outputs/` 中。动态 `prepare.py` 在任务的 `scripts/` 中生成参数化 JavaScript，交给现有不可变 Frida 验证计划；准备工具不会附加进程。模板观察原生模块或导出函数，达到事件上限时证据标记为不完整。内置资源保持不变。脚本运行在本机 Host；不提供在线 MQTT、Android Java 模板或自定义目录导入。`scriptCatalog` 支持无需选择项目或环境的只读浏览。
 
+`security-native` 按需链接 [PE 辅助工具](resources/skills/pe.md)，支持批量换算 VA/RVA/文件偏移和执行显式等长补丁清单。所选 Host Python 必须安装 `pefile`。补丁在创建新输出目录前检查输入摘要、预期字节和无重叠的映射范围，再计算 PE checksum 并保存详细报告。简短回执让后续工作复用结果，无需重复采集证据。字节检查不代表调用约定或运行行为正确；xref 由现有适配器提供。
+
 自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。若已认证请求仅含一个 IP 字面量 HTTP(S) 地址且只选择一个本机或 Docker HTTP 环境，入口会按该字面地址登记 URL 的 origin 与路径；域名、多目标和多个可用环境仍需操作者显式登记，但 `taskIntake.httpEnvironmentId` 可声明多个可用 HTTP 环境中由哪个环境登记字面靶机；声明的环境未被选中时仍按单环境规则处理。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件或批准执行。
+
+工作区任务保留固定的来源目录与主 Session 身份。任务被查看或运行时，共享文件监听器更新不可变材料快照；重新打开时全量扫描。`.gitignore` 不排除样本。依赖、元数据、缓存目录、`.dsh/analysis` 和工作台存储会被排除，符号链接不会被跟随。`workspaceMaterials.maxEntries`、`maxBytes`、`debounceMs` 与 `excludedDirectories` 配置采集。扫描失败保留上次成功快照，并提供重试入口。旧资产引用仍指向原始字节。
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
@@ -64,7 +70,9 @@ kind: "package-reference"
 
 在工具箱配置安装和可选的固定环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将适配器绑定 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属本机环境；首次保存写入带版本格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。未绑定适配器继承任务唯一的兼容环境。保存比较修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。
 
-部署安装与绑定无需 toolConfiguration 即可运行；可选文件保存操作员修改。bind 与 reset-binding 只更新路由。CLI 适配器要求显式安装，不通过 PATH 选择替代程序；服务适配器要求对应 provider 配置。操作员扫描可搜索 PATH 或指定目录。工具专用环境变量及非空 searchPaths 不作为配置来源；旧的空 searchPaths 仍可读取。
+部署安装与绑定无需 toolConfiguration 即可运行；可选文件保存操作员修改。bind 与 reset-binding 只更新路由。安装检查搜索 PATH、Windows Git 相邻的工具目录，本机环境 provider 配置的 `searchDirectories`，以及所选本机环境的 `discovery.searchDirs`。配置可写且修订未变化时，唯一通过验证的本机安装会自动保存；多个候选需要操作者选择。显式安装不会回退到其他命令。Python 模块使用所选解释器检查。发现过程不安装软件，也不选择分析方法：适配器提供能力，Skill 指导方法，模型最终决策。工具专用环境变量及非空 searchPaths 不作为配置来源；旧的空 searchPaths 仍可读取。
+
+重新开始会归档当前轮次，并创建新的项目和 Session 标识。保留目标、任务背景、材料、环境与手动模块选择、模型及持久化工具偏好，不继承对话历史、证据、发现、报告、派生知识与执行审批。已记录来源的本地材料重新读取，上传材料沿用已保存字节。旧材料必须明确确认复用已保存内容或提供替代路径，不根据文件名推测原始路径。目录导入排除 `.dsh/analysis`。既有工作区文件和历史记录保留。新会话等待用户发送消息；重复请求同一次重启返回已预留的目标。受管理靶场目标需要重新创建后再开始。
 
 托管 Docker 检测和静态适配调用在环境租约内启动已配置的本地镜像，不拉取镜像。Docker 安装项填写容器内可执行文件，docker 填写 Host 启动程序。输入和生成文件使用挂载到 /dsh-inputs 的私有运行目录，执行后清理。这些静态适配器不支持外部容器、Android 设备或 SSH；ADB 使用自己的设备路由。配置和检测不安装或更新软件。
 
@@ -85,7 +93,12 @@ Frida 通过 Harness subprocess 使用官方 Python bindings，需要配置已�
 
 JADX 接受 APK/DEX，并明确标记不完整反编译。adb 只操作指定设备，暴露固定的包和设备查询。Android 验证会先核对已安装的 base APK。root、Frida server/Gadget、USB 授权及版本兼容仍由用户准备。可登记 `fastboot`、`john` 的版本参数以检查安装情况；其设备写入或审计操作没有执行 provider。
 
+<a id="tool-inventory-and-acceptance"></a>
 ### 工具清单与验收
+
+Playwright MCP 工具支持交互式 Web 工作流，包括表单登录、页面跳转，以及重复使用当前活动 Session 的 Cookie。选中 Web 模块后，协调者和 Web 分析员可使用明确列出的页面操作工具；其他角色不能执行。任意 JavaScript、上传、浏览器安装及未识别的上游工具不在其中。即使绕过模型工具发现直接调用，执行守卫仍检查权限。配置见[登录指南](../../../docs/user/guide/security-analysis.zh.md#browser-login)。
+
+浏览器调用计入已核实的 Playwright 调用次数，并响应项目取消。通过 `security_capture_analysis` 列出已提交调用，将选定观察保存到分配的资产；活动条目关联生成的不可变证据。采集保留日志文本和附件引用，不读取浏览器输出文件。证据仍为不完整的辅助观察，目标关联由分析员声明；它不批准验证，也不证明漏洞。表单值和页面内容遵循普通 Session 日志规则；敏感凭据需要避开模型和工具输入时，应在有窗口的浏览器中手动输入。浏览器流量使用 Host 网络，不继承 `external-web` 的 origin/IP 约束和凭据存储。
 
 Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测解析。仅在候选程序不存在时继续发现。选定程序的查询失败、超时、空响应或无效 JSON 会报告错误，不尝试其他安装；失败的检查不会保存配置。Python 身份包含解释器位置、环境前缀及 pip 可用性。
 

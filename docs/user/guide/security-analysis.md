@@ -80,6 +80,15 @@ Run this command from the repository root. The first launch creates the `securit
 
 Open `http://127.0.0.1:3081` using the authenticated link printed by DSH. The [security Web profile](../../../packages/experimental/security-web-profile/README.md) owns the default port and `--port` override. For role selection and installation management, see [roles and tools](../../../packages/experimental/security-analysis/README.md#roles-tasks-and-tool-management); planned work and acceptance criteria are in the [roadmap](../../roadmaps/security-analysis.md).
 
+<a id="browser-login"></a>
+### Log in to websites during a Web workflow
+
+Enable the existing Playwright MCP integration with `pnpm security --patch apps/cli/config/examples/security-analysis/browser.cordis.yml --no-open`. Chromium must be available; set `security-browser-playwright.config.executablePath` to an installed Chrome/Chromium executable when automatic discovery is unsuitable. A config override replaces the entire config, so retain `mode: launch` and `headless`. Set `headless: false` when you need to enter credentials, MFA or a CAPTCHA yourself in the browser window.
+
+Create or restore a Session, select the Web analysis module, and ask the assistant to open the login page, complete the permitted form workflow, then continue on the authenticated page. Navigation may return a snapshot-file link; `browser_snapshot` reads the current page inline. The coordinator and Web analyst share the same available operations, but each Session owns its own browser and login. Login survives subsequent turns in that live Session; restore, fork or Host restart creates fresh browser state. Ordinary login does not require a validation plan for each click. Approved security validation remains a separate workflow.
+
+To retain observations, ask the assistant to use `security_capture_analysis` with the matching asset ID, first listing calls and then selecting navigation or snapshot calls. Credential-entry calls need not be copied into evidence; inputs supplied to the model or browser tools still enter the ordinary Session log. Read the [browser permissions and evidence limits](../../../packages/experimental/security-analysis/README.md#tool-inventory-and-acceptance) before treating captured interactions as validation.
+
 ## 2. Start an analysis
 
 

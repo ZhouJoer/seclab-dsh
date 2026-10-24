@@ -9,7 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
+import { storageBackendServiceKey, retainStorageConsumers } from '@deepseek-ai/dsh-storage'
 import { DomainError } from './error.ts'
 import { descriptorOf } from './spec.ts'
 import type { DomainSpec } from './spec.ts'
@@ -222,16 +222,17 @@ export function apply(ctx: Context, config: Config): Promise<void> {
 
   const fiber = ctx.inject(backendServices, (domainCtx) => {
     const facility = new DomainFacility(domainCtx, config)
-    domainCtx.effect(() => {
-      const unmount = domainCtx.storage.mount('domain', facility)
-      return async () => {
-        // Close leftovers before unmounting: draining writes still emit
-        // domain/changed.
-        await facility.closeAll()
-        unmount()
-      }
+    domainCtx.effect(function* () {
+      yield domainCtx.effect(() => {
+        const unmount = domainCtx.storage.mount('domain', facility)
+        return async () => {
+          await facility.closeAll()
+          unmount()
+        }
+      })
+      yield retainStorageConsumers(domainCtx, 'storageDomain')
+      yield domainCtx.provide('storageDomain', facility)
     })
-    domainCtx.provide('storageDomain', facility)
   })
   return Promise.resolve(fiber).then(() => {})
 }

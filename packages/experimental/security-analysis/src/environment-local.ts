@@ -19,6 +19,8 @@ export interface Config {
   cpus: number
   pids: number
   temporaryMb: number
+  /** Operator-selected roots used only to discover local executable installations. */
+  searchDirectories?: string[]
 }
 /** Environment manager plugin identity. */
 export const name = 'experimental-security-environment-local'
@@ -26,6 +28,7 @@ export const name = 'experimental-security-environment-local'
 export const inject = ['securityWorkbench', 'subprocess']
 /** Health and lifecycle command bounds. */
 export const Config: Schema<Config> = Schema.object({
+  searchDirectories: Schema.array(Schema.string()).default([]),
   memoryMb: Schema.number().step(1).min(64).default(2048),
   cpus: Schema.number().min(0.1).default(2),
   pids: Schema.number().step(1).min(16).default(256),
@@ -43,6 +46,13 @@ export class LocalEnvironmentManager {
     private readonly ctx: Context,
     private readonly config: Config,
   ) {}
+  /** Identify containers created by this provider activation.
+   * @param environmentId - configured environment identity.
+   * @returns whether this activation owns its live container.
+   */
+  owns(environmentId: string): boolean {
+    return this.containers.has(environmentId)
+  }
   /** Query interfaces without opening serial ports or initiating radio operations.
    * @param environment - selected deployment.
    * @param signal - cancellation.
@@ -69,7 +79,8 @@ export class LocalEnvironmentManager {
     return inspectToolbox(this.ctx, environment, { durationMs: this.config.timeoutMs,
       maxOutputBytes: this.config.maxOutputBytes, graceMs: this.config.graceMs },
     signal, toolIds, this.ctx.securityWorkbench.toolCatalog().tools,
-    environment.discovery?.searchDirs ?? [])
+    environment.kind === 'local'
+      ? [...new Set([...(this.config.searchDirectories ?? []), ...(environment.discovery?.searchDirs ?? [])])] : [])
   }
   /**
    * Inspect installed tools without provisioning them.
@@ -219,11 +230,37 @@ export class LocalEnvironmentManager {
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const controller = await ctx.securityWorkbench.ready
   const manager = new LocalEnvironmentManager(ctx, config)
-  ctx.effect(() => controller.environments.register({ id: 'local', manager }))
-  ctx.effect(() => async () => {
-    await controller.dispose()
-    for (const environment of controller.options.environments) {
-      if (environment.containerId && !environment.externalContainer) await manager.stop(environment, new AbortController().signal)
-    }
+  const lifetime = new AbortController()
+  const pending = new Set<Promise<unknown>>()
+  const run = async <T>(signal: AbortSignal, action: (signal: AbortSignal) => Promise<T>, cleanup = false): Promise<T> => {
+    if (!cleanup) lifetime.signal.throwIfAborted()
+    const operation = action(cleanup ? signal : AbortSignal.any([signal, lifetime.signal]))
+    pending.add(operation)
+    try { return await operation } finally { pending.delete(operation) }
+  }
+  ctx.effect(function* () {
+    yield ctx.effect(() => controller.environments.register({ id: 'local', manager: {
+      devices: (environment, signal) => run(signal, bounded => manager.devices(environment, bounded)),
+      inventory: (environment, signal, tools) => run(signal, bounded => manager.inventory(environment, bounded, tools)),
+      inspect: (environment, signal) => run(signal, bounded => manager.inspect(environment, bounded)),
+      start: (environment, signal) => run(signal, bounded => manager.start(environment, bounded)),
+      stop: (environment, signal) => run(signal, bounded => manager.stop(environment, bounded), true),
+    } }))
+    yield ctx.effect(() => async () => {
+      lifetime.abort(new Error('Security environment provider disposed'))
+      await Promise.allSettled([...pending])
+      const owned = controller.options.environments.filter(environment => manager.owns(environment.id))
+      await controller.releaseEnvironments(owned.map(environment => environment.id), async () => {
+        const results = await Promise.allSettled(owned.filter(environment => manager.owns(environment.id))
+          .map(environment => manager.stop(environment, new AbortController().signal)))
+        const failures = results.flatMap((result) => {
+          if (result.status === 'fulfilled') return []
+          const reason: unknown = result.reason
+          return [reason]
+        })
+        if (failures.length) throw new AggregateError(failures, 'Security environment cleanup failed')
+      })
+      await Promise.allSettled([...pending])
+    })
   })
 }

@@ -1232,11 +1232,13 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:90`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:98`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Automatic workspace snapshots; omission uses the documented scan defaults. */
+  workspaceMaterials?: WorkspaceMaterialOptions
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -1265,6 +1267,8 @@ export interface WorkbenchConfig {
   importRoots: string[]
   /** Operator-selected execution environments; model commands cannot add environments. */
   environments: SecurityEnvironment[]
+  /** Optional absolute JSON file overriding environments by identity and intake defaults. Missing files add no overrides. */
+  environmentConfigurationPath?: string
   /** Maximum source directory entries or members extracted from one APK. */
   maxDerivedAssets: number
   /** Maximum bytes in one imported sample or immutable artifact. */
@@ -1313,6 +1317,18 @@ export interface WorkbenchConfig {
   knowledgeProvider?: string
   /** Optional dedicated refinement model; on-demand calls inherit the initiating Agent model when omitted. */
   knowledgeModel?: string
+}
+
+/** Deployment budgets for automatic workspace material collection. */
+export interface WorkspaceMaterialOptions {
+  /** Maximum entries visited by one scan and retained in its index. */
+  maxEntries: number
+  /** Maximum aggregate size of current workspace file bytes. */
+  maxBytes: number
+  /** Event coalescing delay and write-stability observation interval. */
+  debounceMs: number
+  /** Directory names excluded at every depth, independent of .gitignore. */
+  excludedDirectories: string[]
 }
 
 /** Deployment-owned collection and teardown bounds. */
@@ -4163,8 +4179,10 @@ export interface Config {
 export interface Config {
   /** Wait duration applied when `job_output` sets `wait` without `timeout_ms` (default 30s). */
   waitTimeoutMs?: number
-  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 60s). */
+  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 10min). */
   maxWaitTimeoutMs?: number
+  /** Whether waits end only on completion or also on unread output and progress (default `completion`). */
+  waitMode?: 'completion' | 'activity'
   /** Whether a completion opens a turn on an idle owner (default `wakeup`). */
   completionDelivery?: CompletionDelivery
   /**

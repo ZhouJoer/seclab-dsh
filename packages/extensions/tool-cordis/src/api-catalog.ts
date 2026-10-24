@@ -2190,6 +2190,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'complete project list, including removed projects.',
       },
       {
+        signature: '@Remote(\'restartTask\') async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }>',
+        description: 'Archive one round and prepare a fresh conversation without sending a prompt.',
+        parameters: [{ name: 'agent', description: 'authenticated source coordinator.' }, { name: 'input', description: 'JSON material choices: replacement paths or null to reuse saved content.' }],
+        returns: 'the durable destination and retained objective for the composer.',
+      },
+      {
         signature: '@Remote(\'importMaterials\') async importMaterials(agent: Agent, input: string): Promise<WorkbenchView>',
         description: 'Attach user-selected materials without granting model access to their live paths.',
         parameters: [{ name: 'agent', description: 'authenticated top-level conversation.' }, { name: 'input', description: 'material selection and current revision.' }],
@@ -2345,9 +2351,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'project state.',
       },
       {
-        signature: '@Remote({ mode: \'stream\' }) async *followSessionView(agent: Agent, signal: AbortSignal): AsyncIterable<WorkbenchView>',
+        signature: '@Remote({ mode: \'stream\', resources: { session: (sessionId: SessionId) => sessionId } }) async *followSessionView(sessionId: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView>',
         description: 'Follow the project selected by this Session, including selection during a running turn.',
-        parameters: [{ name: 'agent', description: 'carrier-resolved agent.' }, { name: 'signal', description: 'connection lifetime.' }],
+        parameters: [{ name: 'sessionId', description: 'authenticated Session identity; reading does not activate an Agent.' }, { name: 'signal', description: 'connection lifetime.' }],
         returns: 'initial selection and committed selection changes.',
       },
       {
@@ -2379,6 +2385,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Search material visible to this session.',
         parameters: [{ name: 'agent', description: 'carrier-resolved agent.' }, { name: 'query', description: 'plain search terms.' }, { name: 'shared', description: 'include published local experience.' }],
         returns: 'matching committed records and the observed revision.',
+      },
+      {
+        signature: '@Remote(\'configurationForWorkspace\') async configurationForWorkspace(workspaceId: string): Promise<WorkbenchConfiguration>',
+        description: 'Read creation settings without allocating an empty conversation.',
+        parameters: [{ name: 'workspaceId', description: 'existing native workspace identity.' }],
+        returns: 'resolved environment choices and deployment budgets.',
+      },
+      {
+        signature: '@Remote(\'configureAnalysisWorkspace\') async configureAnalysisWorkspace(workspaceId: string, input: string): Promise<WorkbenchConfiguration>',
+        description: 'Save the default environment selection before creating a task.',
+        parameters: [{ name: 'workspaceId', description: 'existing native workspace identity.' }, { name: 'input', description: 'revision-checked workspace settings.' }],
+        returns: 'resolved settings after the durable write.',
+      },
+      {
+        signature: '@Remote(\'startAnalysis\') async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }>',
+        description: 'Create an associated task and blank native conversation without sending a message.',
+        parameters: [{ name: 'workspaceId', description: 'explicitly selected native workspace.' }, { name: 'input', description: 'stable operation and Session identities, localized initial title and selected environments.' }],
+        returns: 'durable identities; repeating the same request recovers the existing task.',
+      },
+      {
+        signature: '@Remote(\'refreshWorkspaceMaterials\') async refreshWorkspaceMaterials(projectId: string): Promise<void>',
+        description: 'Retry automatic directory collection while preserving the last successful snapshot.',
+        parameters: [{ name: 'projectId', description: 'task whose configured source should be rescanned.' }],
+        returns: 'completion after a fresh snapshot is published.',
       },
       {
         signature: '@Remote(\'configuration\') async configuration(agent: Agent): Promise<WorkbenchConfiguration>',
@@ -2428,6 +2458,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'projectId', description: 'project whose records establish artifact ownership.' }, { name: 'sha256', description: 'digest of a referenced artifact.' }],
         returns: 'digest-verified text with the configured output limit.',
       },
+      {
+        signature: '@Remote(\'projectMaterial\') async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView>',
+        description: 'Browse saved project materials without changing Session or evidence records.',
+        parameters: [{ name: 'projectId', description: 'project authorizing the asset read.' }, { name: 'input', description: 'serialized asset identity, snapshot path, operation and offset.' }],
+        returns: 'a directory page or bounded file preview.',
+      },
     ],
   },
   {
@@ -2464,6 +2500,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Create one ordinary Session for a new conversation, reusing the named blank Session while it is reusable.',
         parameters: [{ name: 'request', description: 'optional blank Session to reuse, location, and Agent preset.' }],
         returns: 'the created or reused Session identity and its preset when configured.',
+      },
+      {
+        signature: 'registerReuseGuard(guard: (sessionId: SessionId) => boolean): () => void',
+        description: 'Reserve business-owned empty conversations against ordinary creation reuse.',
+        parameters: [{ name: 'guard', description: 'false when a Session already belongs to a durable business object.' }],
+        returns: 'disposer for the registering plugin\'s lifetime.',
       },
       {
         signature: '@Remote(\'selectModel\') selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>',
@@ -6639,6 +6681,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MatcherValue = string | number | boolean | null | RegExp | readonly (string | number | boolean | null)[];',
   },
   {
+    name: 'MaterialBrowserView',
+    declaration: 'export type MaterialBrowserView = {\n    kind: \'directory\';\n    entries: MaterialEntry[];\n    next: number | null;\n    total: number;\n} | {\n    kind: \'text\';\n    path: string;\n    size: number;\n    text: string;\n    truncated: boolean;\n} | {\n    kind: \'image\';\n    path: string;\n    size: number;\n    url: string;\n} | {\n    kind: \'binary\';\n    path: string;\n    size: number;\n    hex: string;\n};',
+  },
+  {
+    name: 'MaterialEntry',
+    declaration: 'export type MaterialEntry = {\n    kind: \'directory\';\n    path: string;\n    fileCount: number;\n} | {\n    kind: \'file\';\n    path: string;\n    size: number;\n};',
+  },
+  {
     name: 'McpResourceProvider',
     declaration: 'export interface McpResourceProvider {\n    request(request: McpResourceRequest, exec: ToolExecution): Promise<JsonValue>;\n}',
   },
@@ -7520,7 +7570,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityController',
-    declaration: 'export class SecurityController {\n    readonly providers: ProviderRegistry<AnalysisProvider>;\n    readonly environments: ProviderRegistry<{\n        id: string;\n        manager: EnvironmentManager;\n    }>;\n    readonly laboratories: ProviderRegistry<{\n        id: string;\n        action(projectId: string, action: string, laboratoryId?: string): Promise<WorkbenchView>;\n    }>;\n    laboratoriesView(): Laboratory[];\n    async saveLaboratory(input: Laboratory): Promise<Laboratory>;\n    constructor(private readonly journal: SecurityJournal, readonly artifacts: ArtifactStore, readonly options: WorkbenchOptions, private readonly generateReport?: (prompt: string, signal: AbortSignal, sessionId: string) => Promise<string>, readonly activity?: SecurityActivityStore, private readonly removeImprovements?: (project: string) => Promise<void>, private readonly cancelImprovements?: (project: string) => Promise<void>);\n    checkpointId(sessionId: string): string;\n    trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void;\n    async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = \'\'): Promise<T>;\n    binding(sessionId: string): SessionBinding | undefined;\n    analysisProject(sessionId: string): string | undefined;\n    analysisAsset(sessionId: string, assetId: string): string;\n    async captureAnalysis(sessionId: string, assetId: string, callIds: string[], bytes: Uint8Array, signal: AbortSignal): Pr /* …truncated — full shape in source */',
+    declaration: 'export class SecurityController {\n    readonly providers: ProviderRegistry<AnalysisProvider>;\n    readonly environments: ProviderRegistry<{\n        id: string;\n        manager: EnvironmentManager;\n    }>;\n    readonly laboratories: ProviderRegistry<{\n        id: string;\n        action(projectId: string, action: string, laboratoryId?: string): Promise<WorkbenchView>;\n    }>;\n    laboratoriesView(): Laboratory[];\n    async saveLaboratory(input: Laboratory): Promise<Laboratory>;\n    constructor(private readonly journal: SecurityJournal, readonly artifacts: ArtifactStore, readonly options: WorkbenchOptions, private readonly generateReport?: (prompt: string, signal: AbortSignal, sessionId: string) => Promise<string>, readonly activity?: SecurityActivityStore, private readonly removeImprovements?: (project: string) => Promise<void>, private readonly cancelImprovements?: (project: string) => Promise<void>);\n    checkpointId(sessionId: string): string;\n    trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void;\n    async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = \'\'): Promise<T>;\n    async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void>;\n    binding(sessionId: string): SessionBinding | undefined;\n    analysisProject(sessionId: string): string | undefined;\n    analysisAsset(sessionId: string, assetId: string): string;\n    async cap /* …truncated — full shape in source */',
   },
   {
     name: 'SecurityEnvironment',
@@ -7532,7 +7582,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityProjectSummary',
-    declaration: 'export interface SecurityProjectSummary {\n    project: Engagement;\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
+    declaration: 'export interface SecurityProjectSummary {\n    materials?: {\n        state: \'syncing\' | \'ready\' | \'failed\';\n        detail?: string;\n    };\n    project: Engagement;\n    sessions: {\n        sessionId: string;\n        role: string;\n        active: boolean;\n    }[];\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
   },
   {
     name: 'SecurityRecord',
@@ -8800,7 +8850,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxTool',
-    declaration: 'export interface ToolboxTool {\n    id: string;\n    category: \'runtime\' | \'reverse\' | \'device\' | \'web\' | \'utility\' | \'custom\';\n    status: \'available\' | \'missing\' | \'error\' | \'not-checked\';\n    command: string;\n    prefixArgs?: string[];\n    installation?: {\n        command: string;\n        prefixArgs: string[];\n    };\n    version: string;\n    location: string;\n    python?: {\n        prefix: string;\n        basePrefix: string;\n        virtualEnvironment: boolean;\n        pipAvailable: boolean;\n    };\n    source: string;\n    dependency?: string;\n    detail: string;\n    installUrl: string;\n    invocation: \'shell\' | \'plugin\' | \'python\' | \'provider\';\n    provider?: string;\n}',
+    declaration: 'export interface ToolboxTool {\n    id: string;\n    category: \'runtime\' | \'reverse\' | \'device\' | \'web\' | \'utility\' | \'custom\';\n    status: \'available\' | \'missing\' | \'error\' | \'not-checked\';\n    command: string;\n    prefixArgs?: string[];\n    installation?: {\n        command: string;\n        prefixArgs: string[];\n    };\n    version: string;\n    location: string;\n    python?: {\n        prefix: string;\n        basePrefix: string;\n        virtualEnvironment: boolean;\n        pipAvailable: boolean;\n    };\n    candidates?: string[];\n    source: string;\n    dependency?: string;\n    detail: string;\n    installUrl: string;\n    invocation: \'shell\' | \'plugin\' | \'python\' | \'provider\';\n    provider?: string;\n}',
   },
   {
     name: 'ToolCallBlock',

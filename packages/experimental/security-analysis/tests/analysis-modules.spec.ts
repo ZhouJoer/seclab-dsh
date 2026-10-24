@@ -2,6 +2,19 @@
 import { expect, it } from 'vitest'
 import { moduleAllowsDefinition, moduleAllowsOperation, moduleAllowsTool, moduleSelectionSchema, moduleSkills, resolveModuleSelection } from '../src/analysis-modules.ts'
 import { manifestItems } from '../src/android-manifest.ts'
+import { securityBrowserTools } from '../src/browser-tools.ts'
+import { toolsForRole } from '../src/workbench/roles.ts'
+
+it('admits only the browser catalog for coordinator and web analyst with the web module selected', () => {
+  for (const name of securityBrowserTools) {
+    expect(moduleAllowsTool(name)).toBe(false)
+    expect(moduleAllowsTool(name, { mode: 'manual', modules: ['web'], reason: '' })).toBe(true)
+    for (const role of ['coordinator', 'web-analyst'] as const) expect(toolsForRole(role)).toContain(name)
+    for (const role of ['researcher', 'reviewer', 'reconnaissance', 'reverse-analyst'] as const) expect(toolsForRole(role)).not.toContain(name)
+  }
+  for (const name of ['browser_run_code', 'browser_evaluate', 'browser_file_upload', 'browser_install', 'browser_future_tool'])
+    expect(toolsForRole('coordinator')).not.toContain('mcp__playwright-mcp__' + name)
+})
 
 it('keeps historical tasks automatic and exposes only common capabilities before selection', () => {
   expect(resolveModuleSelection()).toEqual({ mode: 'auto', modules: [], reason: '' })

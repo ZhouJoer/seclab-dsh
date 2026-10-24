@@ -41,8 +41,10 @@ export type CompletionDelivery = 'quiet' | 'wakeup'
 export interface Config {
   /** Wait duration applied when `job_output` sets `wait` without `timeout_ms` (default 30s). */
   waitTimeoutMs?: number
-  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 60s). */
+  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 10min). */
   maxWaitTimeoutMs?: number
+  /** Whether waits end only on completion or also on unread output and progress (default `completion`). */
+  waitMode?: 'completion' | 'activity'
   /** Whether a completion opens a turn on an idle owner (default `wakeup`). */
   completionDelivery?: CompletionDelivery
   /**
@@ -58,7 +60,8 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   waitTimeoutMs: z.number().min(1).default(30_000),
-  maxWaitTimeoutMs: z.number().min(1).default(60_000),
+  maxWaitTimeoutMs: z.number().min(1).default(600_000),
+  waitMode: z.union(['completion', 'activity'] as const).default('completion'),
   completionDelivery: z.union(['quiet', 'wakeup'] as const).default('wakeup'),
   maxConsecutiveWakes: z.number().min(1),
 })
@@ -191,7 +194,8 @@ function readBody(read: JobRead): { text: string; job: PublicJobSnapshot } {
 
 export function apply(ctx: Context, config: Config): void {
   const waitDefault = config.waitTimeoutMs ?? 30_000
-  const waitCap = config.maxWaitTimeoutMs ?? 60_000
+  const waitCap = config.maxWaitTimeoutMs ?? 600_000
+  const waitMode = config.waitMode ?? 'completion'
   const delivery = config.completionDelivery ?? 'wakeup'
   const wakeBudget = config.maxConsecutiveWakes
 
@@ -315,7 +319,9 @@ export function apply(ctx: Context, config: Config): void {
     // this tool owns its deadline instead of using ToolDefinition.timeoutMs.
     parameters: {
       job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work.' },
-      wait: { type: 'boolean', description: 'Return unread output immediately; otherwise wait for new output, progress, completion, or timeout. A timed-out wait leaves the job running. Defaults to false.' },
+      wait: { type: 'boolean', description: waitMode === 'activity'
+        ? 'Return unread output immediately; otherwise wait for new output, progress, completion, or timeout. A timed-out wait leaves the job running. Defaults to false.'
+        : 'Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false.' },
       timeout_ms: { type: 'number', description: 'Max wait in milliseconds with wait: true. Defaults to and is capped by configuration.' },
     },
     finalizeContent: finalizeJobContent,
@@ -339,6 +345,10 @@ export function apply(ctx: Context, config: Config): void {
       const jobs = ctx.jobs
       const timeoutMs = Math.min(args.timeout_ms ?? waitDefault, waitCap)
       if (args.wait === true && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) throw new Error('invalid wait timeout: expected a positive number of milliseconds')
+      if (waitMode === 'completion') {
+        if (args.wait === true) await jobs.wait(id, timeoutMs, exec.agent?.id, exec.signal)
+        return readBody(jobs.read(id, exec.agent?.id))
+      }
       const initial = readBody(jobs.read(id, exec.agent?.id))
       if (args.wait !== true || initial.text.length > 0 || (initial.job.status !== 'running' && initial.job.status !== 'stopping')) return initial
 

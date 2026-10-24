@@ -47,7 +47,10 @@ export function findRepositoryReferences(
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
-    const identifiers = file.endsWith('.lock') ? line.replace(/\bsize\s*=\s*\d+(?=\s*[,}]|$)/gu, '') : line
+    // The merge checker consumes these exact revisions and verifies their ancestry.
+    const compatibilityRevision = file === 'scripts/security-compatibility.json'
+      && /^\s*"(?:upstreamCommit|reviewedForkCommit)": "[\da-f]{40}",?\s*$/u.test(line)
+    const identifiers = compatibilityRevision ? '' : file.endsWith('.lock') ? line.replace(/\bsize\s*=\s*\d+(?=\s*[,}]|$)/gu, '') : line
     if ([...identifiers.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }

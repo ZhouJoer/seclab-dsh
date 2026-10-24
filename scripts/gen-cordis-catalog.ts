@@ -714,6 +714,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SpawnTeammateResult: 'agent-team.md',
   TeamId: 'agent-team.md',
   WorkbenchView: 'security-workbench.md',
+  MaterialBrowserView: 'security-workbench.md',
   SecurityProjectSummary: 'security-workbench.md',
   HttpIdentityDescription: 'security-workbench.md',
   HttpIdentityId: 'security-workbench.md',

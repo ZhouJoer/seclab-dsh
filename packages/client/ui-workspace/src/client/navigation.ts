@@ -222,7 +222,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const sessions = this.sessions.list.getSnapshot()
     const blank = sessions.ids.find((id) => {
       const summary = sessions.byId[id]
-      return summary !== undefined && summary.blank && summary.cwd === workspace.path
+      return summary !== undefined && summary.blank && !summary.reserved && summary.cwd === workspace.path
         && workspace.sessionIds.includes(id) && !archived.includes(id)
     })
     return this.createNamed({
@@ -261,7 +261,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
    */
   private async restoreBlank(workspaceId: WorkspaceId, sessionId: SessionId): Promise<SessionId> {
     await this.sessions.refreshProjections(sessionId)
-    const recorded = this.sessions.list.getSnapshot().byId[sessionId]?.projectionValues?.agentPreset
+    const summary = this.sessions.list.getSnapshot().byId[sessionId]
+    if (summary?.reserved) return sessionId
+    const recorded = summary?.projectionValues?.agentPreset
     const request = { workspaceId, sessionId }
     if (typeof recorded !== 'string') return this.createNamed(request)
     try {
@@ -448,7 +450,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const summary = saved.sessionId === undefined ? undefined : sessions.byId[saved.sessionId]
     const workspace = summary === undefined ? undefined
       : workspaces.items.find(item => item.sessionIds.includes(summary.id))
-    if (summary !== undefined && (!summary.blank || workspace === undefined)) {
+    if (summary !== undefined && (!summary.blank || summary.reserved || workspace === undefined)) {
       this.replaceMain(summary.id, this.lifetime.signal, 'preserve')
       return
     }
@@ -484,16 +486,16 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const current = this.mainReference?.sessionId
     if (current === undefined
       || !this.workspaces.list.getSnapshot().archivedSessionIds.includes(current)) return false
-    this.clearMain()
+    this.clearMain('preserve')
     return true
   }
 
-  private clearMain(): void {
+  private clearMain(panel: 'reveal' | 'preserve' = 'reveal'): void {
     const previous = this.mainReference
     this.mainReference = undefined
     this.selection.set({})
     previous?.release()
-    this.ctx.layout.selectPanel(null)
+    if (panel === 'reveal') this.ctx.layout.selectPanel(null)
   }
 
   private replaceMain(

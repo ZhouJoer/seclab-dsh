@@ -1,4 +1,6 @@
 import { projectSkillUsage, type SecuritySkillUsagePage } from './skill-usage.ts'
+import { readProjectMaterial } from './material-browser.ts'
+import type { MaterialBrowserView } from './material-browser-types.ts'
 /** Host service exposing the security workbench to tools and generated Remote clients. @module */
 import './service.ts'
 import type { WorkbenchConfiguration } from './workbench-configuration-types.ts'
@@ -8,6 +10,11 @@ import { analysisModules, moduleAllowsDefinition, moduleAllowsTool, moduleAllows
 import { installModuleRuntime } from './module-runtime.ts'
 import { installSecurityMethods } from './methods.ts'
 import { openWorkspaceIntake, type WorkspaceIntakeStore } from './workspace-intake.ts'
+import { openTaskSettings, type TaskSettings } from './task-settings.ts'
+import type {} from '@deepseek-ai/dsh-api-session-controller'
+import type {} from '@deepseek-ai/dsh-workspace'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import { WorkspaceMaterialSync, type WorkspaceMaterialOptions } from './workspace-materials.ts'
 import { taskContextSchema, type TaskContext } from './task-context.ts'
 import { installTaskContext } from './task-context-projection.ts'
 import { deriveProjectCoverage } from './workbench/coverage.ts'
@@ -41,6 +48,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { analysisCallPage, analysisLog } from './analysis-log.ts'
+import { isSecurityBrowserTool } from './browser-tools.ts'
 import { installAnalysisBudget } from './analysis-budget.ts'
 import { installAnalysisProgress } from './analysis-progress.ts'
 import { closingBrief } from './turn-brief.ts'
@@ -66,7 +74,7 @@ import { openSecurityJournal, type SecurityJournal } from './workbench/journal.t
 import { SecurityController, commandSchema, type SecurityCommand } from './workbench/controller.ts'
 import { SecuritySearchIndex } from './workbench/search.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
-import { securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
+import { resolveEnvironmentConfiguration, securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
 import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from './toolbox-types.ts'
 import { operationSchema, childReportSchema, recordSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
 import { refineKnowledge, refinementPrompt } from './workbench/knowledge.ts'
@@ -88,6 +96,8 @@ declare module '@deepseek-ai/dsh-llm' {
 
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Automatic workspace snapshots; omission uses the documented scan defaults. */
+  workspaceMaterials?: WorkspaceMaterialOptions
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -116,6 +126,8 @@ export interface WorkbenchConfig {
   importRoots: string[]
   /** Operator-selected execution environments; model commands cannot add environments. */
   environments: SecurityEnvironment[]
+  /** Optional absolute JSON file overriding environments by identity and intake defaults. Missing files add no overrides. */
+  environmentConfigurationPath?: string
   /** Maximum source directory entries or members extracted from one APK. */
   maxDerivedAssets: number
   /** Maximum bytes in one imported sample or immutable artifact. */
@@ -204,6 +216,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
     toolCatalogPath: Schema.string(),
     toolDiscoveryPageSize: Schema.number().step(1).min(1).max(100).default(20),
     taskContextMaxBytes: Schema.number().step(1).min(512).default(4096),
+    workspaceMaterials: Schema.object({
+      maxEntries: Schema.number().step(1).min(1).default(50000),
+      maxBytes: Schema.number().step(1).min(1).default(268435456),
+      debounceMs: Schema.number().step(1).min(1).default(100),
+      excludedDirectories: Schema.array(Schema.string()).default(['.git', '.hg', '.svn', 'node_modules', '.venv', '__pycache__', '.cache', '.pytest_cache', '.mypy_cache', '.gradle', '.next', '.nuxt']),
+    }),
     taskIntake: Schema.union([Schema.const(undefined), Schema.object({
       workspaces: Schema.array(Schema.object({
         cwd: Schema.string().required(),
@@ -235,6 +253,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     root: Schema.string().required(),
     importRoots: Schema.array(Schema.string()).required(),
     environments: Schema.array(securityEnvironmentSchema).required(),
+    environmentConfigurationPath: Schema.string(),
     toolAdapters: Schema.object({
       bindings: Schema.dict(Schema.string()).default({}),
       maxItems: Schema.number().step(1).min(1).default(1000),
@@ -268,6 +287,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private evolutionStore: EvolutionStore | undefined
   private evolution: SecurityEvolution | undefined
   private workspaceIntake: WorkspaceIntakeStore | undefined
+  private taskSettings: TaskSettings | undefined
+  private materialSync: WorkspaceMaterialSync | undefined
+  private readonly materialRuns = new Map<SessionId, Promise<() => Promise<void>>>()
+  private readonly restarting = new Map<SessionId, Promise<{ sessionId: SessionId; projectId: string; objective: string }>>()
   private index: SecuritySearchIndex | undefined
   private readonly shutdown = new AbortController()
   private readonly pending = new Set<Promise<unknown>>()
@@ -283,6 +306,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
     private readonly config: WorkbenchConfig,
   ) {
     super(ctx, 'securityWorkbench')
+    ctx.inject(['sessionController'], (scope) => {
+      scope.effect(() => scope.sessionController.registerReuseGuard(id => this.controller !== undefined && !this.journal?.view().records.some(item => item.kind === 'binding' && item.value.sessionId === id)))
+    })
+    config = this.config = resolveEnvironmentConfiguration(config)
     ctx.jobs.attachController('security-analysis')
     if (config.toolCatalogPath && !isAbsolute(config.toolCatalogPath)) throw new Error('toolCatalogPath must be absolute')
     this.catalog = new ToolCatalog(config.toolCatalogPath)
@@ -311,7 +338,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       maxItems: config.toolAdapters.maxItems, modelResultBytes: config.modelResultBytes, pending: this.pending })
     installReportExport(ctx, this.ready, config.exportMaxBytes)
     installNativeAnalysis(ctx, this.ready)
-    installActivityObserver(ctx, this.ready, () => this.toolCatalog().tools)
+    const closeActivity = installActivityObserver(ctx, this.ready, () => this.toolCatalog().tools)
     const output = {
       schema: { type: 'json' } as const,
       render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }],
@@ -324,7 +351,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     }
     ctx.tools.register(defineTool({
       name: 'security_capture_analysis',
-      description: 'Omit callIds to list your capturable committed bash, pwsh or job_output call IDs; use jobId to find collected background output and offset for continuation. Then supply returned callIds to save auxiliary target evidence, never output text or background job IDs. Background capture includes the recorded start and earlier output. These logs alone do not establish approved validation or complete implementation evidence.',
+      description: 'Omit callIds to list your capturable committed shell, job_output or Playwright call IDs; use jobId to find collected background output and offset for continuation. Then supply returned callIds to save auxiliary target evidence, never output text or background job IDs. Background capture includes the recorded start and earlier output. Browser capture preserves logged text and attachment references, not browser state. These logs alone do not establish approved validation or complete implementation evidence.',
       parameters: { assetId: { type: 'string', required: true }, callIds: { type: 'array', items: { type: 'string' } },
         jobId: { type: 'string', description: 'Filter the call list by background job ID; collect job_output first.' },
         offset: { type: 'integer', description: 'Call list continuation offset; default 0.' } },
@@ -363,6 +390,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
           if (args.kind !== undefined && !scopeKinds.includes(args.kind))
             throw new Error('Unknown record kind; select one of: ' + scopeKinds.join(', '))
           const controller = await this.ready
+          if (!args.shared && args.recordId === undefined) {
+            const project = controller.binding(exec.agent.id)?.engagementId
+            if (project) await this.materialSync?.flush(project)
+          }
           const view = args.shared
             ? { revision: controller.view(exec.agent.id).revision, records: controller.sharedKnowledge() }
             : controller.view(exec.agent.id)
@@ -471,7 +502,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     ctx.tools.register(
       defineTool({
         name: 'security_environment',
-        description: 'Check tool versions and runtime readiness in one project environment. Optionally select toolId when a full inventory exceeds the output budget. Does not install tools, start containers or change devices. Health is not sample evidence.',
+        description: 'Check tool versions and runtime readiness in one project environment, saving unique verified local installations for adapters. Multiple installations require operator selection; existing pins are preserved. Optionally select toolId to narrow inventory. Does not install software, start containers or change devices. Health is not sample evidence.',
         parameters: { environmentId: { type: 'string', required: true }, toolId: { type: 'string' }, toolIds: { type: 'array', items: { type: 'string' } },
           native: { type: 'boolean', description: 'Include measured launch configuration for advanced native workflows. External-container inventory always retains it.' },
           devices: { type: 'boolean', description: 'Inspect Windows interfaces only; does not open devices or validate capture.' } },
@@ -490,11 +521,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const manager = controller.environments.get('local').manager
           if (args.devices) return json(await controller.manageEnvironment(environment.id, signal => manager.devices(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal])), project.value.id))
-          const key = this.toolObservationKey(environment)
+          const revision = environment.kind === 'local' && this.toolConfiguration.path !== undefined
+            ? this.toolConfiguration.read(environment.id).revision : undefined
           const inventory = await controller.manageEnvironment(environment.id, signal => manager.inventory(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal]),
             args.toolIds ?? (args.toolId === undefined ? undefined : [args.toolId])), project.value.id)
-          this.rememberTools(key, inventory)
+          if (revision !== undefined) this.toolConfiguration.reconcile(inventory, revision)
+          this.rememberTools(this.toolObservationKey(environment), inventory)
           if (args.toolId !== undefined && args.toolIds === undefined) {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
@@ -782,6 +815,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
       if (!exec.agent || !toolsForRole(this.controller?.binding(exec.agent.id)?.role).includes(exec.name))
         return 'Tool is outside the security role capability set'
       if (!moduleAllowsTool(exec.name, this.controller?.moduleSelection(exec.agent.id))) return 'Analysis module is not enabled'
+      if (isSecurityBrowserTool(exec.name)) {
+        try {
+          if (!this.controller?.analysisProject(exec.agent.id)) return 'Select an active security task before using the browser'
+        } catch (error) { return error instanceof Error ? error.message : String(error) }
+      }
       if (this.adapterPreferences(exec.agent.id) && ['bash', 'pwsh'].includes(exec.name))
         return 'Checked tool preferences require dedicated adapters. Shell execution is disabled; ask the operator to clear tool preferences for native workflows.'
       if (['bash', 'pwsh', 'write', 'edit', 'security_capture_analysis'].includes(exec.name)) {
@@ -824,14 +862,47 @@ export default class SecurityWorkbench extends TypertRemoteService {
         this.turnBriefs.delete(session.id)
         this.intakeCandidates.delete(session.id)
       } else if (event.type === 'user/message') {
+        const message = event.data
+        if (message.source.kind === 'user' && 'rpcId' in message.source) {
+          const objective = message.content.filter(part => part.type === 'text').map(part => part.text).join('\n')
+          const pending = this.ready.then(controller => controller.describeWorkspaceTask(session.id, message.id, objective))
+            .catch((error: unknown) => { ctx.logger.error('Could not save analysis objective: %s', String(error)) })
+            .finally(() => { this.pending.delete(pending) })
+          this.pending.add(pending)
+        }
         const candidate = this.intakeCandidates.get(session.id)
         if (candidate?.message.id === event.data.id) candidate.committed = true
       }
     })
-    ctx.on('agent/disposed', ({ agent }) => { this.intakeCandidates.delete(agent.id); this.turnBriefs.delete(agent.id); this.preferences.delete(agent.id) })
+    ctx.on('agent/disposed', ({ agent }) => { this.intakeCandidates.delete(agent.id); this.turnBriefs.delete(agent.id) })
+    const retainMaterials = (id: SessionId, project: string) => {
+      if (!this.materialSync || this.materialRuns.has(id)) return
+      const lease = this.materialSync.retain(project)
+      this.materialRuns.set(id, lease)
+      void lease.catch((error: unknown) => { ctx.logger.error('Could not observe workspace materials: %s', String(error)) })
+    }
+    const releaseMaterials = (id: SessionId) => {
+      const lease = this.materialRuns.get(id)
+      if (!lease) return
+      this.materialRuns.delete(id)
+      const pending = lease.then(release => release()).catch((error: unknown) => { ctx.logger.error('Material observer release failed: %s', String(error)) })
+        .finally(() => { this.pending.delete(pending) })
+      this.pending.add(pending)
+    }
+    ctx.on('agent/status', ({ agent }) => {
+      if (agent.status !== 'running') { releaseMaterials(agent.id); return }
+      const project = this.controller?.binding(agent.id)?.engagementId
+      if (project) retainMaterials(agent.id, project)
+    })
+    ctx.on('agent/disposed', ({ agent }) => { releaseMaterials(agent.id) })
     ctx.on('tools/execute', async (exec, next) => {
       if (!exec.agent || exec.signal.aborted) return next()
       const agent = exec.agent
+      const project = this.controller?.binding(agent.id)?.engagementId
+      if (project && exec.name === 'security_scope') {
+        retainMaterials(agent.id, project)
+        await this.materialRuns.get(agent.id)
+      }
       const candidate = this.intakeCandidates.get(agent.id)
       if (!candidate?.committed || !exec.name.startsWith('security_')) return next()
       const controller = await this.ready
@@ -915,13 +986,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.shutdown.abort(new Error('Security service disposed'))
       try {
         await this.evolution?.close()
+        await this.materialSync?.close()
         await (await this.ready).dispose()
+        await closeActivity()
         await Promise.allSettled([...this.pending])
       } finally {
         this.index?.close()
         await this.activity?.close()
         await this.evolutionStore?.close()
         await this.workspaceIntake?.close()
+        await this.taskSettings?.close()
         await this.journal?.close()
         this.ownership?.close()
       }
@@ -1077,13 +1151,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
     try {
       const journal = await openSecurityJournal(this.ctx)
       this.journal = journal
+      this.taskSettings = await openTaskSettings(this.ctx)
+      for (const [id, preferences] of this.taskSettings.preferences) this.preferences.set(id, preferences)
       this.activity = await SecurityActivityStore.open(this.ctx)
       this.evolutionStore = await EvolutionStore.open(this.ctx)
       this.workspaceIntake = await openWorkspaceIntake(this.ctx,
         this.config.environments.map(environment => environment.id), this.config.taskContextMaxBytes)
+      const artifacts = new ArtifactStore(this.config.root, this.config.maxArtifactBytes)
       const controller = new SecurityController(
         journal,
-        new ArtifactStore(this.config.root, this.config.maxArtifactBytes),
+        artifacts,
         { ...this.config, reportLimits: { inputBytes: this.config.reportInputBytes, maxChars: this.config.reportMaxChars,
           maxFindings: this.config.reportMaxFindings, maxLessons: this.config.reportMaxLessons,
           outputBytes: this.config.maxOutputBytes } },
@@ -1100,6 +1177,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
       )
       await controller.recover()
       this.controller = controller
+      if (this.config.workspaceMaterials) this.materialSync = new WorkspaceMaterialSync(controller, artifacts,
+        this.config.root, this.config.workspaceMaterials)
       this.evolution = new SecurityEvolution(this.ctx, this.evolutionStore, controller, journal,
         this.config.evolution, this.config.maxOutputBytes)
       this.evolution.start()
@@ -1276,6 +1355,65 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return JSON.stringify(result)
   }
 
+  /** Archive one round and prepare a fresh conversation without sending a prompt.
+   * @param agent - authenticated source coordinator.
+   * @param input - JSON material choices: replacement paths or null to reuse saved content.
+   * @returns the durable destination and retained objective for the composer.
+   */
+  @Remote('restartTask')
+  async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }> {
+    const existing = this.restarting.get(agent.id)
+    if (existing) return existing
+    const replacements = z.record(z.string(), z.string().trim().min(1).nullable()).parse(JSON.parse(input))
+    const operation = this.restartTaskImpl(agent, replacements)
+    this.restarting.set(agent.id, operation)
+    this.pending.add(operation)
+    try { return await operation }
+    finally { this.restarting.delete(agent.id); this.pending.delete(operation) }
+  }
+
+  private async restartTaskImpl(agent: Agent, replacements: Record<string, string | null>) {
+    const controller = await this.ready
+    const sessions = this.ctx.get('sessionController')
+    const workspaces = this.ctx.get('workspaceRegistry')
+    assert(sessions && workspaces && this.taskSettings, 'Restart requires Session and Workspace services')
+    const receipt = await this.taskSettings.restart(agent.id)
+    const completed = controller.binding(receipt.sessionId)
+    if (completed) {
+      await workspaces.archiveSession(agent.id, { stopActivity: true })
+      const project = controller.projectView(completed.engagementId).records.find(item => item.kind === 'engagement')
+      assert(project?.kind === 'engagement')
+      return { sessionId: receipt.sessionId, projectId: project.value.id, objective: project.value.objective }
+    }
+    const binding = controller.binding(agent.id)
+    if (binding?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+    const workspace = workspaces.list().find(item => item.sessionIds.includes(agent.id))
+    const cwd = agent.session.header.cwd
+    assert(cwd, 'Restart requires a workspace directory')
+    const agentPreset = agent.session.header.agentPreset
+    const result = await sessions.create({ sessionId: receipt.sessionId,
+      ...(workspace ? { workspaceId: workspace.id } : { cwd }),
+      ...(agentPreset ? { agentPreset } : {}) })
+    if (result.sessionId !== receipt.sessionId) throw new Error('Restart destination is no longer blank; reload the task')
+    const selection = this.ctx.sessionProjections.stateOf(agent.session, 'modelSelection')
+    const model = selection?.pending ?? selection?.lastUsed
+    if (model) await sessions.selectModel({ ...model, sessionId: receipt.sessionId })
+    const preferences = structuredClone(this.preferences.get(agent.id) ?? { toolIds: [], tags: [], collectionIds: [] })
+    await this.taskSettings.savePreferences(receipt.sessionId, preferences)
+    this.preferences.set(receipt.sessionId, preferences)
+    const oldSessions = controller.view(agent.id).records
+      .filter(item => item.kind === 'binding').map(item => brandString<SessionId>(item.value.sessionId))
+    const view = await controller.restart(agent.id, receipt.sessionId, receipt.operationId, replacements, async () => {
+      const owners = this.ctx.agents.list().filter(owner => controller.binding(owner.id)?.engagementId === binding.engagementId)
+      for (const id of oldSessions) await workspaces.archiveSession(id, { stopActivity: true })
+      for (const owner of owners) owner.cancel({ kind: 'user' })
+      await Promise.all(owners.map(owner => owner.whenIdle()))
+    })
+    const project = view.records.find(item => item.kind === 'engagement')
+    assert(project?.kind === 'engagement')
+    return { sessionId: receipt.sessionId, projectId: project.value.id, objective: project.value.objective }
+  }
+
   /** Attach user-selected materials without granting model access to their live paths.
    * @param agent - authenticated top-level conversation.
    * @param input - material selection and current revision.
@@ -1286,7 +1424,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const controller = await this.ready
     if (agent.session.header.origin === 'subagent') throw new Error('Delegated sessions cannot import operator materials')
     const request = z.object({ operationId: z.string().min(1), expectedRevision: z.number().int().nonnegative(),
-      material: z.unknown().optional(), title: z.string().trim().min(1), objective: z.string().trim().min(1),
+      material: z.unknown().optional(), title: z.string().trim().min(1), objective: z.string().trim(),
       target: z.unknown().optional(),
       taskContext: taskContextSchema.nullable().optional(),
       moduleSelection: moduleSelectionSchema.optional(),
@@ -1320,6 +1458,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const changed = () => { state.dirty = true; wake() }
     const disposers = [journal.subscribeAll(changed), activity.subscribe(changed),
       this.ctx.on('agent/status', changed), this.ctx.on('agent/disposed', changed)]
+    if (this.materialSync) disposers.push(this.materialSync.subscribe(changed))
     lifetime.addEventListener('abort', changed, { once: true })
     try {
       while (!lifetime.aborted) {
@@ -1331,7 +1470,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
             const binding = controller.binding(agent.id)
             if (binding && binding.active !== false && agent.status === 'running') agents.set(binding.engagementId, (agents.get(binding.engagementId) ?? 0) + 1)
           }
-          yield projectDirectory(journal.view(), agents, activity.runningCounts())
+          yield projectDirectory(journal.view(), agents, activity.runningCounts()).map((item) => {
+            const materials = this.materialSync?.state(item.project.id)
+            return materials ? { ...item, materials } : item
+          })
         } else await pending.promise
       }
     } finally { for (const dispose of disposers) dispose(); lifetime.removeEventListener('abort', changed) }
@@ -1486,6 +1628,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('toolPreferences')
   async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences> {
+    await this.ready
     if (input !== undefined) {
       const preferences = toolPreferencesSchema.parse(JSON.parse(input))
       const catalog = this.toolCatalog()
@@ -1524,6 +1667,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.shutdown.signal.throwIfAborted()
       if (this.ctx.agents.get(agent.id) !== agent) throw new Error('Session was disposed during adapter checks')
       if (this.preferences.get(agent.id) !== previous) throw new Error('Tool preferences changed during checks; apply preferences again')
+      assert(this.taskSettings, 'Task settings require initialized storage')
+      await this.taskSettings.savePreferences(agent.id, preferences)
       this.preferences.set(agent.id, preferences)
     }
     return structuredClone(this.preferences.get(agent.id) ?? { toolIds: [], tags: [], collectionIds: [] })
@@ -1581,9 +1726,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const combined = AbortSignal.any([signal, this.shutdown.signal])
       if (environment.kind === 'docker' && !environment.externalContainer && !environment.containerId)
         await manager.start(environment, combined)
-      const key = this.toolObservationKey(environment)
+      const revision = environment.kind === 'local' && this.toolConfiguration.path !== undefined
+        ? this.toolConfiguration.read(environment.id).revision : undefined
       const inventory = await manager.inventory(environment, combined, toolIds)
-      return { key, inventory }
+      if (revision !== undefined) this.toolConfiguration.reconcile(inventory, revision)
+      return { key: this.toolObservationKey(environment), inventory }
     })
     this.pending.add(pending)
     try {
@@ -1766,27 +1913,27 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return (await this.ready).view(agent.id)
   }
   /** Follow the project selected by this Session, including selection during a running turn.
-   * @param agent - carrier-resolved agent.
+   * @param sessionId - authenticated Session identity; reading does not activate an Agent.
    * @param signal - connection lifetime.
    * @returns initial selection and committed selection changes.
    */
-  @Remote({ mode: 'stream' })
-  async *followSessionView(agent: Agent, signal: AbortSignal): AsyncIterable<WorkbenchView> {
+  @Remote({ mode: 'stream', resources: { session: (sessionId: SessionId) => sessionId } })
+  async *followSessionView(sessionId: SessionId, signal: AbortSignal): AsyncIterable<WorkbenchView> {
     const controller = await this.ready
     assert(this.journal, 'Session selection requires initialized storage')
     const lifetime = AbortSignal.any([signal, this.shutdown.signal])
     lifetime.throwIfAborted()
     const state = { dirty: false }
     let wake = () => {}
-    const off = this.journal.subscribeSelection(agent.id, () => { state.dirty = true; wake() })
+    const off = this.journal.subscribeSelection(sessionId, () => { state.dirty = true; wake() })
     const abort = () => { wake() }
     lifetime.addEventListener('abort', abort, { once: true })
     try {
-      yield controller.view(agent.id)
+      yield controller.view(sessionId)
       while (!lifetime.aborted) {
         const pending = Promise.withResolvers<void>()
         wake = () => { pending.resolve() }
-        if (state.dirty) { state.dirty = false; yield controller.view(agent.id) }
+        if (state.dirty) { state.dirty = false; yield controller.view(sessionId) }
         else await pending.promise
       }
     } finally { off(); lifetime.removeEventListener('abort', abort) }
@@ -1821,10 +1968,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
     controller.projectView(projectId)
     assert(this.activity && this.journal, 'Activity requires initialized storage')
     const journal = this.journal
-    for await (const frame of this.activity.follow(projectId, () => controller.projectView(projectId),
+    const release = await this.materialSync?.retain(projectId)
+    try { for await (const frame of this.activity.follow(projectId, () => controller.projectView(projectId),
       listener => journal.subscribe(projectId, listener), AbortSignal.any([signal, this.shutdown.signal]))) {
       yield frame.type === 'activity' ? frame : { ...frame, coverage: deriveProjectCoverage(frame.view.records, frame.view.revision) }
-    }
+    } } finally { await release?.() }
   }
   /** Read committed skill exposure and loads for current and historical task Sessions.
    * @param projectId - existing task selected by the operator.
@@ -1909,6 +2057,70 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return { revision: view.revision, records }
   }
 
+  /** Read creation settings without allocating an empty conversation.
+   * @param workspaceId - existing native workspace identity.
+   * @returns resolved environment choices and deployment budgets. */
+  @Remote('configurationForWorkspace')
+  async configurationForWorkspace(workspaceId: string): Promise<WorkbenchConfiguration> {
+    const workspace = this.ctx.get('workspaceRegistry')?.get(brandString<WorkspaceId>(workspaceId))
+    if (!workspace) throw new Error('Select an existing workspace')
+    return this.configurationForCwd(workspace.path)
+  }
+
+  /** Save the default environment selection before creating a task.
+   * @param workspaceId - existing native workspace identity.
+   * @param input - revision-checked workspace settings.
+   * @returns resolved settings after the durable write. */
+  @Remote('configureAnalysisWorkspace')
+  async configureAnalysisWorkspace(workspaceId: string, input: string): Promise<WorkbenchConfiguration> {
+    await this.ready
+    const workspace = this.ctx.get('workspaceRegistry')?.get(brandString<WorkspaceId>(workspaceId))
+    if (!workspace || !this.workspaceIntake) throw new Error('Select an existing workspace')
+    await this.workspaceIntake.set(workspace.path, JSON.parse(input))
+    return this.configurationForCwd(workspace.path)
+  }
+
+  /** Create an associated task and blank native conversation without sending a message.
+   * @param workspaceId - explicitly selected native workspace.
+   * @param input - stable operation and Session identities, localized initial title and selected environments.
+   * @returns durable identities; repeating the same request recovers the existing task. */
+  @Remote('startAnalysis')
+  async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }> {
+    const request = z.object({ operationId: z.uuid(), sessionId: z.uuid(), title: z.string().trim().min(1),
+      environmentIds: z.array(z.string().min(1)).min(1) }).strict().parse(JSON.parse(input))
+    const controller = await this.ready
+    const workspace = this.ctx.get('workspaceRegistry')?.get(brandString<WorkspaceId>(workspaceId))
+    const sessions = this.ctx.get('sessionController')
+    if (!workspace || !sessions) throw new Error('Select an existing workspace')
+    const sessionId = brandString<SessionId>(request.sessionId)
+    if (!controller.binding(sessionId)) {
+      const created = await sessions.create({ workspaceId: workspace.id, sessionId })
+      if (created.sessionId !== sessionId) throw new Error('The requested conversation is no longer available for this analysis')
+    }
+    const view = await controller.createWorkspaceTask(sessionId, request.operationId, workspace.path,
+      { title: request.title, environmentIds: request.environmentIds }, async () => {
+        const configuration = await this.configurationForCwd(workspace.path)
+        const maxAttempts = configuration.workspace?.maxAttempts
+        if (maxAttempts === undefined) throw new Error('Configure the workspace attempt limit before creating an analysis')
+        if (request.environmentIds.some(id => !configuration.environments.some(item => item.id === id)))
+          throw new Error('Select an available analysis environment')
+        return { maxAttempts, moduleSelection: resolveModuleSelection(), taskContext: configuration.workspace?.taskContext ?? null }
+      })
+    const project = view.records.find(item => item.kind === 'engagement')
+    assert(project)
+    return { sessionId, projectId: project.value.id }
+  }
+
+  /** Retry automatic directory collection while preserving the last successful snapshot.
+   * @param projectId - task whose configured source should be rescanned.
+   * @returns completion after a fresh snapshot is published. */
+  @Remote('refreshWorkspaceMaterials')
+  async refreshWorkspaceMaterials(projectId: string): Promise<void> {
+    await this.ready
+    const release = await this.materialSync?.retain(projectId)
+    try { await this.materialSync?.refresh(projectId) } finally { await release?.() }
+  }
+
   /**
    * List operator-configured environments before project creation.
    * @param agent - authenticated Web session.
@@ -1916,12 +2128,14 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('configuration')
   async configuration(agent: Agent): Promise<WorkbenchConfiguration> {
+    return this.configurationForCwd(agent.session.header.cwd, (await this.ready).binding(agent.id)?.engagementId)
+  }
+
+  private async configurationForCwd(cwd: string | undefined, selectedProject?: string): Promise<WorkbenchConfiguration> {
     const controller = await this.ready
-    const cwd = agent.session.header.cwd
     const saved = cwd === undefined ? undefined : this.workspaceIntake?.get(cwd)
     const selected = resolveTaskIntakeResources(this.intakeConfig(cwd), cwd)
     const maxAttempts = saved?.maxAttempts ?? this.config.taskIntake?.maxAttempts
-    const selectedProject = controller.binding(agent.id)?.engagementId
     return {
       workspace: cwd === undefined ? null : {
         cwd, revision: saved?.revision ?? 0, configured: saved !== undefined || selected !== undefined,
@@ -2052,6 +2266,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
   @Remote('projectArtifact')
   async projectArtifact(projectId: string, sha256: string): Promise<string> {
     return this.readArtifact((await this.ready).projectView(projectId).records, sha256)
+  }
+  /** Browse saved project materials without changing Session or evidence records.
+   * @param projectId - project authorizing the asset read.
+   * @param input - serialized asset identity, snapshot path, operation and offset.
+   * @returns a directory page or bounded file preview.
+   */
+  @Remote('projectMaterial')
+  async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView> {
+    const controller = await this.ready
+    return readProjectMaterial(controller.projectView(projectId).records, controller.artifacts, input, this.config.maxOutputBytes)
   }
   private async readArtifact(records: WorkbenchView['records'], sha256: string): Promise<string> {
     const controller = await this.ready
