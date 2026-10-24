@@ -8,7 +8,7 @@ import { createScope, scopeOf } from '@deepseek-ai/dsh-scope'
 import { ANALYSIS_SCRIPTS_DIRECTORY } from '../src/analysis-scripts.ts'
 
 const contexts: Context[] = []
-const names = ['security-android', 'security-cve-mining', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-native', 'security-packet-analysis', 'security-web']
+const names = ['security-android', 'security-cve-mining', 'security-dynamic', 'security-firmware', 'security-investigation', 'security-iot-offline', 'security-kali', 'security-mqtt', 'security-native', 'security-packet-analysis', 'security-web']
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))

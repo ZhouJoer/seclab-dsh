@@ -232,6 +232,14 @@ it('merges configured environments and task defaults into the source profile whi
     expect(overlay).toContain('!!js process.cwd()')
     await writeFile(environments, JSON.stringify({ environments: [], defaultEnvironmentIds: ['unknown'] }))
     expect(() => prepareSecurityToolsPatch(template, tools)).toThrow('Unknown default security environment: unknown')
+    await writeFile(environments, JSON.stringify({ environments: [], defaultEnvironmentIds: ['local'], httpEnvironmentId: 'remote' }))
+    expect(() => prepareSecurityToolsPatch(template, tools)).toThrow('httpEnvironmentId must name a selected local or docker environment: remote')
+    await writeFile(environments, JSON.stringify({ environments: [{ id: 'remote', kind: 'docker', label: 'Kali', cwd: '.',
+      externalContainer: { name: 'kali-test', workdir: '/tmp' },
+      tools: [{ id: 'docker', command: 'docker', versionArgs: ['--version'], source: 'Operator installation' }],
+    }], defaultEnvironmentIds: ['local', 'remote'], httpEnvironmentId: 'remote' }))
+    expect((load(await readFile(prepareSecurityToolsPatch(template, tools), 'utf8'), { schema: entryListSchema }) as {
+      config: { taskIntake: { httpEnvironmentId?: string } } }[])[0]?.config.taskIntake.httpEnvironmentId).toBe('remote')
   } finally {
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   }

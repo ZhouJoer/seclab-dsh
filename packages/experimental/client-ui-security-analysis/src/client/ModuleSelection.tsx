@@ -5,7 +5,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
 import css from './Workbench.module.css'
 
-const labels = { 'reverse.android': 'moduleAndroid', 'reverse.native': 'moduleNative', web: 'moduleWeb', iot: 'moduleIot' } as const
+const labels = { 'reverse.android': 'moduleAndroid', 'reverse.native': 'moduleNative', web: 'moduleWeb', iot: 'moduleIot', pentest: 'modulePentest' } as const
 
 /** Edit a local module draft without probing tools or activating an Agent.
  * @param props - current draft, localized copy and update callback.

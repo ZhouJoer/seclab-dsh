@@ -13,6 +13,7 @@ import { installTaskContext } from './task-context-projection.ts'
 import { deriveProjectCoverage } from './workbench/coverage.ts'
 import { installReportExport } from './report-export-route.ts'
 import { resolveWorkspaceTaskAdmission, resolveTaskIntakeResources, validateTaskIntake, type TaskIntakeConfig } from './task-bootstrap.ts'
+import { isLoopbackOrigin, probeTargetReachability } from './target-reachability.ts'
 import assert from 'node:assert/strict'
 import type {} from './external-web-provider.ts'
 import { HttpIdentities } from './http-auth.ts'
@@ -145,6 +146,8 @@ export interface WorkbenchConfig {
   reportMaxLessons: number
   /** Maximum approved operation duration in milliseconds. */
   maxDurationMs: number
+  /** Deadline for one container target-reachability probe command in milliseconds. */
+  targetProbeTimeoutMs: number
   /** Maximum lifetime of a delegated analysis job in milliseconds. */
   delegationTimeoutMs: number
   /** Maximum concurrent fresh child Sessions across this security Host. */
@@ -207,10 +210,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
         environmentIds: Schema.array(Schema.string()).required(),
       })).required(),
       defaultEnvironmentIds: Schema.array(Schema.string()),
+      httpEnvironmentId: Schema.string(),
       maxAttempts: Schema.number().step(1).min(1).required(),
     })]),
     maxConcurrentDelegations: Schema.number().step(1).min(1).default(3),
     approvalTtlMs: Schema.number().step(1).min(1).default(3600000),
+    targetProbeTimeoutMs: Schema.number().step(1).min(1000).default(15000),
     delegationTimeoutMs: Schema.number().step(1).min(1).default(300000),
     knowledgeIntervalMs: Schema.number().step(1).min(0).max(2147483647).default(3600000),
     knowledgeInputBytes: Schema.number().step(1).min(4096).default(131072),
@@ -474,7 +479,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error('Security tools require a session')
           const controller = await this.ready
-          const project = controller.view(exec.agent.id).records.find(item => item.kind === 'engagement')
+          const view = controller.view(exec.agent.id)
+          const project = view.records.find(item => item.kind === 'engagement')
           if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (project?.kind !== 'engagement' || project.value.stopped || !project.value.environmentIds.includes(args.environmentId))
             throw new Error('Environment is outside active project scope')
@@ -496,6 +502,15 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const rendered = modelToolInventory(inventory, { native: args.native ?? false,
             adapterOnly: this.adapterPreferences(exec.agent.id),
             externalContainer: environment.externalContainer !== undefined })
+          const targetOrigins = new Set<string>()
+          for (const item of view.records) if (item.kind === 'asset' && 'origin' in item.value) targetOrigins.add(item.value.origin)
+          const loopbackTargets = [...targetOrigins].filter(isLoopbackOrigin).slice(0, 3)
+          if (environment.kind === 'docker' && inventory.runtime === 'ready' && loopbackTargets.length) {
+            const checks = await probeTargetReachability(this.ctx, environment,
+              { durationMs: config.targetProbeTimeoutMs, maxOutputBytes: 4096, graceMs: 1000 },
+              AbortSignal.any([exec.signal, this.shutdown.signal]), loopbackTargets)
+            if (checks.length) Object.assign(rendered, { targetChecks: checks })
+          }
           if (Buffer.byteLength(JSON.stringify(rendered)) <= config.modelResultBytes) return json(rendered)
           return json(compactToolInventory(inventory))
         },

@@ -15,6 +15,8 @@ export const securityToolsFile = resolve('.dsh/security-tools.json')
 export interface SecurityEnvironmentsConfiguration {
   environments: SecurityEnvironment[]
   defaultEnvironmentIds?: string[]
+  /** Declares which selected HTTP environment registers literal-IP targets when several are eligible. */
+  httpEnvironmentId?: string
 }
 
 /** Read environment declarations with the same validation as the workbench.
@@ -40,7 +42,11 @@ export function readSecurityEnvironments(path: string): SecurityEnvironmentsConf
   if (!Array.isArray(defaults) || defaults.length === 0 ||
     !defaults.every((id: unknown): id is string => typeof id === 'string' && id.length > 0) || new Set(defaults).size !== defaults.length)
     throw new Error(`${path}: defaultEnvironmentIds must be a nonempty array of unique environment IDs`)
-  return { environments, defaultEnvironmentIds: defaults }
+  const declaredHttp: unknown = (data as { httpEnvironmentId?: unknown }).httpEnvironmentId
+  if (declaredHttp !== undefined && (typeof declaredHttp !== 'string' || !declaredHttp))
+    throw new Error(`${path}: httpEnvironmentId must be a nonempty environment ID`)
+  return { environments, defaultEnvironmentIds: defaults,
+    ...(declaredHttp === undefined ? {} : { httpEnvironmentId: declaredHttp }) }
 }
 
 /** Save installations if the configuration is unchanged and every environment remains valid.
@@ -79,7 +85,7 @@ export function prepareSecurityToolsPatch(template: string, path: string = secur
       toolCatalogPath?: string
       toolConfiguration?: { path: string; environmentId: string }
       environments?: SecurityEnvironment[]
-      taskIntake?: { defaultEnvironmentIds?: string[] }
+      taskIntake?: { defaultEnvironmentIds?: string[]; httpEnvironmentId?: string }
     }
   }[]
   const workbench = entries.find(entry => entry.id === 'security-workbench')
@@ -91,6 +97,13 @@ export function prepareSecurityToolsPatch(template: string, path: string = secur
   if (configured.defaultEnvironmentIds) {
     if (!workbench.config.taskIntake) throw new Error('Default environments require taskIntake in the source workbench template')
     workbench.config.taskIntake.defaultEnvironmentIds = configured.defaultEnvironmentIds
+  }
+  if (configured.httpEnvironmentId) {
+    if (!workbench.config.taskIntake) throw new Error('httpEnvironmentId requires taskIntake in the source workbench template')
+    const declared = environments.get(configured.httpEnvironmentId)
+    if (!declared || (declared.kind !== 'local' && declared.kind !== 'docker'))
+      throw new Error(`httpEnvironmentId must name a selected local or docker environment: ${configured.httpEnvironmentId}`)
+    workbench.config.taskIntake.httpEnvironmentId = configured.httpEnvironmentId
   }
   for (const id of workbench.config.taskIntake?.defaultEnvironmentIds ?? []) {
     if (!environments.has(id)) throw new Error(`Unknown default security environment: ${id}`)

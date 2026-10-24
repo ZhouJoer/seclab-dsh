@@ -1,6 +1,6 @@
 /** Module selection controls both discovery and generic provider execution. @module */
 import { expect, it } from 'vitest'
-import { moduleAllowsOperation, moduleAllowsTool, moduleSelectionSchema, moduleSkills, resolveModuleSelection } from '../src/analysis-modules.ts'
+import { moduleAllowsDefinition, moduleAllowsOperation, moduleAllowsTool, moduleSelectionSchema, moduleSkills, resolveModuleSelection } from '../src/analysis-modules.ts'
 import { manifestItems } from '../src/android-manifest.ts'
 
 it('keeps historical tasks automatic and exposes only common capabilities before selection', () => {
@@ -23,6 +23,31 @@ it('combines Android and native skills without enabling unrelated provider paths
   copy.modules.length = 0
   expect(selection.modules).toHaveLength(2)
   expect(moduleSelectionSchema.safeParse({ ...selection, modules: ['web', 'web'] }).success).toBe(false)
+})
+
+it('routes the pentest module to Kali and Web skills without enabling reverse capabilities', () => {
+  const selection = moduleSelectionSchema.parse({ mode: 'manual', modules: ['pentest'], reason: 'authorized lab exercise' })
+  expect(moduleSkills(selection)).toEqual(['security-kali', 'security-web'])
+  for (const name of ['security_jadx', 'security_ghidra', 'security_radare2', 'security_analysis'])
+    expect(moduleAllowsTool(name, selection)).toBe(false)
+  for (const [provider, operation] of [['android', 'decompile'], ['tool-adapter', 'analysis.native-triage'], ['ghidra', 'decompile'], ['packet-capture', 'summary'], ['frida', 'script']])
+    expect(moduleAllowsOperation(provider!, operation!, selection)).toBe(false)
+  expect(moduleAllowsTool('security_file', selection)).toBe(true)
+})
+
+it('keeps Web enabling the Kali method and rejects five-module selections', () => {
+  const selection = moduleSelectionSchema.parse({ mode: 'manual', modules: ['web'], reason: 'web app' })
+  expect(moduleSkills(selection)).toEqual(['security-web', 'security-kali'])
+  expect(moduleSelectionSchema.safeParse({ mode: 'manual', modules: ['reverse.android', 'reverse.native', 'web', 'iot', 'pentest'], reason: '' }).success).toBe(false)
+})
+
+it('filters catalog entries by module-owned skill associations', () => {
+  const pentest = moduleSelectionSchema.parse({ mode: 'manual', modules: ['pentest'], reason: 'lab' })
+  const iot = moduleSelectionSchema.parse({ mode: 'manual', modules: ['iot'], reason: 'capture' })
+  expect(moduleAllowsDefinition({ id: 'nmap', skills: ['security-web', 'security-kali'] }, pentest)).toBe(true)
+  expect(moduleAllowsDefinition({ id: 'nmap', skills: ['security-web', 'security-kali'] }, iot)).toBe(false)
+  expect(moduleAllowsDefinition({ id: 'radare2', skills: ['security-firmware'] }, pentest)).toBe(false)
+  expect(moduleAllowsDefinition({ id: 'hashcat', skills: ['security-kali'] }, pentest)).toBe(true)
 })
 
 it('retains manifest aliases, declarations and missing exported attributes without guessing defaults', () => {

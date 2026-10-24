@@ -40,6 +40,11 @@ export interface SecurityEnvironment {
   } | undefined
   /** Installed tool declarations, independent of current runtime readiness. */
   tools: ToolInstallation[]
+  /** Local-only extra executable search roots for undeclared catalog tools. */
+  discovery?: {
+    /** Absolute Host directories searched when a catalog tool has no declaration. */
+    searchDirs: string[]
+  } | undefined
   /** Runtime-only immutable image identity measured by the environment manager. */
   resolvedImageId?: string
   /** Runtime-only container identity owned by the environment manager. */

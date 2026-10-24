@@ -26,6 +26,8 @@ description: "安全 Harness 的交付优先级、依赖和验收条件。"
 
 [Provider 设计](../../packages/experimental/security-analysis/README.zh.md#provider-design)维护当前行为。以下交付顺序始终保留 Shell 和自定义脚本；外部 Kali 继续由操作员管理。配置与资产准备不应消耗反复的分析轮次。
 
+Kali 技能层已交付：`pentest` 模块启用 `security-kali` 方法，含改写的场景 playbook、工具选型指南（上游 kali-pentest，见包内[适配审查](../../packages/experimental/security-analysis/resources/skills/sources.md)）与 pentest 工具目录条目。下方适配器批次仍待完成且范围不变。
+
 | 批次 | 范围 | 验收 |
 |---|---|---|
 | 0 | 保留不支持环境及操作的原生发现 | 外部容器与发现回归测试已覆盖。 |

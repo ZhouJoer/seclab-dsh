@@ -18,6 +18,8 @@ export interface TaskIntakeConfig {
   workspaces: TaskIntakeWorkspace[]
   /** Environments for workspaces without an exact mapping; omission disables their intake. */
   defaultEnvironmentIds?: string[]
+  /** Operator-declared HTTP environment for literal-target registration when several are eligible. */
+  httpEnvironmentId?: string
   /** Maximum validation attempts assigned to a newly created task. */
   maxAttempts: number
 }
@@ -45,9 +47,11 @@ interface LiteralHttpTarget {
 
 /** Resolve one unambiguous literal-IP HTTP target from the authenticated task text. */
 function literalHttpTarget(objective: string, environmentIds: readonly string[],
-  httpEnvironmentIds: readonly string[]) {
-  const available = environmentIds.filter(id => httpEnvironmentIds.includes(id))
-  const environmentId = available.length === 1 ? available[0] : undefined
+  httpEnvironmentIds: readonly string[], preferredHttpEnvironmentId?: string) {
+  const eligible = environmentIds.filter(id => httpEnvironmentIds.includes(id))
+  const environmentId = preferredHttpEnvironmentId && eligible.includes(preferredHttpEnvironmentId)
+    ? preferredHttpEnvironmentId
+    : eligible.length === 1 ? eligible[0] : undefined
   if (!environmentId) return undefined
   const targets = new Map<string, LiteralHttpTarget>()
   for (const match of objective.matchAll(/https?:\/\/[^\s<>"'，。；、]+/giu)) {
@@ -129,7 +133,8 @@ export function resolveWorkspaceTaskAdmission(input: WorkspaceTaskAdmission):
   if (!resources) return undefined
   const objective = input.message.content.filter(part => part.type === 'text').map(part => part.text).join('\n').trim()
   if (objective === '') return undefined
-  const target = literalHttpTarget(objective, resources.environmentIds, input.httpEnvironmentIds)
+  const target = literalHttpTarget(objective, resources.environmentIds, input.httpEnvironmentIds,
+    input.config?.httpEnvironmentId)
   return {
     kind: 'create',
     title: objective.replace(/\r?\n.*$/su, ''),

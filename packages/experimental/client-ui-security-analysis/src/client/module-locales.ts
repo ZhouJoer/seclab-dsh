@@ -10,7 +10,7 @@ export const moduleZh = {
   nativeXrefPathsTitle: '原生交叉引用路径', nativeXrefPathsPurpose: '串联字符串、函数和调用者的静态关系', nativeXrefPathsMethod: '区分调用、跳转与数据引用，保留地址和待补证据',
   nativeTriageTitle: '原生二进制分诊', nativeTriagePurpose: '汇总架构、符号、字符串和函数线索', nativeTriageMethod: '保留原始适配器观察、地址、偏移及输入证据 ID',
   moduleTitle: '分析模块', moduleMode: '选择方式', moduleAuto: '自动识别', moduleManual: '手动选择',
-  moduleAndroid: 'Android / JVM 逆向', moduleNative: '原生二进制 / 固件逆向', moduleWeb: 'Web 分析', moduleIot: 'IoT / 抓包分析',
+  moduleAndroid: 'Android / JVM 逆向', moduleNative: '原生二进制 / 固件逆向', moduleWeb: 'Web 分析', moduleIot: 'IoT / 抓包分析', modulePentest: '渗透测试（Kali）',
   moduleHelp: '按任务加载相关技能和工具；自动模式由助手选择，手动模式只使用勾选模块。工具依赖在实际使用时检查',
   moduleReason: '选择依据', modulePending: '当前只启用公共调查能力', moduleResources: '模块技能与工具', moduleSave: '保存模块选择',
 }
@@ -26,7 +26,7 @@ export const moduleEn = {
   nativeXrefPathsTitle: 'Native cross-reference paths', nativeXrefPathsPurpose: 'Connect static string, function and caller relations', nativeXrefPathsMethod: 'Separate calls, jumps and data references; retain addresses and evidence frontiers',
   nativeTriageTitle: 'Native binary triage', nativeTriagePurpose: 'Collect architecture, symbol, string and function clues', nativeTriageMethod: 'Preserve adapter observations, addresses, offsets and input evidence IDs',
   moduleTitle: 'Analysis modules', moduleMode: 'Selection', moduleAuto: 'Automatic', moduleManual: 'Manual',
-  moduleAndroid: 'Android / JVM reverse analysis', moduleNative: 'Native binary / firmware analysis', moduleWeb: 'Web analysis', moduleIot: 'IoT / capture analysis',
+  moduleAndroid: 'Android / JVM reverse analysis', moduleNative: 'Native binary / firmware analysis', moduleWeb: 'Web analysis', moduleIot: 'IoT / capture analysis', modulePentest: 'Penetration testing (Kali)',
   moduleHelp: 'Load skills and tools for this task. The assistant selects automatic modules; manual mode uses checked modules only. Dependencies are checked when used.',
   moduleReason: 'Selection reason', modulePending: 'Only common investigation capabilities are active', moduleResources: 'Module skills and tools', moduleSave: 'Save module selection',
 }

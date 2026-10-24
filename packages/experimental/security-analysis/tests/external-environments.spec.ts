@@ -111,3 +111,15 @@ it('parses existing local and managed Docker deployments without an external con
   expect(environments.map(item => item.kind)).toEqual(['local', 'docker'])
   expect(environments.every(item => item.externalContainer === undefined)).toBe(true)
 })
+
+it('accepts local discovery roots and rejects discovery outside local environments or on relative paths', () => {
+  const absolute = process.platform === 'win32' ? 'D:/tools/wireshark' : '/opt/wireshark'
+  expect(parseSecurityEnvironments([{ id: 'local', kind: 'local', label: 'Host', cwd: process.cwd(), tools: [],
+    discovery: { searchDirs: [absolute] } }])[0]?.discovery).toEqual({ searchDirs: [absolute] })
+  for (const changed of [
+    { discovery: { searchDirs: ['tools/wireshark'] } },
+    { discovery: { searchDirs: [] } },
+  ]) expect(() => parseSecurityEnvironments([{ id: 'local', kind: 'local', label: 'Host', cwd: process.cwd(), tools: [], ...changed }])).toThrow()
+  expect(() => parseSecurityEnvironments([{ ...environment, discovery: { searchDirs: [absolute] } }]))
+    .toThrow('discovery is only valid for local environments')
+})

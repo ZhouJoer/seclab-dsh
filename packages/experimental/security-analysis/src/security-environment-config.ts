@@ -20,6 +20,9 @@ export const securityEnvironmentSchema: Schema<SecurityEnvironment> = Schema.obj
     prefixArgs: Schema.array(Schema.string()),
     versionArgs: Schema.array(Schema.string()).required(), source: Schema.string().required(),
   })).required(),
+  discovery: Schema.union([Schema.const(undefined), Schema.object({
+    searchDirs: Schema.array(Schema.string()).min(1).required(),
+  })]),
 })
 
 /** Validate relationships after field validation and before any execution.
@@ -36,6 +39,10 @@ export function validateSecurityEnvironments(environments: readonly SecurityEnvi
       throw new Error('Tool IDs must be unique within an environment')
     if (environment.externalContainer && (environment.kind !== 'docker' || environment.image !== undefined))
       throw new Error('externalContainer requires a Docker environment without an image')
+    if (environment.discovery && environment.kind !== 'local')
+      throw new Error('discovery is only valid for local environments')
+    if (environment.discovery) for (const dir of environment.discovery.searchDirs)
+      if (!isAbsolute(dir)) throw new Error('discovery search directories must be absolute Host paths')
     if (environment.kind === 'docker' && !environment.tools.some(tool => tool.id === 'docker'))
       throw new Error('Docker environments require a configured docker tool for the Host endpoint')
   }

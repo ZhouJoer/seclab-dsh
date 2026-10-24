@@ -34,7 +34,7 @@ const METHODS: readonly SkillDefinition[] = [
 
 Use these methods as guidance for the current question, not a mandatory checklist. Work within the current task scope, available resources, and execution permissions. A skill or delegated assignment grants no additional authority. Stop affected work when the scope is narrowed.
 
-Choose methods from the available material and the unresolved question: security-web for source, captured requests or a permitted running application; security-native for PE, ELF and shared libraries; security-firmware for firmware images and extracted filesystems; security-android for APK, DEX, JAR or an explicitly selected adb environment; security-iot-offline for captures, logs and protocol documents; security-cve-mining for rediscovering a memory-safety weakness in imported source with sanitizer builds. Combine methods when a data flow crosses components. A role defines responsibility and permissions, not a required sequence of methods. Do not force every task through reconnaissance, analysis, design and runtime validation.
+Choose methods from the available material and the unresolved question: security-web for source, captured requests or a permitted running application; security-native for PE, ELF and shared libraries; security-firmware for firmware images and extracted filesystems; security-android for APK, DEX, JAR or an explicitly selected adb environment; security-iot-offline for captures, logs and protocol documents; security-kali for an authorized penetration-testing engagement through a selected Kali environment; security-cve-mining for rediscovering a memory-safety weakness in imported source with sanitizer builds. Combine methods when a data flow crosses components. A role defines responsibility and permissions, not a required sequence of methods. Do not force every task through reconnaissance, analysis, design and runtime validation.
 
 For directory-based reverse engineering, first use the source provider's directory operation at path "" to see immediate children, file counts, byte sizes and filename extensions. Descend only into directories relevant to the task. Extensions and text flags are selection hints, not verified formats. Select candidate databases, data files, programs, libraries or resource bundles according to the question, then use targeted identity, text, hex or specialist queries. A directory snapshot is input storage, not a requirement to audit source. Do not recursively read, search, disassemble or decompile every file just because it was imported; expand scope only when an observation or the requested coverage requires it, and report remaining uninspected material.
 
@@ -57,6 +57,11 @@ Delegate an independent question only when expected time or context savings, new
 Reassess the next action when evidence changes the hypothesis or a method fails. Continue useful independent work when a resource is unavailable; stop only the affected branch. At checkpoints, record the question resolved, evidence added, remaining uncertainty and next useful action. If a delegation adds no relevant evidence or duplicates existing work, narrow or stop that branch instead of increasing parallelism. Stop when the question is resolved or its stated budget is exhausted.
 
 Independent review remains required before a conclusive finding even when collection needs no delegation. An evidence assessment can finish with a structured report without a recorded finding; it does not persist a finding verdict. For a formal review, the coordinator first saves a suspected finding with its conditions and evidence, then the reviewer uses its actual ID and current hash. Never invent finding identifiers. Reconcile conflicting evidence; agreement between agents is not independent verification. Report confirmed observations separately from hypotheses, exclusions and blocked validation, with impact, reproduction conditions, evidence references, remediation and untested assumptions.`,
+  ),
+  method(
+    'security-kali',
+    'Use for authorized penetration testing against registered targets through operator-managed Kali environments; prefer structured adapters and registered tool guides.',
+    '',
   ),
   method(
     'security-web',
@@ -178,13 +183,15 @@ export function installSecurityMethods(ctx: Context, active?: readonly string[])
     get: async (candidate, options) => {
       const definition = definitions.find(item => item.name === candidate.name)
       if (!definition) return undefined
-      const resource = definition.name === 'security-android' ? 'android.md' : definition.name === 'security-native' ? 'native.md' : undefined
+      const resource = definition.name === 'security-android' ? 'android.md' : definition.name === 'security-native' ? 'native.md' : definition.name === 'security-kali' ? 'kali.md' : undefined
       if (resource) return { ...definition,
         resourceBase: { kind: 'directory', path: fileURLToPath(new URL('../resources/skills/', import.meta.url)) },
         content: await readFile(new URL('../resources/skills/' + resource, import.meta.url), { encoding: 'utf8', signal: options.signal }) }
       const routing = definition.name === 'security-investigation'
         ? 'Before specialist work, read security_capabilities modules and moduleSelection. In auto mode, choose the smallest module set supported by the objective and imported material using security_command action modules with selection {mode:"auto",modules:[...],reason:"..."}. Reassess when the question changes. Unknown input needs common identity inspection first. Manual mode is operator-owned. Delegated agents ask the coordinator for missing modules.\n\n'
-        : 'Check the active analysis modules before using this method. Explicit skill invocation does not enable tools. In auto mode ask the coordinator to select the relevant module; in manual mode request an operator adjustment.\n\n'
+        : definition.name === 'security-kali'
+          ? 'Before any active probing of the target, open the scenario playbook selected from this skill\'s decision table; the playbook owns phase order, tool choices and stop conditions, and its category guides name the registered tools for each job. Environment and target identity checks may precede it.\n\n'
+          : 'Check the active analysis modules before using this method. Explicit skill invocation does not enable tools. In auto mode ask the coordinator to select the relevant module; in manual mode request an operator adjustment.\n\n'
       return { ...definition, content: routing + definition.content }
     },
   }))

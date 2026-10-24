@@ -34,10 +34,18 @@
             command: fastboot
             versionArgs: [--version]
             source: Android platform tools; inventory only
+          - id: tshark
+            command: tshark
+            versionArgs: [--version]
+            source: Operator Wireshark installation; offline capture analysis
           - id: john
             command: john
             versionArgs: [--list=build-info]
             source: Operator audit tools; inventory only
+        # Optional local-only search roots for catalog tools without a declaration above,
+        # for example a Wireshark install directory that is not on PATH:
+        # discovery:
+        #   searchDirs: [C:/Program Files/Wireshark]
       # Managed mining container for sanitizer builds and PoC differential runs.
       # The image must already exist locally; the dsh toolbox recipe builds one.
       - id: mining

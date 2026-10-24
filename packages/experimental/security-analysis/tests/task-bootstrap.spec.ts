@@ -97,6 +97,21 @@ describe('workspace task admission', () => {
     }))).not.toHaveProperty('target')
   })
 
+  it('registers the operator-declared HTTP environment when several are eligible', () => {
+    expect(resolveWorkspaceTaskAdmission(admission({
+      config: { ...config, httpEnvironmentId: 'kali', workspaces: [{ cwd, environmentIds: ['workspace-lab', 'kali'] }] },
+      httpEnvironmentIds: ['workspace-lab', 'kali'],
+      message: createUserMessage({ content: [{ type: 'text', text: 'Assess http://127.0.0.1/' }], source: { kind: 'user' } }),
+    }))).toMatchObject({ target: { environmentId: 'kali', origin: 'http://127.0.0.1' } })
+  })
+
+  it('falls back to the single-environment rule when the declared HTTP environment is not selected', () => {
+    expect(resolveWorkspaceTaskAdmission(admission({
+      config: { ...config, httpEnvironmentId: 'unselected' },
+      message: createUserMessage({ content: [{ type: 'text', text: 'Assess http://127.0.0.1/' }], source: { kind: 'user' } }),
+    }))).toMatchObject({ target: { environmentId: 'workspace-lab' } })
+  })
+
   it.each([
     { config: undefined }, { cwd: undefined }, { child: true }, { hasBindingHistory: true },
     { cwd: join(cwd, 'nested') }, { cwd: cwd + '-other' },

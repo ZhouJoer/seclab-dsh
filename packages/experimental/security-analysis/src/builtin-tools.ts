@@ -315,6 +315,46 @@ export const builtinToolPack = parseToolPack({
       'url': 'https://docs.docker.com/get-docker/',
     },
     {
+      'id': 'whois',
+      'label': 'whois',
+      'description': 'Domain registration lookup / 域名 注册 信息',
+      'category': 'utility',
+      'tags': [
+        'utility',
+      ],
+      'commands': [
+        'whois',
+      ],
+      'args': [
+        '-V',
+      ],
+      'url': 'https://github.com/rfc1036/whois',
+      'guide': 'Passive registration data for authorized scope: registrar, dates, nameservers, status and network ownership. Output stays text; record the query, server and response together, and treat missing or privacy-redacted fields as unknown rather than absent. Do not bulk-query registrars; this is a single-lookup step feeding the discovery inventory.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'socat',
+      'label': 'socat',
+      'description': 'Bidirectional data relay for authorized tunnels and tests / 端口 转发 中继',
+      'category': 'utility',
+      'tags': [
+        'utility',
+      ],
+      'commands': [
+        'socat',
+      ],
+      'args': [
+        '-V',
+      ],
+      'url': 'http://www.dest-unreach.org/socat/',
+      'guide': 'Single-purpose relays (listen-connect, port forward, protocol shim) only for endpoints inside the authorized scope and under an approved plan. State address type, bind, fork and timeout options explicitly; keep one relay purpose per process and record the exact argv with its justification. Long-running relays run as jobs so their lifecycle is observable; a relay is infrastructure, not evidence — capture observations at the endpoints.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
       'id': 'curl',
       'label': 'curl',
       'description': 'HTTP requests and responses for registered Web targets / 网站 HTTP 请求 响应',
@@ -333,6 +373,7 @@ export const builtinToolPack = parseToolPack({
       'guide': 'Keep HTTP status, response headers, body and execution diagnostics separate. Read existing structured provider data, including JSON inside stdout when present. For native curl, check installed support for --write-out %{json}, save the body with --output and headers with --dump-header in separate task outputs files, and retain stderr and exit status. Parse a body only according to its actual format; preserve its original bytes and file reference. A transport failure, partial body, redirect or application error must not become a successful security check merely because a status or body was returned.',
       'skills': [
         'security-web',
+        'security-kali',
       ],
     },
     {
@@ -353,6 +394,147 @@ export const builtinToolPack = parseToolPack({
       'guide': 'Prefer native XML output with -oX, as recommended by Nmap, over human-readable or deprecated grepable output. Read only relevant hosts, ports, services and script results, retaining their target and port/protocol locations. Save the original XML with execution status and diagnostics; inspect run completion and scan coverage before interpreting records. Script output may remain text. Empty, filtered, partial or failed scans do not establish absence of risk. Select targets and probes within existing task authority.',
       'skills': [
         'security-web',
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'ffuf',
+      'label': 'ffuf',
+      'description': 'Web fuzzing and directory brute-force / 目录 爆破 网站',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'ffuf',
+      ],
+      'args': [
+        '-V',
+      ],
+      'url': 'https://github.com/ffuf/ffuf',
+      'guide': 'Fuzz URL paths, parameters, headers or bodies with an explicit wordlist, match codes (-mc) and size or word filters chosen for the target. Save native JSON output (-o with -of json) including the filter settings, and read matched URL, status, length and position from the saved file. Use -recursion and depth limits deliberately. Auto-calibration helps reject wildcard responses; a filtered or empty result documents coverage, not safety. Keep request rate within the engagement limits; write one output file per run.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'gobuster',
+      'label': 'gobuster',
+      'description': 'Directory, DNS and vhost brute-force / 目录 子域名 爆破',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'gobuster',
+      ],
+      'args': [
+        '--version',
+      ],
+      'url': 'https://github.com/OJ/gobuster',
+      'guide': 'Run one mode per invocation (dir, dns, vhost) with an explicit wordlist and result output file (-o); output is a plain list, so retain the command, status codes and wildcard checks alongside it. Confirm wildcard responses before trusting discoveries. Prefer ffuf or feroxbuster when JSON output or recursion is required; use gobuster for quick bounded sweeps within engagement rate limits.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'feroxbuster',
+      'label': 'feroxbuster',
+      'description': 'Recursive directory enumeration / 目录 递归 枚举',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'feroxbuster',
+      ],
+      'args': [
+        '--version',
+      ],
+      'url': 'https://github.com/epi052/feroxbuster',
+      'guide': 'Recursive content discovery with --depth, --extensions and scan limits set explicitly per task; save --json output with one record per discovery. Bound threads and rate to the engagement limits. Review filtered wildcard and size-collapsed results before concluding coverage; the saved JSON plus the exact filter flags are the evidence.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'nikto',
+      'label': 'nikto',
+      'description': 'Web server vulnerability scanning / 网站 服务器 扫描',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'nikto',
+      ],
+      'args': [
+        '-Version',
+      ],
+      'url': 'https://cirt.net/Nikto2',
+      'guide': 'Scan with -Format json -o to a fresh output file plus -Tuning selections for the task; interactive prompts are avoided with -nointeractive where supported. Read findings with their OSVDB references and target URL together; verify each reported item manually or with a second tool before treating it as a finding — nikto output is noisy and fingerprints easily. A zero-finding run needs a reachability check before acceptance.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'whatweb',
+      'label': 'whatweb',
+      'description': 'Web technology fingerprinting / 网站 指纹 识别',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'whatweb',
+      ],
+      'args': [
+        '--version',
+      ],
+      'url': 'https://github.com/urbanadventurer/WhatWeb',
+      'guide': 'Fingerprint technologies with an explicit aggression level (higher levels send more probes; default unless authorized otherwise) and save results with --log-json. Read plugin names with their certainty strings; a probable match is a lead for version-specific checks, not an identified version. Batch input lists keep one JSON record per host for inventories.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'wpscan',
+      'label': 'wpscan',
+      'description': 'WordPress security scanning / WordPress 扫描',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'wpscan',
+      ],
+      'args': [
+        '--version',
+      ],
+      'url': 'https://wpscan.com/',
+      'guide': 'Enumerate WordPress version, theme, plugins and users with -f json output saved per run; plugin and theme enumeration with vulnerability lookups needs the API token configured by the operator. Version matches drive CVE research rather than conclusions; brute-force options are separate authorized actions under the lockout policy. Record the WordPress version with each finding, since plugin CVEs are version-conditional.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'sqlmap',
+      'label': 'sqlmap',
+      'description': 'SQL injection detection and validation / SQL 注入 检测',
+      'category': 'web',
+      'tags': [
+        'web',
+      ],
+      'commands': [
+        'sqlmap',
+      ],
+      'args': [
+        '--version',
+      ],
+      'url': 'https://sqlmap.org/',
+      'guide': 'Test a specific candidate parameter from a saved representative request file (-r) or explicit URL with --batch; keep one --output-dir per run and cite the saved session log as evidence. Escalate --level and --risk before accepting a negative result. Extract only the minimum data that proves the vulnerability — version banner or a single controlled value — and never pull table contents, credentials or dumps beyond the authorized proof. OS-shell, file-write and takeover options are exploitation actions requiring separate approval. Note tamper scripts and proxy routing used, so results stay reproducible.',
+      'skills': [
+        'security-kali',
       ],
     },
     {
@@ -387,7 +569,7 @@ export const builtinToolPack = parseToolPack({
     {
       'id': 'john',
       'label': 'john',
-      'description': 'john',
+      'description': 'Offline password auditing / 口令 破解 离线',
       'category': 'utility',
       'tags': [
         'utility',
@@ -399,6 +581,30 @@ export const builtinToolPack = parseToolPack({
         '--list=build-info',
       ],
       'url': 'https://www.openwall.com/john/',
+      'guide': 'Installation and version inventory only in this release; an authorized offline audit provider with immutable inputs, resource limits and cleanup remains roadmap work. The fixed yescrypt verification vector may run as an installation check through the operator-configured workflow. Do not run audit campaigns against imported credential material until that provider exists.',
+      'skills': [
+        'security-kali',
+      ],
+    },
+    {
+      'id': 'hashcat',
+      'label': 'hashcat',
+      'description': 'GPU/CPU offline hash cracking / 哈希 破解 显卡',
+      'category': 'utility',
+      'tags': [
+        'utility',
+      ],
+      'commands': [
+        'hashcat',
+      ],
+      'args': [
+        '--version',
+      ],
+      'url': 'https://hashcat.net/hashcat/',
+      'guide': 'Offline cracking of authorized hash material only, inside the selected environment and the agreed time budget. Confirm hardware with -I before planning GPU work; CPU fallback switches to john where supported. Fix the mode (-m) from verified hash identification, choose attack mode by hash economics (dictionary with rules, policy-matched mask, hybrid), and check --show against the potfile before repeating work. Save command lines, wordlists, rules, runtime and cracked results per run; stop at the budget or when policy makes remaining candidates impossible.',
+      'skills': [
+        'security-kali',
+      ],
     },
     {
       'id': 'nuclei',
@@ -418,6 +624,7 @@ export const builtinToolPack = parseToolPack({
       'guide': 'Prefer native JSONL output using the installed version support for -jsonl and -o. Read complete records with template ID, matched target/location and matcher or extracted observations; preserve the original JSONL. Keep execution status, template selection, coverage and diagnostics alongside matches. Malformed or truncated lines leave results incomplete. No matches, template errors or an interrupted run do not establish that a target is safe; a match still needs contextual verification under security-web.',
       'skills': [
         'security-web',
+        'security-kali',
       ],
     },
     {
@@ -483,6 +690,7 @@ Use this JSON template as a task file, not an executable API. Null means unmeasu
 On reuse, verify saved file hashes, reread the recipe's applicability, bind the current environment and target, and render a new rc without overwriting previous runs. Saved command and args are historical evidence, not the next launcher. Record expected and actual signals separately; an exit code or console match does not confirm a vulnerability. Record whether the negative control ran and what it showed; leave unperformed controls as not-run with a reason. Do not reconstruct missing rc contents, hashes or successful observations from a summary. Capture committed native calls with security_capture_analysis. When authorized and within importRoots, archive the recipe and run files with security_command action import-source; otherwise retain local files and state that they are not archived. Checkpoints reference saved paths and evidence IDs rather than replacing the files. Existing task scope and execution permissions still apply.`,
       'skills': [
         'security-web',
+        'security-kali',
       ],
     },
     {
@@ -703,6 +911,27 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
         'nmap',
         'nuclei',
         'metasploit',
+      ],
+    },
+    {
+      'id': 'pentest',
+      'label': 'Penetration testing / 渗透测试',
+      'toolIds': [
+        'nmap',
+        'whois',
+        'whatweb',
+        'ffuf',
+        'gobuster',
+        'feroxbuster',
+        'nikto',
+        'wpscan',
+        'sqlmap',
+        'nuclei',
+        'metasploit',
+        'curl',
+        'john',
+        'hashcat',
+        'socat',
       ],
     },
     {

@@ -26,6 +26,8 @@ The [security enhancement and interaction simplification plan](security-harness-
 
 The [Provider design](../../packages/experimental/security-analysis/README.md#provider-design) owns current behavior. This delivery order retains Shell and custom scripts throughout; external Kali remains operator-managed. Configuration and asset preparation must not consume repeated analysis rounds.
 
+The Kali skill layer is delivered: the `pentest` module enables the `security-kali` method with adapted scenario playbooks, tool-selection guides (upstream kali-pentest, see the package [adaptation review](../../packages/experimental/security-analysis/resources/skills/sources.md)) and pentest tool-catalog entries. The adapter batches below remain pending and unchanged.
+
 | Batch | Scope | Acceptance |
 |---|---|---|
 | 0 | Preserve native discovery for unsupported environments and operations | Covered by external-container and discovery regression tests. |

@@ -1230,7 +1230,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:89`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:90`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
@@ -1293,6 +1293,8 @@ export interface WorkbenchConfig {
   reportMaxLessons: number
   /** Maximum approved operation duration in milliseconds. */
   maxDurationMs: number
+  /** Deadline for one container target-reachability probe command in milliseconds. */
+  targetProbeTimeoutMs: number
   /** Maximum lifetime of a delegated analysis job in milliseconds. */
   delegationTimeoutMs: number
   /** Maximum concurrent fresh child Sessions across this security Host. */
@@ -1357,6 +1359,8 @@ export interface TaskIntakeConfig {
   workspaces: TaskIntakeWorkspace[]
   /** Environments for workspaces without an exact mapping; omission disables their intake. */
   defaultEnvironmentIds?: string[]
+  /** Operator-declared HTTP environment for literal-target registration when several are eligible. */
+  httpEnvironmentId?: string
   /** Maximum validation attempts assigned to a newly created task. */
   maxAttempts: number
 }
@@ -1384,6 +1388,11 @@ export interface SecurityEnvironment {
   } | undefined
   /** Installed tool declarations, independent of current runtime readiness. */
   tools: ToolInstallation[]
+  /** Local-only extra executable search roots for undeclared catalog tools. */
+  discovery?: {
+    /** Absolute Host directories searched when a catalog tool has no declaration. */
+    searchDirs: string[]
+  } | undefined
   /** Runtime-only immutable image identity measured by the environment manager. */
   resolvedImageId?: string
   /** Runtime-only container identity owned by the environment manager. */

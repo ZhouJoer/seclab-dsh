@@ -2,7 +2,7 @@
 import { z } from 'zod'
 
 /** Stable module identities; common investigation capabilities are always present. */
-export const analysisModuleIdSchema = z.enum(['reverse.android', 'reverse.native', 'web', 'iot'])
+export const analysisModuleIdSchema = z.enum(['reverse.android', 'reverse.native', 'web', 'iot', 'pentest'])
 /** A supported analysis module. */
 export type AnalysisModuleId = z.infer<typeof analysisModuleIdSchema>
 /** Persisted selection; automatic decisions require an explanation, not additional authority. */
@@ -31,10 +31,12 @@ export const analysisModules: readonly AnalysisModule[] = [
     tools: ['radare2', 'r2ghidra', 'ghidra', 'readelf', 'objdump', 'nm', 'analysis'],
     scripts: ['analysis.native-triage', 'analysis.native-xref-paths', 'dynamic.module-watch', 'dynamic.function-trace'] },
   { id: 'web', description: 'Web source, HTTP APIs and authorized application behavior.',
-    skills: ['security-web'], tools: [], scripts: [] },
+    skills: ['security-web', 'security-kali'], tools: [], scripts: [] },
   { id: 'iot', description: 'Offline captures, MQTT, wireless protocols and device logs.',
     skills: ['security-iot-offline', 'security-packet-analysis', 'security-mqtt'], tools: ['tshark', 'packet-capture'],
     scripts: ['tshark.wireless', 'tshark.capture-summary', 'tshark.extract-packets', 'mqtt.sessions', 'mqtt.topics'] },
+  { id: 'pentest', description: 'Authorized penetration testing through operator-managed Kali environments: network, Web/API, password and wireless scenarios.',
+    skills: ['security-kali', 'security-web'], tools: [], scripts: [] },
 ]
 
 /** Resolve absent historical selections without rewriting their records.

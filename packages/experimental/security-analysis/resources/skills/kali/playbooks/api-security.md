@@ -1,0 +1,33 @@
+# API security playbook
+
+Use for authorized GraphQL, OpenAPI/REST, gRPC, WebSocket or API-heavy web application testing.
+
+## Inputs
+
+API base URLs, schemas or captured traffic; authentication method, test accounts, token refresh behavior and tenant/role boundaries; rate limits, unsafe methods, destructive endpoints and fuzzing approval.
+
+## Workflow
+
+1. **Inventory and classification.** Identify the API style (OpenAPI/REST, GraphQL, gRPC, WebSocket, SOAP, mixed) and collect schemas, endpoints, auth headers, roles and representative requests. API-heavy apps run this playbook alongside web-application.
+2. **Passive mapping.** Even with documentation, capture at least one authenticated session and cross-check it against the docs; documentation describes the spec, observed traffic is the implementation, and discrepancies are findings. Recover OpenAPI definitions from authorized traffic with mitmproxy2swagger-class conversion when no spec is published.
+3. **Protocol-specific discovery.** GraphQL: fingerprint the engine (graphw00f-class); attempt schema recovery (clairvoyance-class) only when approved. REST: route discovery with API-aware wordlists (kiterunner-class) plus schema-driven testing (schemathesis-class). gRPC: service listing via reflection or supplied proto files. WebSocket: message-level interaction after capturing valid frames. Signing blocks on direct requests are deferred behind the phase 5 proxy, with the deferral recorded in the checkpoint.
+4. **Documentation-driven coverage.** Where specs exist, parse a complete endpoint list with methods, parameters and expected types; measure coverage against it rather than wordlist discovery alone, and cross-reference discovered routes against the docs to expose undocumented shadow endpoints.
+5. **Client-side signing and request protection.** When direct requests return signature or device-verification errors: first test whether validation can be bypassed with malformed, empty or constant values — a confirmed bypass is itself a finding and unblocks automation with static headers. Otherwise locate the signing implementation in the frontend bundle (algorithm, headers, keys, constants — analyzing frontend JavaScript or a mobile client), and choose the lightest adaptation that covers all user-controllable parameters: inline evaluation flags for simple schemes, a local wrapping proxy, or a proxy addon script for bidirectional encryption. Verify one adapted request answers non-401 before continuing; encrypted request/response layers get encrypt/decrypt functions confirmed against expected JSON. Record the decision and its cost-benefit in the checkpoint. Then run the mandatory automated baseline: nuclei, path discovery, sqlmap on parameterized endpoints (skip time-based techniques when per-request timestamps destabilize baselines), XSS on reflected parameters — all through the proxy or with injected headers for proxy-incompatible tools. Unauthenticated runs against a signed API do not count as coverage.
+6. **Auth and authorization checks.** Missing authentication, token reuse, role and tenant boundaries, object-level authorization and method restrictions, with request/response evidence for every role. JWT: alg:none, weak secrets, kid injection (jwt_tool-class playbook scan then all tests; record non-JWT token formats as not applicable with the reason). BOLA/IDOR with cross-account object IDs; function-level auth by calling admin endpoints with low-privilege tokens; mass assignment through read-only fields; token leakage in errors, debug headers and logs. Build and complete the endpoint-by-role matrix — every cell allowed, denied or error; untested cells are coverage gaps, and one blocked admin endpoint does not generalize to all. The same API may accept different auth delivery per platform (cookie, header, API key, query parameter); on a 401, test the alternative deliveries before concluding. Credentials surfaced anywhere are tested against all authentication surfaces immediately.
+7. **Test data preparation.** Where test accounts lack business objects, create the minimum set (organizations, groups, posts, relationships) with each test role to establish cross-role scenarios; record every created resource ID and creation endpoint for cleanup and IDOR testing.
+8. **Active testing.** Pre-check: baseline gate complete and the proxy verified non-401. 8.1 Injection across every injectable parameter of each endpoint (path, query, header, body) — SQL/NoSQL/command/LDAP injection with saved representative requests, SSRF through URL and file parameters with internal and metadata addresses, boundary and encoding-bypass fuzzing; escalate sqlmap level/risk before accepting a negative. 8.2 Rate limits on sensitive endpoints, pagination abuse, race conditions on state-changing operations, IDOR across enumerated identifiers. 8.3 GraphQL-specific: batch query abuse against rate limiting, alias-based resource exhaustion, depth attacks, field-suggestion enumeration, directive injection. 8.4 Error handling: malformed inputs for stack traces, debug endpoints, version leakage, and differing error behavior between authenticated and unauthenticated states. 8.5 CORS: crafted origins, null origin, credentials combination, and preflight/actual-request discrepancies including cached preflight permissions. Validate all findings manually before reporting; scanners surface schema mismatches, not exploitable issues.
+9. **Versioning and deprecated endpoints.** Test older API versions for missing controls, hunt shadow endpoints with historical wordlists, and compare auth, validation and rate limiting across versions; document deprecated-but-reachable endpoints.
+
+Tool selection: [../tools/web.md](../tools/web.md).
+
+## Cross-references
+
+web-application, internal-network, external-attack-surface, password-audit (JWT secrets and captured credentials), source-code-audit, post-exploitation (a confirmed API flaw leading to execution), reporting-workflow. Frontend bundle or binary analysis for signing logic routes to security-native/security-android after their modules are enabled.
+
+## Expected evidence
+
+API inventory by protocol; schemas and representative requests; the endpoint-by-role matrix; fuzzing and route-discovery results with rate-limit notes; created test resources with a cleanup plan.
+
+## Stop when
+
+Documented endpoints with user-controllable input are covered (or listed as skipped with justification); each accessible endpoint is tested per authentication method, with foreign-object IDs, per injectable field and with boundary values; the authorization matrix has no untested cells; cross-cutting rate-limit and version-comparison checks are done; all automated tools ran through the adaptation layer.

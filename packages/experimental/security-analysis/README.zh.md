@@ -21,7 +21,7 @@ kind: "package-reference"
 
 经认证的操作者可导入粘贴的 UTF-8 文字、上传的文件或文件夹，以及明确选择的主机文件或目录。主机路径选择仅授权本次导入，模型工具仍受已配置的导入根目录限制。所有材料保存为不可变工件，并遵守配置的字节数和条目数上限。操作者导入 Remote 也接受不含材料的初始任务和明确选择的已配置环境 ID；创建任务不会保存工作区默认配置。操作者二次确认永久删除后，提交已删除任务的 ID 和所显示的修订号。它从历史提交中清除任务记录，删除调用记录和非共享的存储工件，并重建搜索；中断的清理在重新打开时继续。共享工件引用、原始素材、工作区文件和独立聊天保留。所属靶场必须先停止或重置，再永久删除。摘要和报告使用简体中文，标识和路径保持原样。项目移除可恢复：移除会停止执行、停用项目关联并从活动列表隐藏；恢复后仍保持停止状态，且不会自动重新关联会话。 仅供操作员使用的 projectSessions 返回有效协调会话引用，客户端按可访问且未归档的 Session 目录筛选。projectArtifact 先根据所选项目校验归属，再执行现有摘要校验和输出限长读取。这些读取不打开 Session，也不修改绑定或持久记录。
 
-任务通过可选 `moduleSelection` 保存 `mode`、`modules` 和 `reason`。缺省为自动模式，先提供公共调查能力。协调者通过带修订检查的 `modules` 动作选择 `reverse.android`、`reverse.native`、`web` 或 `iot`；手动选择只由操作者修改。活动专用技能按 Agent 注册，正文按需读取。模块选择同时约束专用工具和通用 provider 观察，不授予角色或执行审批。未知文件先使用公共身份检查，再选择模块。 使用 `security_scope` 的 `asset` 类型读取已导入材料，使用 `engagement` 读取任务；未知类型会报错，不会返回空页。
+任务通过可选 `moduleSelection` 保存 `mode`、`modules` 和 `reason`。缺省为自动模式，先提供公共调查能力。协调者通过带修订检查的 `modules` 动作选择 `reverse.android`、`reverse.native`、`web`、`iot` 或 `pentest`；手动选择只由操作者修改。`web` 与 `pentest` 都会启用 `security-kali` 渗透测试方法；逆向模块不新增任何 Kali 关联。活动专用技能按 Agent 注册，正文按需读取。模块选择同时约束专用工具和通用 provider 观察，不授予角色或执行审批。未知文件先使用公共身份检查，再选择模块。 使用 `security_scope` 的 `asset` 类型读取已导入材料，使用 `engagement` 读取任务；未知类型会报错，不会返回空页。
 
 `security_apk inventory` 返回有界 APK 成员清单；`security_jadx manifest` 解析 JADX 解码后的普通 XML。`security_analysis` 对同一资产已保存的适配器证据执行固定的 Android 指纹、API、Kotlin 名称及原生分诊分析，接收证据 ID，不接收可执行文件路径。健康适配器直接调用；缺少依赖时在原环境中配置后回到适配器。未覆盖操作可按工具偏好使用既有脚本或 Shell。Kotlin 候选不会重命名样本，部分反编译保留失败和不完整状态。上游固定版本及排除项见[适配审查](resources/skills/sources.md)。
 
@@ -42,9 +42,9 @@ kind: "package-reference"
 
 在专用 `dsh` profile 中使用 [security-profile](../security-profile/README.zh.md)，添加 [security-web-profile](../security-web-profile/README.zh.md) 即可打开会话内工作台。默认通用 profile 不加载这些组合。
 
-分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好选择经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse` 与 `iot` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
+分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好选择经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse`、`iot` 与 `pentest` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
 
-通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX/JAR 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。技能可通过既有 Shell 和权限流程按需补齐依赖；加载技能本身不会安装工具或授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
+通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline`、`security-kali` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX/JAR 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。`security-kali` 面向经操作者管理的 Kali 环境编排授权渗透测试：[入口正文](resources/skills/kali.md) 从 [resources/skills/kali/](resources/skills/kali/) 选择场景 playbook 与工具选型指南，坚持范围优先的风险门，并把二进制问题路由回逆向模块。技能可通过既有 Shell 和权限流程按需补齐依赖；加载技能本身不会安装工具或授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
 
 1. 在已配置工作区的 Web 对话中描述任务，或创建项目并指定目标和已配置环境。从部署的 `importRoots` 导入 PE、ELF、APK、DEX、JAR 文件，或不可变源码文件或目录。
 2. 根据每项资产的研究问题选择下一步分析和 provider。APK 导入会分别测量 DEX 和 native 库，并保存父子关系。
@@ -54,7 +54,7 @@ kind: "package-reference"
 
 内置[分析脚本库](src/analysis-scripts.ts) 将可复用文件保存在 `resources/analysis-scripts/{tshark,mqtt,dynamic,reverse}/`。编写新分析代码前，加载 `security-packet-analysis`、`security-mqtt` 或 `security-dynamic` 获取分析思路、绝对资源目录、参数和示例。离线 Python 脚本使用明确选择的 TShark 可执行文件读取 pcap/pcapng，保留 MQTT 消息边界和重组信息，并返回有界 JSON，包含输入与脚本摘要、工具版本、参数和不完整原因。时间、帧数、解码字节和结果字节上限均为必填参数。输出路径必须是尚不存在的绝对路径，结果保存在任务的 `outputs/` 中。动态 `prepare.py` 在任务的 `scripts/` 中生成参数化 JavaScript，交给现有不可变 Frida 验证计划；准备工具不会附加进程。模板观察原生模块或导出函数，达到事件上限时证据标记为不完整。内置资源保持不变。脚本运行在本机 Host；不提供在线 MQTT、Android Java 模板或自定义目录导入。`scriptCatalog` 支持无需选择项目或环境的只读浏览。
 
-自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。若已认证请求仅含一个 IP 字面量 HTTP(S) 地址且只选择一个本机或 Docker HTTP 环境，入口会按该字面地址登记 URL 的 origin 与路径；域名、多目标和多个可用环境仍需操作者显式登记。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件或批准执行。
+自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。若已认证请求仅含一个 IP 字面量 HTTP(S) 地址且只选择一个本机或 Docker HTTP 环境，入口会按该字面地址登记 URL 的 origin 与路径；域名、多目标和多个可用环境仍需操作者显式登记，但 `taskIntake.httpEnvironmentId` 可声明多个可用 HTTP 环境中由哪个环境登记字面靶机；声明的环境未被选中时仍按单环境规则处理。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件或批准执行。
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
@@ -77,7 +77,7 @@ toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分�
 
 包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./ghidra`、`./frida`、`./android`、`./mining` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
 
-Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测、原生 Shell 调用和 `external-web` 请求；需要传输 Host 制品的 provider 会拒绝它们。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
+Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测、原生 Shell 调用和 `external-web` 请求；需要传输 Host 制品的 provider 会拒绝它们。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。项目注册了回环 HTTP 靶机时，就绪的 docker 清单附带 `targetChecks`：每个靶机一条实测观察，当某个运行时推导的候选地址（原 origin、host 网关名、容器实测默认网关，均从容器内探测）有响应时记录可用的 `reachableAs` origin，否则如实标注 `unreachable` 或 `unknown`，绝不猜测地址。local 环境可声明 `discovery: { searchDirs }` 指定绝对宿主目录，清单检测时未显式声明的目录工具也会在这些目录中查找。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
 
 [GhidraMCP 1.4](https://github.com/LaurieWired/GhidraMCP/tree/1.4) 需要应用[受管理补丁](resources/ghidra/patch_upstream.py)。对固定上游 Java 文件应用补丁，使用对应 Ghidra 发行版构建扩展，然后在 GUI 打开导入的程序。启动前设置 `DSH_GHIDRA_TOKEN`、`DSH_GHIDRA_SHA256` 、`DSH_GHIDRA_PROGRAM` 和 `DSH_GHIDRA_PORT`；端口 0 选择空闲端口。可选 `DSH_GHIDRA_READY` 指定保存实际端口的新文件。在 Ghidra provider 的 `programs` 中配置相同 token、实测哈希和 domain-file 路径。补丁绑定稳定程序，只监听本地地址，认证每个请求，并拒绝已关闭或身份不符的程序。切换 GUI 当前程序不会改变查询目标。查询、改名、注释及原型操作走专用适配器；数据库写入需要计划。
 

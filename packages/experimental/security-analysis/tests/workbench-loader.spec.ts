@@ -1642,7 +1642,7 @@ else if (args.includes('--output')) {
     const catalog = events.find(event => event.type === 'user/message' && event.data.source.kind === 'skill-catalog')
     if (catalog?.type !== 'user/message' || catalog.data.source.kind !== 'skill-catalog') throw new Error('Missing skill catalog')
     expect(catalog.data.source.entries.map(entry => entry.name).sort()).toEqual([
-      'security-investigation', 'security-iot-offline', 'security-mqtt', 'security-packet-analysis', 'security-web',
+      'security-investigation', 'security-iot-offline', 'security-kali', 'security-mqtt', 'security-packet-analysis', 'security-web',
     ])
     const loaded = events.find(event => event.type === 'tool/result')
     if (loaded?.type !== 'tool/result') throw new Error('Missing loaded skill result')
