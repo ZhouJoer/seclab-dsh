@@ -3,11 +3,16 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SidebarRightTabInfo, PaneId, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as common } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { engagementSchema, recordSchema } from '@deepseek-ai/dsh-experimental-security-analysis/src/workbench/model.ts'
 import type { TaskContext, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { Dashboard } from '../src/client/Dashboard.tsx'
+import { SidebarWorkbench } from '../src/client/SidebarWorkbench.tsx'
 import { deviceActions } from './device-fixture.client.ts'
 import { workbenchConfiguration } from './configuration-fixture.client.ts'
 import { en } from '../src/client/locales.ts'
@@ -27,8 +32,16 @@ const evidence = recordSchema.parse({ kind: 'evidence', value: { id: 'e1', engag
   incomplete: false, method: 'static', createdAt: 1 } })
 function harness(extra: object = {}) {
   const release = vi.fn()
+  const unavailable = () => { throw new Error('This endpoint is outside the dashboard fixture') }
   const api = {
     ...deviceActions,
+    scriptCatalog: unavailable, toolboxDirectory: unavailable, toolboxInventory: unavailable,
+    toolboxConfiguration: unavailable, configureTool: unavailable, toolboxFiles: unavailable,
+    toolCatalog: unavailable, previewToolPack: unavailable, importToolPack: unavailable, exportToolPack: unavailable,
+    analyzeImprovements: unavailable, updateImprovement: unavailable, exportImprovement: unavailable,
+    followImprovements: unavailable, httpHistory: unavailable, httpExchange: unavailable,
+    httpIdentities: unavailable, configureHttpIdentity: unavailable, removeHttpIdentity: unavailable,
+    command: unavailable, execute: unavailable,
     useResource: () => ({ status: 'none', value: undefined, failure: undefined }),
     beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(), refreshWorkspaceMaterials: vi.fn(),
     configuration: vi.fn(async () => workbenchConfiguration()),
@@ -51,22 +64,56 @@ function harness(extra: object = {}) {
     skillUsage: async () => ({ items: [], unavailableSessions: [], unattributedReads: 0 }),
     activityDetails: vi.fn(async () => ({ items: [], next: null, through: 0 })), openChild: vi.fn(),
     projectArtifact: vi.fn(async () => JSON.stringify({ text: 'Owned evidence', size: 14, truncated: false })),
-    report: vi.fn(async () => '# Report'), findSession: vi.fn(async () => 's1'),
-    createSession: vi.fn(async () => 'new'), associateSession: vi.fn(async () => {}), resumeProject: vi.fn(async () => {}),
-    stopProject: vi.fn(async () => {}), createWorkspace: vi.fn(async () => 'workspace'),
-    restartTask: vi.fn(async () => ({ sessionId: 'fresh', projectId: 'Beta', objective: 'Review owned code' })),
+    report: vi.fn(async () => '# Report'), findSession: vi.fn(async () => SessionId('s1')),
+    createSession: vi.fn(async () => SessionId('new')), associateSession: vi.fn(async () => {}), resumeProject: vi.fn(async () => {}),
+    stopProject: vi.fn(async () => {}), createWorkspace: vi.fn(async () => 'workspace' as WorkspaceId),
+    restartTask: vi.fn(async () => ({ sessionId: SessionId('fresh'), projectId: 'Beta', objective: 'Review owned code' })),
     openRestartDraft: vi.fn(async () => {}),
     notifyImprovement: vi.fn(),
-    retainSession: vi.fn((id: string) => ({ sessionId: id, ready: Promise.resolve(), release })),
+    retainSession: vi.fn((id: SessionId) => {
+      // The fixture SessionProvider renders children without reading the binding's session or scope.
+      const binding = { sessionId: id } as SessionBinding
+      return { sessionId: id, binding, ready: Promise.resolve(binding), release, [Symbol.dispose]: release }
+    }),
     subscribeReset: () => () => {}, manageProject: vi.fn(async (_projectId: string, _input: string) => '[]'), laboratory: vi.fn(),
     t: makeTranslate(en, common), useWorkspaces: (select: (state: object) => unknown) => select({ items: [{ workspaceId: 'workspace', path: '/owned', title: 'Owned' }] }),
     SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-    renderSlot: () => <textarea aria-label="Assistant draft" defaultValue="" />,
+    renderSettings: () => <textarea aria-label="Assistant draft" defaultValue="" />,
     ...extra,
   }
   // The fixture supplies only framework seats consumed by this component.
   return { api, release, props: api as Parameters<typeof Dashboard>[0] }
 }
+it('browses tasks beside a mounted chat and follows explicit sidebar navigation', async () => {
+  const { api, release, props: dashboard } = harness()
+  let navigation = { revision: 1, params: { projectId: 'Alpha' } }
+  const props = { ...dashboard, sessionId: SessionId('s1'), renderSlot: vi.fn(() => <div />),
+    useTabInfo: (): SidebarRightTabInfo => ({ sidebar: { expanded: true, fullscreen: false }, panel: { id: 'pane' as PaneId },
+      tab: { id: 'workbench' as TabId, kind: 'security-workbench', contentId: 'sidebar://security-workbench',
+        title: 'Security workspace', visible: true, navigation: { ...navigation, address: 'sidebar://security-workbench' },
+        signal: new AbortController().signal,
+        actions: { bindCommands: () => () => {}, openResource: vi.fn(), openTab: vi.fn(), close: vi.fn() } },
+    }),
+  } as Parameters<typeof SidebarWorkbench>[0]
+  const content = <><textarea aria-label="Chat draft" defaultValue="Keep this draft" /><SidebarWorkbench {...props} /></>
+  const mounted = render(content)
+  const draft = screen.getByRole('textbox', { name: 'Chat draft' })
+  await screen.findByRole('heading', { name: 'Alpha' })
+  fireEvent.click(screen.getByRole('button', { name: en.dashboardBack }))
+  fireEvent.click(await screen.findByRole('button', { name: /Beta/ }))
+  await screen.findByRole('heading', { name: 'Beta' })
+  expect(api.selectDestination).not.toHaveBeenCalled()
+  expect(api.openChat).not.toHaveBeenCalled()
+  navigation = { revision: 2, params: { projectId: 'Alpha' } }
+  mounted.rerender(<><textarea aria-label="Chat draft" defaultValue="Keep this draft" /><SidebarWorkbench {...props} /></>)
+  await screen.findByRole('heading', { name: 'Alpha' })
+  expect(screen.getByRole('textbox', { name: 'Chat draft' })).toBe(draft)
+  expect((draft as HTMLTextAreaElement).value).toBe('Keep this draft')
+  expect(api.createSession).not.toHaveBeenCalled()
+  expect(api.associateSession).not.toHaveBeenCalled()
+  mounted.unmount()
+  expect(release).toHaveBeenCalledTimes(api.retainSession.mock.calls.length)
+})
 it('confirms a restart and opens its fresh draft without sending or creating another Session', async () => {
   const { api, props } = harness()
   render(<Dashboard {...props} />)
@@ -212,17 +259,17 @@ it('opens the native chat without embedding a second composer', async () => {
   expect(api.createSession).not.toHaveBeenCalled()
 })
 it('opens plan approvals directly on the existing coordinator Session', async () => {
-  const renderSlot = vi.fn(() => <div />)
+  const renderSettings = vi.fn(() => <div />)
   const plan = recordSchema.parse({ kind: 'plan', value: { id: 'plan', engagementId: 'Alpha', checkId: 'check',
     hypothesis: 'Inspect modules', expectedObservation: 'Module list', impact: 'Observe process', cleanup: 'Detach', durationMs: 100,
     operation: { provider: 'frida', operation: 'modules', environmentId: 'local', assetId: 'sample', parameters: {}, impact: 'observe' },
     hash: 'a'.repeat(64), environmentHash: 'b'.repeat(64), status: 'draft' } })
-  const { api, props } = harness({ renderSlot, project: async () => ({ revision: 2, records: [alpha, plan] }) })
+  const { api, props } = harness({ renderSettings, project: async () => ({ revision: 2, records: [alpha, plan] }) })
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
   await screen.findByText(en.pendingPlanHint, { exact: false })
   fireEvent.click(screen.getByRole('button', { name: en.planApprovals }))
-  await waitFor(() => { expect(renderSlot).toHaveBeenCalledWith('security.workbench.session', expect.objectContaining({
+  await waitFor(() => { expect(renderSettings).toHaveBeenCalledWith(expect.objectContaining({
     advancedOpen: true, reviewOpen: true,
   })) })
   expect(api.createSession).not.toHaveBeenCalled()

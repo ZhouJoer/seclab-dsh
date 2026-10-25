@@ -29,6 +29,7 @@ export function AnalysisHome(props: DashboardActions & AnalysisCreationActions &
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   if (destination.kind !== 'create') return <Dashboard {...props}
+    renderSettings={input => props.renderSlot('security.workbench.session', input)}
     destination={destination.kind === 'project' ? destination : undefined} />
   const workspaceId = destination.workspaceId ?? selected ?? workspaces[0]?.workspaceId
   return <section className={css.root}>

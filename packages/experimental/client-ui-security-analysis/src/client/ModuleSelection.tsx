@@ -68,7 +68,7 @@ export function ProjectUnseal({ value, save, disabled, t }: PropsLocale<typeof N
   disabled?: boolean
 }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  return <details className={`${css.card}${value === true ? ' ' + css.unsealedCard : ''}`}><summary>{t('unsealTitle')}</summary>
+  return <details className={`${css.card} ${value === true ? css.unsealedCard : ''}`}><summary>{t('unsealTitle')}</summary>
     <p className={css.summaryHint}>{t('unsealHelp')}</p>
     <label className={css.resourceOption}><input type="checkbox" checked={value === true} disabled={disabled || busy}
       onChange={(event) => { setBusy(true); setError(''); void save(event.target.checked).catch((error: unknown) => {

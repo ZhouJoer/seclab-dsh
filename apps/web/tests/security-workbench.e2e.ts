@@ -14,7 +14,7 @@ import * as yaml from 'js-yaml'
 import { interpolate } from '@deepseek-ai/cordis-plugin-loader'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import {
-  launchWebScaffold, watchConsole, type WebScaffold,
+  launchWebScaffold, watchConsole, captureStableAria, compareOrRefreshGolden, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
@@ -87,9 +87,26 @@ describe('web e2e: Security workbench', () => {
     expect(scaffold.ctx.agents.list().every(agent => agent.status !== 'running')).toBe(true)
     await page.reload({ waitUntil: 'load' })
     await views.waitFor()
+    const composer = page.locator('[contenteditable="true"]').first()
+    await composer.fill('Keep this investigation draft')
+    const composerNode = await composer.elementHandle()
     await views.getByRole('button', { name: 'Security workspace', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
     await dashboard.getByText('Workspace synchronized', { exact: true }).waitFor()
+    expect(await composer.isVisible()).toBe(true)
+    expect(await composer.innerText()).toBe('Keep this investigation draft')
+    expect(await composer.evaluate((node, original) => node === original, composerNode)).toBe(true)
+    const chatBounds = await composer.boundingBox()
+    const workbenchBounds = await dashboard.boundingBox()
+    expect(chatBounds).not.toBeNull()
+    expect(workbenchBounds).not.toBeNull()
+    expect(chatBounds!.x + chatBounds!.width).toBeLessThanOrEqual(workbenchBounds!.x)
+    await compareOrRefreshGolden(fileURLToPath(new URL('./expected/security-workbench/chat-sidebar.expected.md', import.meta.url)),
+      `${await views.ariaSnapshot()}\n\n${await captureStableAria(page, 'section[aria-label="Security analysis"]', scaffold.workspaceCwd, {
+        replacements: [[JSON.stringify(join(scaffold.workspaceCwd, 'workspace')).slice(1, -1), '{{workspace}}']],
+      })}`,
+      webSnapshotMode())
+    await page.screenshot({ path: '.artifacts/security-workbench-chat.png' })
     await dashboard.getByRole('button', { name: 'Materials', exact: true }).click()
     await dashboard.getByRole('heading', { name: 'workspace', exact: true }).waitFor()
     expect(await dashboard.getByRole('button', { name: 'Rename analysis task', exact: true }).count()).toBe(0)
@@ -524,6 +541,7 @@ describe('web e2e: Security workbench', () => {
         script: 'print("Native validation complete")\n',
         hypothesis: 'Run owned native fixture', expectedObservation: 'Native validation complete', impact: 'Print output', cleanup: 'No files created', durationMs: 30000 } }, true)
     await dashboard.getByText('Plans await approval.', { exact: false }).waitFor()
+    await assistant.getByRole('button', { name: 'Close', exact: true }).click()
     await dashboard.getByRole('button', { name: 'Plan approvals', exact: true }).first().click()
     const approval = assistant.getByRole('region', { name: 'Advanced details', exact: true })
     await approval.getByText('Run owned native fixture', { exact: true }).waitFor()

@@ -86,7 +86,7 @@ export function ConversationProgressEntry(props: EntryProps) {
       {props.t('activityTools')} <span className={css.countBadge}>{error ? '—' : count ?? '—'}</span>
       {(running || childRunning) && <span className={css.runningDot} role="img" aria-label={props.t('running')} />}
     </button>
-    <button onClick={() => { props.openDashboard(project, props.sessionId) }}>{props.t('dashboardEntry')} ↗</button>
+    <button onClick={() => { props.openDashboard(project, props.sessionId) }}>{props.t('dashboardEntry')}</button>
   </div>
 }
 

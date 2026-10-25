@@ -29,15 +29,25 @@ import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import { NS, zh, en, type SecurityKey } from './locales.ts'
+import { SidebarWorkbench, SidebarWorkbenchTitle } from './SidebarWorkbench.tsx'
+import { IconShieldOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Retained coordinator Session hosted within the security task detail. */
     'security.workbench.session': { kind: 'single'; scope: 'session'; owner: DashboardSessionInput }
+    /** Retained settings scoped to the workbench's sidebar occurrence. */
+    'security.workbench.sidebar.session': { kind: 'single'; scope: 'session'; owner: DashboardSessionInput }
   }
   interface LocaleNamespaceMap {
     /** Security workbench operator-facing copy. */
     'security-workbench': SecurityKey
+  }
+}
+declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
+  interface SidebarRightTabParamsMap {
+    /** Task to display beside the current conversation; omission opens the task list. */
+    'security-workbench': { projectId?: string }
   }
 }
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
@@ -119,12 +129,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       scoped.layout.selectPanel(panel)
     }
     const navigation = () => ({ hooks: { directory }, openWorkbench })
+    const openSidebarWorkbench = (projectId?: string) => {
+      scoped.sidebarRight.openTab('security-workbench', { params: projectId ? { projectId } : {} })
+    }
     scoped.slots.inject('sidebar.session.row.badge', () => scoped.slots.register({ name: 'sidebar.session.row.badge',
       id: 'security-analysis', locale: NS, inject: navigation }, SecuritySessionBadge))
     scoped.slots.inject('sidebar.workspaces.session.menu.item', () => scoped.slots.register({ name: 'sidebar.workspaces.session.menu.item',
       id: 'security-analysis', order: 210, locale: NS, inject: navigation }, SecuritySessionMenu))
     scoped.slots.inject('conversation.session.header.navigation', () => scoped.slots.register({ name: 'conversation.session.header.navigation',
-      id: 'security-analysis', locale: NS, inject: navigation }, SecurityConversationNavigation))
+      id: 'security-analysis', locale: NS, inject: () => ({ hooks: { directory }, openWorkbench: openSidebarWorkbench }) }, SecurityConversationNavigation))
     scoped.slots.inject('sidebar.new.item', () => scoped.slots.register({ name: 'sidebar.new.item',
       id: 'security-analysis', locale: NS, inject: () => ({ beginAnalysis }) }, NewAnalysisMenu))
     scoped.slots.inject('sidebar.panellist', () => scoped.slots.register({ name: 'sidebar.panellist', id: panel, order: 30, label: () => scoped.locale.bind(NS)('title'), locale: NS }, ProjectIcon))
@@ -240,6 +253,22 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.slots.inject('security.workbench.session', () => scoped.slots.register({
       name: 'security.workbench.session', locale: NS, inject: () => actions,
     }, DashboardSession))
+    const workbenchId = '@deepseek-ai/dsh-experimental-client-ui-security-analysis/workbench'
+    scoped.effect(() => scoped.sidebarRightTabs.register({ id: workbenchId, kind: 'security-workbench', priority: 'builtin',
+      keepMounted: true, title: () => scoped.locale.bind(NS)('dashboardEntry'),
+      guide: [{ id: 'security-workbench', order: 31, title: () => scoped.locale.bind(NS)('dashboardEntry'), icon: IconShieldOutlineRegular }],
+    }))
+    scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
+      name: 'sidebar.right.pane.tab', key: workbenchId, locale: NS,
+      children: { 'security.workbench.sidebar.session': { kind: 'single', scope: 'session' } },
+      inject: () => dashboardActions,
+    }, SidebarWorkbench))
+    scoped.slots.inject('security.workbench.sidebar.session', () => scoped.slots.register({
+      name: 'security.workbench.sidebar.session', locale: NS, inject: () => actions,
+    }, DashboardSession))
+    scoped.slots.inject('sidebar.right.pane.tab.title', () => scoped.slots.register({
+      name: 'sidebar.right.pane.tab.title', key: workbenchId, locale: NS,
+    }, SidebarWorkbenchTitle))
     const progressId = '@deepseek-ai/dsh-experimental-client-ui-security-analysis/progress'
     scoped.effect(() => scoped.sidebarRightTabs.register({ id: progressId, kind: 'security-progress', priority: 'builtin',
       title: () => scoped.locale.bind(NS)('activityEntry'),
@@ -250,7 +279,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       inject: (): ConversationProgressActions => {
         return { ...dashboardActions,
           followSessionView: (id, signal) => remote.followSessionView(id, signal),
-          openDashboard: (id, sessionId) => { openWorkbench(id ?? '', sessionId) },
+          openDashboard: openSidebarWorkbench,
         }
       },
     }, ConversationProgressTab))
@@ -262,7 +291,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       inject: (): ConversationProgressEntryActions => ({ followSessionView: (id, signal) => remote.followSessionView(id, signal),
         followActivity: (id, signal) => actions.followActivity(id, signal), subscribeReset: actions.subscribeReset,
         openProgress: () => { scoped.sidebarRight.openTab('security-progress') },
-        openDashboard: (id, sessionId) => { openWorkbench(id ?? '', sessionId) } }),
+        openDashboard: openSidebarWorkbench }),
     }, ConversationProgressLauncher))
   })
   try {

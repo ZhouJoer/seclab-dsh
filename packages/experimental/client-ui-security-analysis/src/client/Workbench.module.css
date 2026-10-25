@@ -25,6 +25,8 @@
   line-height: 1.5;
 }
 .panel {
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   position: fixed;
   inset: 5vh 4vw;
   z-index: 80;
@@ -100,13 +102,13 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.planReview { padding: 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; margin: 10px 0; overflow-wrap: anywhere; }
+.planReview { padding: 16px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; margin: 10px 0; overflow-wrap: anywhere; }
 .planReview h3 { margin: 0 0 12px; font-size: 16px; font-weight: 500; }
 .planFacts { margin: 16px 0; display: grid; gap: 8px 16px; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); }
 .planFacts dt { color: var(--dsw-alias-label-secondary); }
 .planFacts dd { margin: 0; min-width: 0; }
 .planFacts dd p { margin: 0; }
-.planNotice { padding: 12px; margin: 12px 0; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-module-platform); line-height: 1.7; }
+.planNotice { padding: 12px; margin: 12px 0; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-module-platform); line-height: 1.7; }
 .planNotice strong { font-weight: 500; }
 .planReview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font-size: 12px; }
 .planReview summary { cursor: pointer; color: var(--dsw-alias-label-secondary); margin: 12px 0; }
@@ -230,7 +232,7 @@
 .findingSummary { -webkit-line-clamp: 3; font-size: 14px; line-height: 1.6; margin-bottom: 0; }
 .eyebrow { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
 .taskActions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-.httpFields { min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; }
+.httpFields { min-width: 0; margin: 16px 0; padding: 16px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; }
 .httpFields .field { margin: 12px 0; }
 .httpFields input, .httpFields select, .httpFields textarea { min-width: 0; max-width: 100%; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
 .panel .primaryAction { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); border: 0; padding: 9px 16px; }
@@ -300,24 +302,24 @@
 
 
 .toolFields { border: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
-.toolFilePicker { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 12px; min-width: 0; }
+.toolFilePicker { border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 12px; min-width: 0; }
 .toolFilePicker code { overflow-wrap: anywhere; }
 .toolFileList { display: grid; gap: 4px; max-height: 300px; overflow: auto; }
 .toolFileList button { text-align: left; overflow-wrap: anywhere; padding: 7px 10px; }
 
 .taskSummary .taskActions .primaryAction { background: var(--dsw-alias-link); border-color: transparent; color: var(--dsw-alias-label-primary-inverted); }
 
-.miningCard { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 10px 12px; margin-top: 14px; }
+.miningCard { border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 10px 12px; margin-top: 14px; }
 .miningCard summary { cursor: pointer; font-weight: 600; }
 .miningCard ol { margin: 8px 0 0; padding-inline-start: 20px; display: grid; gap: 6px; }
 .miningCard code { overflow-wrap: anywhere; }
-.taskContextPanel { border: .5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; background: var(--dsw-alias-bg-layer-1); }
+.taskContextPanel { border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; background: var(--dsw-alias-bg-layer-1); }
 .taskContextPanel > summary { cursor: pointer; color: var(--dsw-alias-label-primary); font-weight: 500; padding: 4px 0; }
 .taskContextPanel > summary small { display: inline-block; margin-left: 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 400; }
 .taskContextPanel > summary:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
 .unsealed { box-shadow: inset 0 3px 0 var(--dsw-alias-state-error-primary); }
-.unsealedChip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-inverted); font-size: 12px; }
-.unsealedDot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-primary-inverted); flex: none; animation: unsealedPulse 1.6s ease-in-out infinite; }
+.unsealedChip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; corner-shape: round; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-inverted); font-size: 12px; }
+.unsealedDot { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-label-primary-inverted); flex: none; animation: unsealedPulse 1.6s ease-in-out infinite; }
 @keyframes unsealedPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .unsealedDot { animation: none; } }
 .unsealedCard { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-interactive-bg-hover-danger); }

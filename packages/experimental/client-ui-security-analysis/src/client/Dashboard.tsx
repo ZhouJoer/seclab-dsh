@@ -30,6 +30,8 @@ import { ReportExportButton } from './ReportExportButton.tsx'
 import { HttpWorkbench, type HttpActions } from './HttpWorkbench.tsx'
 import { HttpHistory } from './HttpHistory.tsx'
 import type { SecurityProjectSummary } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { DashboardSessionInput } from './DashboardSession.tsx'
+import type { ReactNode } from 'react'
 
 type Project = Extract<WorkbenchView['records'][number], { kind: 'engagement' }>['value']
 type Tab = 'graphTitle' | 'overview' | 'activityEntry' | 'assets' | 'findings' | 'evidence' | 'reports' | 'laboratories' | 'improvements' | 'httpTitle'
@@ -56,7 +58,10 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   Promise<{ sessionId: SessionId; projectId: string; objective: string }>
   openRestartDraft(sessionId: SessionId, objective: string): Promise<void>
 }
-type Props = DashboardActions & PropsLocale<typeof NS> & PropsRuntime<'main'> & PropsRenderSlots<'security.workbench.session'>
+type Props = DashboardActions & PropsLocale<typeof NS>
+  & Pick<PropsRuntime<'main'>, 'useWorkspaces' | 'useResource'>
+  & Pick<PropsRenderSlots<'security.workbench.session'>, 'SessionProvider'>
+  & { renderSettings(input: DashboardSessionInput): ReactNode }
 /** Render project facts and explicit analysis actions.
  * @param props - project reads, retained Session lifecycle and framework slots.
  * @returns responsive security dashboard. */
@@ -289,7 +294,7 @@ export function Dashboard(props: Props) {
     {!workspaces.length && <><p>{t('dashboardNoWorkspace')}</p><label>{t('dashboardWorkspacePath')}<input value={path} onChange={(event) => { setPath(event.target.value) }} /></label>
       <button disabled={busy || !path.trim()} onClick={() => void perform(async () => { setWorkspace(await props.createWorkspace(path.trim())) })}>{t('dashboardAddWorkspace')}</button></>}
   </div>
-  return <section ref={root} className={`${css.root}${project?.unsealed ? ' ' + css.unsealed : ''}`} aria-label={t('title')}>
+  return <section ref={root} className={`${css.root} ${project?.unsealed ? css.unsealed : ''}`} aria-label={t('title')}>
     <div className={css.main}>
       <header className={css.topbar}><h1>{t('dashboardTitle')}</h1>
         <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button></div>
@@ -495,6 +500,8 @@ export function Dashboard(props: Props) {
       <header><strong>{t(reviewOpen ? 'planApprovals' : 'analysisSettings')}</strong>
         <div className={css.actions}><button onClick={() => { setExpanded(value => !value) }}>{t(expanded ? 'restoreAssistant' : 'expandAssistant')}</button>
           <button onClick={() => { setAdvanced(false); void perform(refresh) }}>{t('close')}</button></div></header>
-      <props.SessionProvider session={reference}>{props.renderSlot('security.workbench.session', { advancedOpen: advanced, reviewOpen, focusCheckId, snapshot: view })}</props.SessionProvider></aside>}
+      <props.SessionProvider session={reference}>
+        {props.renderSettings({ advancedOpen: advanced, reviewOpen, focusCheckId, snapshot: view })}
+      </props.SessionProvider></aside>}
   </section>
 }

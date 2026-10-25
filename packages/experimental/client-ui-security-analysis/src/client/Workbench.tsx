@@ -255,7 +255,7 @@ export function Workbench(props: WorkbenchProps) {
         <button disabled={busy > 0} onClick={() => void perform(load)}>{t('refresh')}</button>
       </p> : <progress aria-label={t('dashboardLoading')} />)}
       {open && configuration && (
-        <section className={`${css.panel}${project?.kind === 'engagement' && project.value.unsealed ? ' ' + css.unsealed : ''}`} data-embedded={props.autoOpen || undefined} role={props.autoOpen ? 'region' : 'dialog'}
+        <section className={`${css.panel} ${project?.kind === 'engagement' && project.value.unsealed ? css.unsealed : ''}`} data-embedded={props.autoOpen || undefined} role={props.autoOpen ? 'region' : 'dialog'}
           aria-label={t(props.autoOpen ? 'advancedDetails' : 'title')}>
           <header className={css.header}>
             <strong title={project?.kind === 'engagement' ? project.value.title : undefined}>

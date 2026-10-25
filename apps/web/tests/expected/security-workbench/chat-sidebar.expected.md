@@ -1,0 +1,24 @@
+- navigation "Task views":
+  - text: New security analysis
+  - button "Chat"
+  - button "Security workspace"
+
+- region "Security analysis":
+  - heading "Security analysis" [level=1]
+  - button "Refresh"
+  - button "New analysis"
+  - button "← Back to tasks"
+  - text: Idle, can continue
+  - heading "New security analysis" [level=2]
+  - button "Chat"
+  - group: Task settings
+  - navigation "Task detail navigation":
+    - button "Overview" [pressed]
+    - button "Materials"
+    - button "Findings"
+    - button "Evidence"
+    - button "Reports"
+  - group: More features
+  - status "{{workspace}}": Workspace synchronized
+  - paragraph: Describe your task in chat. Workspace files are added to materials automatically.
+  - group: Manage task
