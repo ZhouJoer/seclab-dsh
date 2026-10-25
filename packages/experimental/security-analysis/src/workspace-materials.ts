@@ -26,6 +26,16 @@ export interface WorkspaceMaterialState {
   detail?: string
 }
 
+/**
+ * Watcher errors for an entry that is temporarily unavailable. A file locked by another Windows
+ * process suspends its change notification while reads still succeed, so a rescan re-verifies it;
+ * structural watcher failures such as exhausted watch capacity stay collection failures.
+ * @param error - watcher error payload.
+ * @returns whether the error is recoverable by rescanning.
+ */
+const transientWatchError = (error: unknown): boolean =>
+  error instanceof Error && 'code' in error && (error.code === 'EBUSY' || error.code === 'EPERM')
+
 type Member = { path: string; artifact: Artifact; text: boolean }
 interface Owner {
   root: string
@@ -106,11 +116,17 @@ export class WorkspaceMaterialSync {
         this.schedule(target)
       })
       watcher.on('error', (error) => {
-        if (!target.abort.signal.aborted) {
-          target.failure = error instanceof Error ? error : new Error(String(error))
-          target.needsRescan = true
-          this.publish(target, { state: 'failed', detail: target.failure.message })
+        if (target.abort.signal.aborted) return
+        if (transientWatchError(error)) {
+          // A temporarily unavailable entry only suspends its change notification; rescanning
+          // re-reads the workspace, so the observer stays usable instead of failing collection.
+          target.full = true
+          this.schedule(target)
+          return
         }
+        target.failure = error instanceof Error ? error : new Error(String(error))
+        target.needsRescan = true
+        this.publish(target, { state: 'failed', detail: target.failure.message })
       })
       watcher.on('ready', () => { target.ready = true; this.schedule(target) })
     }

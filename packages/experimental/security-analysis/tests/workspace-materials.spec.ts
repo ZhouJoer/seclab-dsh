@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { FSWatcher } from 'chokidar'
 import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
@@ -15,6 +16,20 @@ import { SecurityController } from '../src/workbench/controller.ts'
 import { sourceManifest } from '../src/workbench/source.ts'
 import { modelPage } from '../src/workbench/model-view.ts'
 import { WorkspaceMaterialSync } from '../src/workspace-materials.ts'
+
+/** Watchers created by the mocked module, so tests can inject watcher errors. */
+const watched = vi.hoisted(() => [] as FSWatcher[])
+vi.mock('chokidar', async (importActual) => {
+  const actual = await importActual<typeof import('chokidar')>()
+  return {
+    ...actual,
+    watch: (...args: Parameters<typeof actual.watch>) => {
+      const watcher = actual.watch(...args)
+      watched.push(watcher)
+      return watcher
+    },
+  }
+})
 
 async function harness(maxBytes = 65536) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-workbench-'))
@@ -152,4 +167,31 @@ it('shares one scan across tasks and rescans when a missing directory returns', 
   expect(h.controller.projects().every(item => item.workspaceMaterials?.assetId)).toBe(true)
   const manifest = await h.manifest()
   expect(manifest.files.map(item => item.path)).toEqual(['restored.txt'])
+})
+
+it('rescans after a transient file-watch error instead of failing collection', async () => {
+  const h = await harness()
+  await writeFile(join(h.workspace, 'sample.bin'), 'MZ payload')
+  await h.sync.retain(h.project().id)
+  await h.sync.flush(h.project().id)
+  const watcher = watched.at(-1)!
+  watcher.emit('error', Object.assign(new Error("EBUSY: resource busy or locked, watch 'sample.bin'"), { code: 'EBUSY' }))
+  watcher.emit('error', Object.assign(new Error("EPERM: operation not permitted, watch 'sample.bin'"), { code: 'EPERM' }))
+  expect(h.sync.state(h.project().id)?.state).toBe('ready')
+  await writeFile(join(h.workspace, 'later.txt'), 'written while notification was suspended')
+  await h.sync.flush(h.project().id)
+  expect(h.sync.state(h.project().id)?.state).toBe('ready')
+  expect((await h.manifest()).files.map(item => item.path)).toEqual(['later.txt', 'sample.bin'])
+})
+
+it('still fails collection on an unrecoverable watcher error until the operator retries', async () => {
+  const h = await harness()
+  await writeFile(join(h.workspace, 'sample.txt'), 'text')
+  await h.sync.retain(h.project().id)
+  await h.sync.flush(h.project().id)
+  watched.at(-1)!.emit('error', Object.assign(new Error('inotify watch limit reached'), { code: 'ENOSPC' }))
+  expect(h.sync.state(h.project().id)?.state).toBe('failed')
+  await expect(h.sync.flush(h.project().id)).rejects.toThrow('inotify watch limit reached')
+  await h.sync.refresh(h.project().id)
+  expect(h.sync.state(h.project().id)?.state).toBe('ready')
 })

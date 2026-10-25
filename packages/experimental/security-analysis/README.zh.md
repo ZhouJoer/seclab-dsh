@@ -60,7 +60,7 @@ kind: "package-reference"
 
 自动 Web 任务入口依次使用操作者保存的工作区资源、`taskIntake.workspaces` 精确条目（`cwd`、`environmentIds`），或未匹配工作区的 `taskIntake.defaultEnvironmentIds`。`taskIntake.maxAttempts` 提供尝试上限。保存的选择在重启后保留；空选择会禁用自动入口，即使存在默认环境。修改只影响新任务。首个获准执行的安全工具将已记录的用户请求绑定到选定资源。内部消息和委派 Session 不能初始化任务；已有绑定和用户主动退出的状态都会保留。若已认证请求仅含一个 IP 字面量 HTTP(S) 地址且只选择一个本机或 Docker HTTP 环境，入口会按该字面地址登记 URL 的 origin 与路径；域名、多目标和多个可用环境仍需操作者显式登记，但 `taskIntake.httpEnvironmentId` 可声明多个可用 HTTP 环境中由哪个环境登记字面靶机；声明的环境未被选中时仍按单环境规则处理。安全 profile 为未匹配的工作区选择 `local`。CLI 入口仍需显式创建项目。初始化不会导入文件或批准执行。
 
-工作区任务保留固定的来源目录与主 Session 身份。任务被查看或运行时，共享文件监听器更新不可变材料快照；重新打开时全量扫描。`.gitignore` 不排除样本。依赖、元数据、缓存目录、`.dsh/analysis` 和工作台存储会被排除，符号链接不会被跟随。`workspaceMaterials.maxEntries`、`maxBytes`、`debounceMs` 与 `excludedDirectories` 配置采集。扫描失败保留上次成功快照，并提供重试入口。旧资产引用仍指向原始字节。
+工作区任务保留固定的来源目录与主 Session 身份。任务被查看或运行时，共享文件监听器更新不可变材料快照；重新打开时全量扫描。`.gitignore` 不排除样本。依赖、元数据、缓存目录、`.dsh/analysis` 和工作台存储会被排除，符号链接不会被跟随。`workspaceMaterials.maxEntries`、`maxBytes`、`debounceMs` 与 `excludedDirectories` 配置采集。扫描失败保留上次成功快照，并提供重试入口。瞬时监听错误（例如 Windows 上文件被其他进程锁定）触发全量重扫而不是判定采集失败；结构性监听失败在重试前保持失败状态。旧资产引用仍指向原始字节。
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
