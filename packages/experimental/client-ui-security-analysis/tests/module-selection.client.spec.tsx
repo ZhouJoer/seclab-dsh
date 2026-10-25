@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import { ProjectModules } from '../src/client/ModuleSelection.tsx'
+import { ProjectModules, ProjectUnseal } from '../src/client/ModuleSelection.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -33,4 +33,23 @@ it('returns a manual task to an empty automatic selection without probing tools'
   fireEvent.click(screen.getByRole('button', { name: zh.moduleSave }))
   await waitFor(() =>{  expect(save).toHaveBeenCalledWith({ mode: 'auto', modules: [], reason: '' }) })
   expect(screen.getByText(zh.modulePending)).toBeDefined()
+})
+
+it('toggles the direct-execution contract immediately and retains save errors', async () => {
+  const save = vi.fn(async () => { throw new Error('Revision changed') })
+  render(<ProjectUnseal value={undefined} save={save} t={makeTranslate(zh, commonZh)} />)
+  fireEvent.click(screen.getByText(zh.unsealTitle, { selector: 'summary' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: zh.unsealOff }))
+  await screen.findByRole('alert')
+  expect(save).toHaveBeenCalledWith(true)
+  expect(screen.getByRole('alert').textContent).toBe('Revision changed')
+  expect(screen.getByRole<HTMLInputElement>('checkbox', { name: zh.unsealOff }).checked).toBe(false)
+})
+
+it('reflects the committed unsealed state on the switch', () => {
+  render(<ProjectUnseal value={true} save={vi.fn(async () => {})} t={makeTranslate(zh, commonZh)} />)
+  fireEvent.click(screen.getByText(zh.unsealTitle, { selector: 'summary' }))
+  const toggle = screen.getByRole<HTMLInputElement>('checkbox', { name: zh.unsealOn })
+  expect(toggle.checked).toBe(true)
+  expect(toggle.closest('details')?.className).toContain('unsealedCard')
 })

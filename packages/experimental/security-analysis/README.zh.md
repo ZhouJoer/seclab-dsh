@@ -139,6 +139,12 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 
 内置 `binary` provider 不需要外部安装。调用 `security_static`，设置 `provider: "binary"`、指定资产/环境及 `operation: "identity"`、`"hex"` 或 `"strings"`。身份查询接受 parameters "{}"，返回实测 SHA-256 和部分 PE/ELF 头字段。通过 assetId 选择已导入的单文件；源码快照和 parameters.path 在采集前被拒绝。协调者使用 security_help(action: "import") 和 action.kind 为 "import" 的 security_command 导入授权范围内的绝对文件路径；子分析者需向协调者请求导入。十六进制与字符串参数接受字节 `offset` 和 `length`；字符串还接受 `minLength` 与 `encoding`（`ascii` 或 `utf16le`，仅提取可打印 ASCII 字符）。省略长度时取输出预算的八分之一。分页结果保留偏移和不完整标记；跨页字符串需重叠查询。这些观察不能证明文件完全有效、入口可达或存在漏洞。
 
+### 解除封印与直接执行
+
+操作者可以在新建任务时或任务设置卡片中解除封印。任务处于解封状态时，绑定该任务的每个会话——协调者与委派子会话——都会在自身作用域用密封的直接执行契约遮蔽 harness 身份段与前后两段部署人格，契约因此成为系统提示词的开篇任务人格。密封人格是静态文本，系统提示词前缀缓存保持稳定；契约的授权范围单独枚举在 `security:unsealed-scope` 运行时上下文条目中逐轮刷新，因此中途导入材料或登记靶标不会扰动已缓存的前缀。范围内攻击工作直接交付，不加前言、免责或防御性重定向，操作者俚语路由到工作台检查。范围外请求保持既有的范围拒绝行为；计划、审批与证据规则不变。重新封印或归档即撤销遮蔽并恢复部署人格；开关随任务记录写入日志并跨重启保留。
+
+契约明文源位于 [resources/prompts/unsealed.md](resources/prompts/unsealed.md)；`pnpm tsx scripts/seal-unsealed-prompt.ts` 用 AES-256-GCM 将其封印进生成的 [src/unsealed-prompt-slot.ts](src/unsealed-prompt-slot.ts)。封印提供防篡改与防静态检索能力，不构成保密：密钥随包分发，组装后的提示词仍进入会话日志。校验失败的槽位会中止注入而不是降级。
+
 ### 证据与恢复
 
 失败或取消的观测及已批准执行先保存可用字节和失败诊断，再拒绝调用。重复相同操作会报告已保存的失败，不再次调用 provider。没有失败的不完整观测仍可读取；存在证据记录本身不代表成功。

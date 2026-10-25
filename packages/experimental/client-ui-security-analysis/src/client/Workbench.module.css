@@ -315,3 +315,9 @@
 .taskContextPanel > summary { cursor: pointer; color: var(--dsw-alias-label-primary); font-weight: 500; padding: 4px 0; }
 .taskContextPanel > summary small { display: inline-block; margin-left: 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 400; }
 .taskContextPanel > summary:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
+.unsealed { box-shadow: inset 0 3px 0 var(--dsw-alias-state-error-primary); }
+.unsealedChip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-inverted); font-size: 12px; }
+.unsealedDot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-primary-inverted); flex: none; animation: unsealedPulse 1.6s ease-in-out infinite; }
+@keyframes unsealedPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .unsealedDot { animation: none; } }
+.unsealedCard { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-interactive-bg-hover-danger); }

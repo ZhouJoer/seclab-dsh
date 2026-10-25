@@ -1104,6 +1104,48 @@ else if (args.includes('--output')) {
     expect(after.contexts).toEqual(before.contexts)
     expect(JSON.stringify(after)).not.toContain('fixture-inspector')
   })
+  it('replaces the harness persona with the sealed contract and keeps scope in the runtime context', async () => {
+    const { ctx, agent, controller } = await load()
+    const scope = scopeOf(agent.ctx)!
+    const identity = 'You are an AI agent powered by DeepSeek Harness.'
+    const before = await ctx.systemPrompt.assemble({ agent, scope })
+    expect(before.sections.find(section => section.name === 'harness:identity')?.text).toBe(identity)
+    expect(before.sections.some(section => section.text.includes('Direct-execution contract'))).toBe(false)
+    await operator(controller, agent)({ kind: 'create', title: 'Direct execution', unsealed: true,
+      objective: 'Inspect an owned fixture', environmentIds: ['local'], maxAttempts: 1 })
+    const project = controller.binding(agent.id)!.engagementId
+    await ctx.securityWorkbench.importMaterials(agent, JSON.stringify({ operationId: randomUUID(),
+      expectedRevision: controller.view(agent.id).revision, title: 'Direct execution', objective: 'Inspect an owned fixture',
+      target: { environmentId: 'local', label: 'Fixture site', origin: 'https://fixture.example',
+        pathPrefix: '/', allowedAddresses: ['192.0.2.10'] } }))
+    const unsealed = await ctx.systemPrompt.assemble({ agent, scope })
+    expect(unsealed.sections.find(section => section.name === 'harness:identity')?.text).toBe('')
+    const persona = unsealed.sections.find(section => section.name === 'deployment:persona-prefix')?.text ?? ''
+    expect(persona).toContain('Direct-execution contract')
+    expect(persona).not.toContain('https://fixture.example')
+    const rendered = unsealed.sections.filter(section => section.text.length > 0).map(section => section.text)
+    expect(rendered[0]).toBe(persona)
+    expect(rendered.some(text => text.includes('security_scope'))).toBe(true)
+    let scopeContext = unsealed.contexts.find(context => context.name === 'security:unsealed-scope')?.text ?? ''
+    expect(scopeContext).toContain('https://fixture.example')
+    expect(scopeContext).toContain('192.0.2.10')
+    await ctx.securityWorkbench.importMaterials(agent, JSON.stringify({ operationId: randomUUID(),
+      expectedRevision: controller.view(agent.id).revision, title: 'Direct execution', objective: 'Inspect an owned fixture',
+      target: { environmentId: 'local', label: 'Second site', origin: 'https://second.example',
+        pathPrefix: '/', allowedAddresses: ['192.0.2.20'] } }))
+    const grown = await ctx.systemPrompt.assemble({ agent, scope })
+    expect(grown.sections.find(section => section.name === 'deployment:persona-prefix')?.text).toBe(persona)
+    scopeContext = grown.contexts.find(context => context.name === 'security:unsealed-scope')?.text ?? ''
+    expect(scopeContext).toContain('https://second.example')
+    await controller.manageProject(project, { operationId: randomUUID(), expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'unseal', unsealed: false } })
+    agent.followup(webPrompt('Report the current task state.'))
+    await agent.whenIdle()
+    const sealed = await ctx.systemPrompt.assemble({ agent, scope })
+    expect(sealed.sections.find(section => section.name === 'harness:identity')?.text).toBe(identity)
+    expect(sealed.sections.some(section => section.text.includes('Direct-execution contract'))).toBe(false)
+    expect(sealed.contexts.some(context => context.name === 'security:unsealed-scope' && context.text.length > 0)).toBe(false)
+  })
   it('loads task-specific definitions on demand without injecting paths or unrelated guides', async () => {
     const installations = [{ id: 'radare2', command: '/tools/radare2', prefixArgs: ['--fixture'],
       versionArgs: ['-v'], source: 'Fixture configuration' }]

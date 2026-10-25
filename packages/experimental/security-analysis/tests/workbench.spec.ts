@@ -81,6 +81,22 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
 }
 
 describe('security workbench', () => {
+  it('commits the unseal mode through the revision-checked project operation', async () => {
+    const { controller, journal } = await harness()
+    const project = controller.binding('parent')!.engagementId
+    const engagement = () => controller.view('parent').records.find(item => item.kind === 'engagement')!.value
+    expect(engagement().unsealed).toBeUndefined()
+    const committed = await controller.manageProject(project, { operationId: randomUUID(),
+      expectedRevision: journal.view().revision, action: { kind: 'unseal', unsealed: true } })
+    expect(committed.find(item => item.id === project)?.unsealed).toBe(true)
+    await controller.manageProject(project, { operationId: randomUUID(), expectedRevision: journal.view().revision,
+      action: { kind: 'unseal', unsealed: false } })
+    expect(engagement().unsealed).toBe(false)
+    await expect(controller.manageProject(project, { operationId: randomUUID(),
+      expectedRevision: journal.view().revision + 10, action: { kind: 'unseal', unsealed: true } }))
+      .rejects.toThrow('Security state changed')
+    expect(engagement().unsealed).toBe(false)
+  })
   it('drains only the released environment and refuses new consumers until cleanup finishes', async () => {
     const { controller } = await harness()
     const done = Promise.withResolvers<undefined>()

@@ -39,6 +39,7 @@ const actions = z.discriminatedUnion('kind', [
       target: externalTargetInput.optional(),
       taskContext: taskContextSchema.nullable().optional(),
       moduleSelection: moduleSelectionSchema.optional(),
+      unsealed: z.boolean().optional(),
     })
     .strict(),
   z.object({ kind: z.literal('select'), engagementId: text }).strict(),

@@ -57,3 +57,23 @@ export function ProjectModules({ value, save, disabled, t }: PropsLocale<typeof 
     {error && <p role="alert">{error}</p>}
   </details>
 }
+
+/** Toggle the direct-execution contract through the existing revision-checked project operation.
+ * @param props - committed mode and operator save action.
+ * @returns mode switch retaining errors without changing the saved task.
+ */
+export function ProjectUnseal({ value, save, disabled, t }: PropsLocale<typeof NS> & {
+  value: boolean | undefined
+  save: (unsealed: boolean) => Promise<void>
+  disabled?: boolean
+}) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  return <details className={`${css.card}${value === true ? ' ' + css.unsealedCard : ''}`}><summary>{t('unsealTitle')}</summary>
+    <p className={css.summaryHint}>{t('unsealHelp')}</p>
+    <label className={css.resourceOption}><input type="checkbox" checked={value === true} disabled={disabled || busy}
+      onChange={(event) => { setBusy(true); setError(''); void save(event.target.checked).catch((error: unknown) => {
+        setError(error instanceof Error ? error.message : String(error))
+      }).finally(() => { setBusy(false) }) }} />{t(value === true ? 'unsealOn' : 'unsealOff')}</label>
+    {error && <p role="alert">{error}</p>}
+  </details>
+}

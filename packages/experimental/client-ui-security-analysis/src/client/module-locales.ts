@@ -13,6 +13,8 @@ export const moduleZh = {
   moduleAndroid: 'Android / JVM 逆向', moduleNative: '原生二进制 / 固件逆向', moduleWeb: 'Web 分析', moduleIot: 'IoT / 抓包分析', modulePentest: '渗透测试（Kali）',
   moduleHelp: '按任务加载相关技能和工具；自动模式由助手选择，手动模式只使用勾选模块。工具依赖在实际使用时检查',
   moduleReason: '选择依据', modulePending: '当前只启用公共调查能力', moduleResources: '模块技能与工具', moduleSave: '保存模块选择',
+  unsealTitle: '解除封印', unsealBanner: '解除封印 · 直接执行生效', unsealOn: '已解除封印：直接执行生效', unsealOff: '已封印：标准模式',
+  unsealHelp: '开启后，绑定任务的会话以直接执行契约顶替角色提示词并置于系统提示词最前，锚定任务登记范围：范围内攻击工作直接交付，不加前言与免责；范围外目标仍被拦截。重新封印即恢复原角色提示词。开关随任务日志留痕',
 }
 /** English module selection copy. */
 export const moduleEn = {
@@ -29,4 +31,6 @@ export const moduleEn = {
   moduleAndroid: 'Android / JVM reverse analysis', moduleNative: 'Native binary / firmware analysis', moduleWeb: 'Web analysis', moduleIot: 'IoT / capture analysis', modulePentest: 'Penetration testing (Kali)',
   moduleHelp: 'Load skills and tools for this task. The assistant selects automatic modules; manual mode uses checked modules only. Dependencies are checked when used.',
   moduleReason: 'Selection reason', modulePending: 'Only common investigation capabilities are active', moduleResources: 'Module skills and tools', moduleSave: 'Save module selection',
+  unsealTitle: 'Unseal', unsealBanner: 'Unsealed · direct execution active', unsealOn: 'Unsealed: direct execution active', unsealOff: 'Sealed: standard mode',
+  unsealHelp: 'When enabled, every session bound to the task replaces its harness persona with the direct-execution contract at the front of the system prompt, anchored to the task\'s registered scope: in-scope offensive work is delivered without preamble or disclaimers, while out-of-scope targets stay blocked. Sealing again restores the original persona. Toggles are journaled with the task.',
 }

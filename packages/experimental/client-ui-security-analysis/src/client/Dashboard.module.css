@@ -159,3 +159,8 @@
 .delegationFacts dt { color: var(--dsw-alias-label-secondary); margin-top: 8px; }
 .delegationFacts dd { margin: 2px 0 0; white-space: pre-wrap; }
 .delegationFacts ul { margin: 0; padding-left: 18px; }
+.unsealed { box-shadow: inset 0 3px 0 var(--dsw-alias-state-error-primary); }
+.unsealedBanner { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-inverted); font-size: 13px; }
+.unsealedDot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-primary-inverted); flex: none; animation: unsealedPulse 1.6s ease-in-out infinite; }
+@keyframes unsealedPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .unsealedDot { animation: none; } }

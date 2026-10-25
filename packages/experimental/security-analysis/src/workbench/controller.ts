@@ -539,6 +539,7 @@ export class SecurityController {
         z.object({ kind: z.literal('task-context'), taskContext: taskContextSchema.nullable().optional() }).strict(),
         z.object({ kind: z.literal('archive') }).strict(),
         z.object({ kind: z.literal('restore') }).strict(),
+        z.object({ kind: z.literal('unseal'), unsealed: z.boolean() }).strict(),
         z.object({ kind: z.literal('purge') }).strict(),
       ]),
     }).strict().parse(input)
@@ -561,6 +562,7 @@ export class SecurityController {
       }
       if (request.action.kind === 'rename') return [{ kind: 'engagement', value: { ...project, title: request.action.title, automaticTitle: false } }]
       if (request.action.kind === 'restore') return [{ kind: 'engagement', value: { ...project, archived: false } }]
+      if (request.action.kind === 'unseal') return [{ kind: 'engagement', value: { ...project, unsealed: request.action.unsealed } }]
       return [{ kind: 'engagement', value: { ...project, archived: true, stopped: true } },
         ...view.records.filter(item => item.kind === 'binding').filter(item => item.value.engagementId === projectId)
           .map(item => ({ kind: 'binding' as const, value: { ...item.value, active: false } }))]
@@ -625,7 +627,8 @@ export class SecurityController {
         const records = this.createRecords(destination, { kind: 'create', title: retained.title,
           objective: retained.objective, environmentIds: retained.environmentIds, maxAttempts: retained.maxAttempts,
           taskContext: retained.taskContext, moduleSelection: retained.moduleSelection?.mode === 'manual'
-            ? retained.moduleSelection : { mode: 'auto', modules: [], reason: '' } })
+            ? retained.moduleSelection : { mode: 'auto', modules: [], reason: '' },
+          unsealed: retained.unsealed })
         const next = records.find(item => item.kind === 'engagement')
         assert(next?.kind === 'engagement')
         if (retained.workspaceMaterials) {
@@ -803,6 +806,7 @@ export class SecurityController {
       stopped: false,
       ...(taskContext ? { taskContext } : {}),
       ...(action.moduleSelection ? { moduleSelection: action.moduleSelection } : {}),
+      ...(action.unsealed !== undefined ? { unsealed: action.unsealed } : {}),
     })
     const records: SecurityRecord[] = [
       { kind: 'engagement', value: project },

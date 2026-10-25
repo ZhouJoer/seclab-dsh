@@ -75,6 +75,8 @@ export const engagementSchema = z
     maxAttempts: z.number().int().positive(),
     taskContext: taskContextSchema.optional(),
     moduleSelection: moduleSelectionSchema.optional(),
+    /** Operator-enabled direct-execution contract anchored to this project's registered scope. */
+    unsealed: z.boolean().optional(),
   })
   .strict()
 /** A measured sample or an explicitly unverified legacy declaration. */

@@ -45,6 +45,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import { PERSONA_PREFIX_SECTION, PERSONA_SUFFIX_SECTION } from '@deepseek-ai/dsh-system-prompt'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { analysisCallPage, analysisLog } from './analysis-log.ts'
@@ -79,6 +80,10 @@ import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxC
 import { operationSchema, childReportSchema, recordSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
 import { refineKnowledge, refinementPrompt } from './workbench/knowledge.ts'
 import { synthesize } from './synthesis.ts'
+import { openUnsealedPrompt, unsealedScopeContext } from './unsealed-prompt.ts'
+/** The prompt registry's fixed harness-identity section name, shadowed per agent while unsealed. */
+const HARNESS_IDENTITY_SECTION = 'harness:identity'
+import { SLOT as UNSEALED_SLOT, MASK as UNSEALED_MASK, TAG as UNSEALED_TAG, IV as UNSEALED_IV } from './unsealed-prompt-slot.ts'
 import { SecurityEvolution, evolutionConfig, type EvolutionConfig } from './evolution.ts'
 import { EvolutionStore } from './evolution-store.ts'
 import type { EvolutionView, EvolutionBundle } from './evolution-model.ts'
@@ -920,6 +925,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       return { projectId: null, context: this.intakeCandidates.get(agent.id)?.action.taskContext ?? undefined }
     }, config.taskContextMaxBytes)
     ctx.on('agent/pre-step', async ({ agent, messages, signal, step }, next) => {
+      this.syncUnsealedPersona(agent)
       const decision = await next()
       if (decision.kind === 'reject' || (step === 1 && decision.messages.length === 0)) return decision
       await this.ready
@@ -967,6 +973,14 @@ export default class SecurityWorkbench extends TypertRemoteService {
       },
     })
     installAnalysisProgress(ctx, config.analysisProgressCalls, () => this.controller)
+    ctx.systemPrompt.context({ name: 'security:unsealed-scope', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'),
+      interpolate: false,
+      text: ({ agent }) => {
+        if (!agent) return ''
+        const scope = this.unsealedScope(agent)
+        return scope === undefined ? '' : unsealedScopeContext(scope)
+      },
+    })
     ctx.systemPrompt.context({ name: 'security:delegations', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'),
       text: ({ agent }) => {
         if (!agent || this.controller?.binding(agent.id)?.role !== 'coordinator') return ''
@@ -983,6 +997,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     })
     ctx.effect(() => async () => {
       this.preferences.clear()
+      this.unsealedPersonas.clear()
       this.shutdown.abort(new Error('Security service disposed'))
       try {
         await this.evolution?.close()
@@ -999,6 +1014,90 @@ export default class SecurityWorkbench extends TypertRemoteService {
         await this.journal?.close()
         this.ownership?.close()
       }
+    })
+  }
+  /** Scoped persona shadows installed while an agent's engagement stays unsealed. */
+  private readonly unsealedPersonas = new Map<SessionId, () => void>()
+  /**
+   * Whether an agent's engagement is currently unsealed; the sealed persona itself is
+   * static so the system-prompt prefix stays cache-stable after unsealing.
+   * @param agent - bound Session's agent handle.
+   * @returns the verified contract text while unsealed, or '' while sealed.
+   */
+  private unsealedPersona(agent: Agent): string {
+    const controller = this.controller
+    const binding = controller?.binding(agent.id)
+    if (!binding || !controller) return ''
+    if (!controller.view(agent.id).records.some(item => item.kind === 'engagement' && item.value.unsealed)) return ''
+    return openUnsealedPrompt({ SLOT: UNSEALED_SLOT, MASK: UNSEALED_MASK, TAG: UNSEALED_TAG, IV: UNSEALED_IV })
+  }
+  /**
+   * Enumerate one agent's registered engagement scope for the authorized-targets context
+   * entry. Refreshed at every assembly and admission, so importing materials or
+   * registering targets never rewrites the cached system-prompt prefix.
+   * @param agent - bound Session's agent handle.
+   * @returns scope descriptions — empty when unsealed with no registered assets — or undefined while sealed or unbound.
+   */
+  private unsealedScope(agent: Agent): string[] | undefined {
+    const controller = this.controller
+    const binding = controller?.binding(agent.id)
+    if (!binding || !controller) return undefined
+    const view = controller.view(agent.id)
+    if (!view.records.some(item => item.kind === 'engagement' && item.value.unsealed)) return undefined
+    const scope: string[] = []
+    for (const item of view.records) {
+      if (item.kind !== 'asset') continue
+      const asset = item.value
+      if ('kind' in asset && asset.kind === 'external-web')
+        scope.push(`${asset.label}: ${asset.origin}${asset.pathPrefix === '/' ? '' : asset.pathPrefix} (authorized addresses: ${asset.allowedAddresses.join(', ')})`)
+      else if ('kind' in asset && asset.kind === 'web')
+        scope.push(`${asset.label}: ${asset.origin}${asset.pathPrefix === '/' ? '' : asset.pathPrefix} (laboratory target)`)
+      else if ('kind' in asset && asset.kind === 'source')
+        scope.push(`${asset.label}: imported source snapshot`)
+      else scope.push(`${asset.label}: imported ${asset.format} sample`)
+    }
+    return scope
+  }
+  /**
+   * Shadow the harness identity and persona sections in the agent's own scope with the
+   * sealed contract while its engagement is unsealed, and restore the global sections
+   * once it is sealed again or the binding deactivates. Scoped same-name sections are
+   * the registry's documented per-agent override; the workbench guidance, tool sections
+   * and runtime contexts remain untouched.
+   * @param agent - any bound or unbound Session agent.
+   */
+  private syncUnsealedPersona(agent: Agent): void {
+    const active = this.unsealedPersonas.get(agent.id)
+    if (!this.unsealedPersona(agent)) {
+      active?.()
+      this.unsealedPersonas.delete(agent.id)
+      return
+    }
+    if (active) return
+    const prompt = agent.ctx.systemPrompt
+    const disposers = [
+      prompt.section({
+        name: HARNESS_IDENTITY_SECTION,
+        order: prompt.getSectionOrder('HARNESS_IDENTITY'),
+        text: '',
+        interpolate: false,
+      }),
+      prompt.section({
+        name: PERSONA_PREFIX_SECTION,
+        order: prompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
+        text: () => this.unsealedPersona(agent),
+        interpolate: false,
+      }),
+      prompt.section({
+        name: PERSONA_SUFFIX_SECTION,
+        order: prompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX'),
+        text: '',
+        interpolate: false,
+      }),
+    ]
+    agent.ctx.effect(() => () => this.unsealedPersonas.delete(agent.id), 'security.unsealedPersona()')
+    this.unsealedPersonas.set(agent.id, () => {
+      for (const dispose of disposers) dispose()
     })
   }
   private async delegate(parent: Agent, callId: string, input: Pick<SecurityDelegation,
@@ -1428,15 +1527,19 @@ export default class SecurityWorkbench extends TypertRemoteService {
       target: z.unknown().optional(),
       taskContext: taskContextSchema.nullable().optional(),
       moduleSelection: moduleSelectionSchema.optional(),
+      unsealed: z.boolean().optional(),
       resources: z.object({ environmentIds: z.array(z.string().min(1)).min(1),
         maxAttempts: z.number().int().positive() }).strict().optional(),
     }).strict().parse(JSON.parse(input))
     const config = this.intakeConfig(agent.session.header.cwd)
     const resources = request.resources ?? resolveTaskIntakeResources(config, agent.session.header.cwd)
-    return controller.importMaterials(agent.id, { operationId: request.operationId, expectedRevision: request.expectedRevision,
+    const result = await controller.importMaterials(agent.id, {
+      operationId: request.operationId, expectedRevision: request.expectedRevision,
       material: request.material, target: request.target, ...(resources ? { task: { title: request.title, objective: request.objective,
-        ...resources, taskContext: request.taskContext, moduleSelection: request.moduleSelection } } : {}) },
+        ...resources, taskContext: request.taskContext, moduleSelection: request.moduleSelection, unsealed: request.unsealed } } : {}) },
     this.defaultTaskContext(agent))
+    this.syncUnsealedPersona(agent)
+    return result
   }
 
   /** List persistent projects, including removed projects available for restoration.

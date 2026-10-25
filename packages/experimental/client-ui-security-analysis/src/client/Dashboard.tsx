@@ -11,7 +11,7 @@ import { CaptureControls } from './CaptureControls.tsx'
 import { IconRefreshOutlineRegular, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ProjectManagement } from './ProjectManagement.tsx'
 import { RestartTask } from './RestartTask.tsx'
-import { ProjectModules } from './ModuleSelection.tsx'
+import { ProjectModules, ProjectUnseal } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { Improvements, type ImprovementActions } from './Improvements.tsx'
 import { ProjectDeletion } from './ProjectDeletion.tsx'
@@ -289,12 +289,14 @@ export function Dashboard(props: Props) {
     {!workspaces.length && <><p>{t('dashboardNoWorkspace')}</p><label>{t('dashboardWorkspacePath')}<input value={path} onChange={(event) => { setPath(event.target.value) }} /></label>
       <button disabled={busy || !path.trim()} onClick={() => void perform(async () => { setWorkspace(await props.createWorkspace(path.trim())) })}>{t('dashboardAddWorkspace')}</button></>}
   </div>
-  return <section ref={root} className={css.root} aria-label={t('title')}>
+  return <section ref={root} className={`${css.root}${project?.unsealed ? ' ' + css.unsealed : ''}`} aria-label={t('title')}>
     <div className={css.main}>
       <header className={css.topbar}><h1>{t('dashboardTitle')}</h1>
         <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button></div>
       </header>
       {!selected && <nav className={css.navigation} aria-label={t('dashboardNavigation')}>{(['tasks', 'removed', 'toolbox', 'improvements'] as const).map(key => <button key={key} aria-current={section === key ? 'page' : undefined} onClick={() => { navigate(); setSection(key) }}>{t(key === 'tasks' ? 'dashboardTasks' : key === 'removed' ? 'removedProjects' : key === 'improvements' ? 'evoTitle' : 'toolbox')}</button>)}</nav>}
+      {selected && project?.unsealed && <div className={css.unsealedBanner} role="status">
+        <span className={css.unsealedDot} aria-hidden="true" />{t('unsealBanner')}</div>}
       {directoryError && <p role="status">{t('taskDirectoryUnavailable')}<button onClick={() =>{  setDirectoryEpoch(value => value + 1) }}>{t('dashboardRetry')}</button></p>}
       {error && <div className={css.error} role="alert">{error}<button disabled={busy} onClick={() => void perform(refresh)}>{t('dashboardRetry')}</button></div>}
       {deletedProject && <div className={css.deletionNotice} role="status"><span>{t('deleteProjectDone')} · {deletedProject.title}</span>
@@ -363,6 +365,13 @@ export function Dashboard(props: Props) {
                 const current = generation.current
                 await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
                   action: { kind: 'modules', selection } }))
+                if (current === generation.current) await refresh()
+              }} />
+            <ProjectUnseal key={project.id + String(project.unsealed)} t={t} value={project.unsealed}
+              disabled={busy || !!project.archived} save={async (unsealed) => {
+                const current = generation.current
+                await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                  action: { kind: 'unseal', unsealed } }))
                 if (current === generation.current) await refresh()
               }} />
             <ProjectTaskContext key={project.id + JSON.stringify(project.taskContext)} t={t}

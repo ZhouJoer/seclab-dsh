@@ -14,7 +14,7 @@ import { AnalysisStart } from './AnalysisStart.tsx'
 import { WorkspaceResources } from './WorkspaceResources.tsx'
 import { MaterialPanel } from './MaterialPanel.tsx'
 import { ProjectManagement, projectLabel } from './ProjectManagement.tsx'
-import { ProjectModules } from './ModuleSelection.tsx'
+import { ProjectModules, ProjectUnseal } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { ActivityPanel, type ActivityActions } from './ActivityPanel.tsx'
@@ -255,13 +255,15 @@ export function Workbench(props: WorkbenchProps) {
         <button disabled={busy > 0} onClick={() => void perform(load)}>{t('refresh')}</button>
       </p> : <progress aria-label={t('dashboardLoading')} />)}
       {open && configuration && (
-        <section className={css.panel} data-embedded={props.autoOpen || undefined} role={props.autoOpen ? 'region' : 'dialog'}
+        <section className={`${css.panel}${project?.kind === 'engagement' && project.value.unsealed ? ' ' + css.unsealed : ''}`} data-embedded={props.autoOpen || undefined} role={props.autoOpen ? 'region' : 'dialog'}
           aria-label={t(props.autoOpen ? 'advancedDetails' : 'title')}>
           <header className={css.header}>
             <strong title={project?.kind === 'engagement' ? project.value.title : undefined}>
               {t('title')}
               {project?.kind === 'engagement' ? ' · ' + project.value.title : ''}
             </strong>
+            {project?.kind === 'engagement' && project.value.unsealed
+              && <span className={css.unsealedChip} role="status"><span className={css.unsealedDot} aria-hidden="true" />{t('unsealBanner')}</span>}
             <button disabled={busy > 0} onClick={() => void perform(load)}>{t('refresh')}</button>
             {project?.kind === 'engagement' && (
               <button disabled={busy > 0} onClick={() => void perform(() => command({ kind: 'leave' }))}>{t('leaveProject')}</button>
@@ -330,6 +332,13 @@ export function Workbench(props: WorkbenchProps) {
                   save={async (selection) => {
                     await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
                       action: { kind: 'modules', selection } }))
+                    if (activeSession.current === sessionId) await load()
+                  }} />}
+                {project?.kind === 'engagement' && <ProjectUnseal key={project.value.id + String(project.value.unsealed)}
+                  t={t} value={project.value.unsealed} disabled={busy > 0 || !!project.value.archived}
+                  save={async (unsealed) => {
+                    await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                      action: { kind: 'unseal', unsealed } }))
                     if (activeSession.current === sessionId) await load()
                   }} />}
                 {project?.kind === 'engagement' && <ProjectTaskContext

@@ -81,7 +81,7 @@ These items describe product capabilities, not a test checklist. Existing implem
 <a id="baseline"></a>
 ## Baseline
 
-The workspace includes optional Host/Web profiles, an evidence journal and FTS index, immutable artifacts, four-stage checks, validation-plan authorization, interruption reconciliation, and dedicated Ghidra/Frida/Android adapters. Built-in binary inspection, role-scoped tools and task prompts support coordinator, reconnaissance, reverse-analyst, researcher and reviewer Sessions. The security Web default port is separate from the general Web profile. This baseline remains experimental.
+The workspace includes optional Host/Web profiles, an evidence journal and FTS index, immutable artifacts, four-stage checks, validation-plan authorization, interruption reconciliation, and dedicated Ghidra/Frida/Android adapters. Built-in binary inspection, role-scoped tools and task prompts support coordinator, reconnaissance, reverse-analyst, researcher and reviewer Sessions. The security Web default port is separate from the general Web profile. An operator-controlled unseal mode replaces each bound session's persona with a sealed direct-execution contract anchored to its task's registered scope. This baseline remains experimental.
 
 PentAGI informs specialist delegation, reference retrieval and concise result reports. This extension keeps explicit project/Session roles, evidence references, user-owned approval and independent review. No prompt treats all future operations as pre-authorized; a child's report cannot enlarge its scope or impersonate the user. Implementation details remain in [role and prompt definitions](../../packages/experimental/security-analysis/src/workbench/roles.ts).
 

@@ -99,6 +99,12 @@ Open **Security analysis** in the sidebar and choose **New analysis**. Select an
 
 Open **Advanced details** → **Environments and tools** and inspect the selected environment. Missing installations and disconnected devices are shown as diagnostics. Configure Android device IDs and Docker images explicitly in the Host overlay; the default example creates only a local environment. Read the [provider setup](../../../packages/experimental/security-analysis/README.md#configure-analysis-providers) before using Ghidra or a device.
 
+<a id="unseal"></a>
+
+### Unseal direct execution
+
+Check **解除封印 (Unseal)** while creating a task, or toggle it later in the task's **Analysis settings**, to enable direct-execution mode. Every session bound to the task then opens its system prompt with a sealed contract — the harness identity and deployment persona are shadowed for that session, including delegated children. The contract's authorized scope is listed in a runtime-context entry refreshed every turn: imported samples, laboratory targets and external HTTP targets with their allowed addresses. Registering new materials or targets updates that entry without disturbing the cached system-prompt prefix. In-scope offensive work is delivered without preamble or disclaimers. Requests outside the registered scope keep the normal scope blocker, and plans, approvals and evidence rules are unchanged. Sealing again restores the original persona. Toggles are journaled with the task; the contract text is sealed inside the package and verified before injection.
+
 <a id="windows-wireless"></a>
 
 ### Inspect Windows devices and analyze wireless recordings
