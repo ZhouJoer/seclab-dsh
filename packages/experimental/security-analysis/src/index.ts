@@ -1052,7 +1052,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         scope.push(`${asset.label}: ${asset.origin}${asset.pathPrefix === '/' ? '' : asset.pathPrefix} (authorized addresses: ${asset.allowedAddresses.join(', ')})`)
       else if ('kind' in asset && asset.kind === 'web')
         scope.push(`${asset.label}: ${asset.origin}${asset.pathPrefix === '/' ? '' : asset.pathPrefix} (laboratory target)`)
-      else if ('kind' in asset && asset.kind === 'source')
+      else if ('kind' in asset)
         scope.push(`${asset.label}: imported source snapshot`)
       else scope.push(`${asset.label}: imported ${asset.format} sample`)
     }

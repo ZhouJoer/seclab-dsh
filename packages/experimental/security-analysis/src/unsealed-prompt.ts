@@ -8,7 +8,7 @@ import { deflateSync, inflateSync } from 'node:zlib'
  * never secrecy; the assembled prompt stays model-visible and session-logged.
  */
 const MIX = Object.freeze(['security.unsealed.v1', 'dsh-experimental-security-analysis', 'slot:direct-contract'])
-const mixKey = (mask: string) => createHash('sha256').update(`${MIX.join('\x1e')}\x1e${String(mask ?? '')}`).digest()
+const mixKey = (mask: string) => createHash('sha256').update(`${MIX.join('\x1e')}\x1e${mask}`).digest()
 
 /** Sealed slot fields embedded in the generated slot module. */
 export interface SealedSlot {
@@ -31,7 +31,7 @@ export function sealUnsealedPrompt(text: string): SealedSlot {
   const mask = randomBytes(16).toString('base64')
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', mixKey(mask), iv)
-  const packed = deflateSync(Buffer.from(String(text ?? ''), 'utf8'), { level: 9 })
+  const packed = deflateSync(Buffer.from(text, 'utf8'), { level: 9 })
   const body = Buffer.concat([cipher.update(packed), cipher.final()])
   return {
     SLOT: body.toString('base64'),

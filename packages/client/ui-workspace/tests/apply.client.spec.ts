@@ -139,6 +139,7 @@ async function bench() {
   } as never)
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessionSnapshot, subscribe },
+    renameDisplayTitle: vi.fn(async () => false),
     create: vi.fn(async () => 'created' as never),
     retain,
     using,

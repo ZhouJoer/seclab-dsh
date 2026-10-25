@@ -396,7 +396,7 @@
 .collapsed .newSessionGroup { flex-direction: column; gap: 4px; }
 .newSessionGroup { display: flex; align-items: center; }
 .newSessionGroup > :first-child { flex: 1; min-width: 0; }
-.newSessionOptions { display: inline-flex; padding: 6px; border: 0; background: transparent; color: inherit; border-radius: 6px; cursor: pointer; }
+.newSessionOptions { display: inline-flex; padding: 6px; border: 0; background: transparent; color: inherit; border-radius: var(--dsw-radius-sm); cursor: pointer; }
 .newSession {
   container-type: inline-size;
   position: relative;
