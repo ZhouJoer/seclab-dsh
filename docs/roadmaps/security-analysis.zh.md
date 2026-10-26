@@ -81,7 +81,7 @@ r2pipe、Capstone、pefile 和 Unicorn 保留 Python/脚本能力。Fastboot 和
 <a id="baseline"></a>
 ## 当前基础
 
-工作区已包含可选 Host/Web profile、证据日志与 FTS 索引、不可变制品、四阶段检查、验证计划授权、中断核对，以及 Ghidra/Frida/Android 专用适配器。内置二进制检查、角色工具权限和任务提示词支持协调者、侦察者、逆向分析员、研究员和复核者 Session。安全 Web 默认端口与通用 Web 分离。操作者可控的解除封印模式以密封的直接执行契约顶替各绑定会话的角色提示词，并锚定任务登记范围。这些基础能力仍处于实验阶段。
+工作区已包含可选 Host/Web profile、证据日志与 FTS 索引、不可变制品、四阶段检查、验证计划授权、中断核对，以及 Ghidra/Frida/Android 专用适配器。内置二进制检查、角色工具权限和任务提示词支持协调者、侦察者、逆向分析员、研究员和复核者 Session。安全 Web 默认端口与通用 Web 分离。操作者可控的解除封印模式以直接执行契约顶替各绑定会话的角色提示词，并锚定任务登记范围。这些基础能力仍处于实验阶段。
 
 借鉴 PentAGI 的专职委派、资料检索和精简结果报告，同时保留明确的项目/Session 角色、证据引用、用户授权及独立复核。提示词不将所有未来操作视为预先授权；子 agent 报告不能扩大范围或冒充用户。实现细节由[角色及提示词定义](../../packages/experimental/security-analysis/src/workbench/roles.ts) 维护。
 

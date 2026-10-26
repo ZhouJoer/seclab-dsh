@@ -112,6 +112,7 @@
     "lib/device-inventory-*.js",
     "resources/**/*.py",
     "resources/skills/*.md",
+    "resources/prompts/unsealed.md",
     "resources/**/*.js",
     "resources/cve-cases/*.json",
     "resources/toolbox/Dockerfile",

@@ -1104,7 +1104,7 @@ else if (args.includes('--output')) {
     expect(after.contexts).toEqual(before.contexts)
     expect(JSON.stringify(after)).not.toContain('fixture-inspector')
   })
-  it('replaces the harness persona with the sealed contract and keeps scope in the runtime context', async () => {
+  it('replaces the harness persona with the Markdown prompt and keeps scope in the runtime context', async () => {
     const { ctx, agent, controller } = await load()
     const scope = scopeOf(agent.ctx)!
     const identity = 'You are an AI agent powered by DeepSeek Harness.'
@@ -1121,7 +1121,7 @@ else if (args.includes('--output')) {
     const unsealed = await ctx.systemPrompt.assemble({ agent, scope })
     expect(unsealed.sections.find(section => section.name === 'harness:identity')?.text).toBe('')
     const persona = unsealed.sections.find(section => section.name === 'deployment:persona-prefix')?.text ?? ''
-    expect(persona).toContain('Direct-execution contract')
+    expect(persona).toBe(await readFile(new URL('../resources/prompts/unsealed.md', import.meta.url), 'utf8'))
     expect(persona).not.toContain('https://fixture.example')
     const rendered = unsealed.sections.filter(section => section.text.length > 0).map(section => section.text)
     expect(rendered[0]).toBe(persona)

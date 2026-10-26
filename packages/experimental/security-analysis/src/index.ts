@@ -80,10 +80,9 @@ import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxC
 import { operationSchema, childReportSchema, recordSchema, type WorkbenchView, type SecurityDelegation, type SecurityDelegationId } from './workbench/model.ts'
 import { refineKnowledge, refinementPrompt } from './workbench/knowledge.ts'
 import { synthesize } from './synthesis.ts'
-import { openUnsealedPrompt, unsealedScopeContext } from './unsealed-prompt.ts'
+import { readUnsealedPrompt, unsealedScopeContext } from './unsealed-prompt.ts'
 /** The prompt registry's fixed harness-identity section name, shadowed per agent while unsealed. */
 const HARNESS_IDENTITY_SECTION = 'harness:identity'
-import { SLOT as UNSEALED_SLOT, MASK as UNSEALED_MASK, TAG as UNSEALED_TAG, IV as UNSEALED_IV } from './unsealed-prompt-slot.ts'
 import { SecurityEvolution, evolutionConfig, type EvolutionConfig } from './evolution.ts'
 import { EvolutionStore } from './evolution-store.ts'
 import type { EvolutionView, EvolutionBundle } from './evolution-model.ts'
@@ -274,6 +273,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
     maxOutputBytes: Schema.number().step(1).min(4096).default(1048576),
     maxDurationMs: Schema.number().step(1).min(1).max(2147483647).default(60000),
   })
+  /** Prompt edits take effect on the next workbench initialization. */
+  private readonly directExecutionPrompt = readUnsealedPrompt()
   private readonly creating = new Map<string, { delegationId: SecurityDelegationId; preferences: ToolPreferences }>()
   private readonly delegationAdmissions = new Map<string, { input: string
     result: Promise<{ delegationId: SecurityDelegationId; jobId?: string }> }>()
@@ -1019,17 +1020,17 @@ export default class SecurityWorkbench extends TypertRemoteService {
   /** Scoped persona shadows installed while an agent's engagement stays unsealed. */
   private readonly unsealedPersonas = new Map<SessionId, () => void>()
   /**
-   * Whether an agent's engagement is currently unsealed; the sealed persona itself is
+   * Whether an agent's engagement is currently unsealed; the direct-execution persona is
    * static so the system-prompt prefix stays cache-stable after unsealing.
    * @param agent - bound Session's agent handle.
-   * @returns the verified contract text while unsealed, or '' while sealed.
+   * @returns the loaded contract text while unsealed, or '' while sealed.
    */
   private unsealedPersona(agent: Agent): string {
     const controller = this.controller
     const binding = controller?.binding(agent.id)
     if (!binding || !controller) return ''
     if (!controller.view(agent.id).records.some(item => item.kind === 'engagement' && item.value.unsealed)) return ''
-    return openUnsealedPrompt({ SLOT: UNSEALED_SLOT, MASK: UNSEALED_MASK, TAG: UNSEALED_TAG, IV: UNSEALED_IV })
+    return this.directExecutionPrompt
   }
   /**
    * Enumerate one agent's registered engagement scope for the authorized-targets context
@@ -1060,7 +1061,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   }
   /**
    * Shadow the harness identity and persona sections in the agent's own scope with the
-   * sealed contract while its engagement is unsealed, and restore the global sections
+   * direct-execution contract while its engagement is unsealed, and restore the global sections
    * once it is sealed again or the binding deactivates. Scoped same-name sections are
    * the registry's documented per-agent override; the workbench guidance, tool sections
    * and runtime contexts remain untouched.

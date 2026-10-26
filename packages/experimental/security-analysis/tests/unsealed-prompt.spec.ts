@@ -1,34 +1,45 @@
-/** Sealed direct-execution persona and scope-context behavior. @module */
-import { readFileSync } from 'node:fs'
-import { describe, it, expect } from 'vitest'
-import { openUnsealedPrompt, sealUnsealedPrompt, unsealedScopeContext } from '../src/unsealed-prompt.ts'
-import { SLOT, MASK, TAG, IV } from '../src/unsealed-prompt-slot.ts'
+/** Direct-execution Markdown loading and scope-context behavior. @module */
+import * as fs from 'node:fs'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { readUnsealedPrompt, unsealedScopeContext } from '../src/unsealed-prompt.ts'
 
-const contract = 'Contract head\nAUTHORIZED SCOPE references the runtime-context entry.\nContract tail'
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, readFileSync: vi.fn(actual.readFileSync) }
+})
 
-describe('unsealed prompt slot', () => {
-  it('round-trips sealed text through its authentication tag', () => {
-    expect(openUnsealedPrompt(sealUnsealedPrompt(contract))).toBe(contract)
+afterEach(() => vi.resetAllMocks())
+
+describe('unsealed prompt resource', () => {
+  it('loads the Markdown resource verbatim', () => {
+    const source = fs.readFileSync(new URL('../resources/prompts/unsealed.md', import.meta.url), 'utf8')
+    expect(readUnsealedPrompt()).toBe(source)
   })
-  it('rejects tampered ciphertext and tags instead of opening degraded text', () => {
-    const slot = sealUnsealedPrompt(contract)
-    const flipped = slot.SLOT.endsWith('A') ? 'B' : 'A'
-    expect(() => openUnsealedPrompt({ ...slot, SLOT: slot.SLOT.slice(0, -1) + flipped })).toThrow('failed verification')
-    expect(() => openUnsealedPrompt({ ...slot, TAG: 'AAAAAAAAAAAAAAAAAAAAAA==' })).toThrow('failed verification')
+  it.each([
+    [' \n\t', 'Unsealed prompt is empty'],
+    ['Direct-execution contract without a scope section', 'Unsealed prompt lacks AUTHORIZED SCOPE'],
+  ])('rejects invalid prompt text %j', (source, message) => {
+    const read = vi.mocked(fs.readFileSync).mockReturnValueOnce(source)
+    try {
+      expect(() => readUnsealedPrompt()).toThrow(message)
+    } finally {
+      read.mockReset()
+    }
+    expect(readUnsealedPrompt()).toContain('AUTHORIZED SCOPE')
+  })
+  it('propagates file read failures instead of injecting fallback text', () => {
+    const failure = new Error('prompt resource unavailable')
+    const read = vi.mocked(fs.readFileSync).mockImplementationOnce(() => { throw failure })
+    try {
+      expect(() => readUnsealedPrompt()).toThrow(failure)
+    } finally {
+      read.mockReset()
+    }
+    expect(readUnsealedPrompt()).toContain('AUTHORIZED SCOPE')
   })
   it('renders registered scope lines and an explicit empty-scope marker', () => {
     expect(unsealedScopeContext(['site: https://fixture.example (authorized addresses: 192.0.2.10)']))
       .toContain('- site: https://fixture.example')
     expect(unsealedScopeContext([])).toContain('none recorded yet')
-  })
-  it('keeps the committed slot verifying against the sealed source', () => {
-    const text = openUnsealedPrompt({ SLOT, MASK, TAG, IV })
-    expect(text).toContain('Direct-execution contract')
-    expect(text).toContain('AUTHORIZED SCOPE')
-    expect(text).not.toContain('{{REGISTERED_SCOPE}}')
-  })
-  it('fails loudly when the contract source was edited without resealing', () => {
-    const source = readFileSync(new URL('../resources/prompts/unsealed.md', import.meta.url), 'utf8')
-    expect(openUnsealedPrompt({ SLOT, MASK, TAG, IV })).toBe(source)
   })
 })
