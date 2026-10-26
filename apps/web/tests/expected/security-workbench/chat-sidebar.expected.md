@@ -7,6 +7,8 @@
   - heading "Security analysis" [level=1]
   - button "Refresh"
   - button "New analysis"
+  - region "Execution mode":
+    - button "Unseal"
   - button "← Back to tasks"
   - text: Idle, can continue
   - heading "New security analysis" [level=2]

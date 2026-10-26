@@ -42,13 +42,13 @@
 .header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 14px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
 .tabs { padding: 14px; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
 .panel[data-embedded='true'] { position: static; height: 100%; min-height: 0; box-shadow: none; }
-.panel[data-embedded='true'] .header { flex-wrap: wrap; }
 .header { flex-shrink: 0; min-width: 0; }
 .header strong {
   flex: 1;
@@ -322,4 +322,12 @@
 .unsealedDot { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-label-primary-inverted); flex: none; animation: unsealedPulse 1.6s ease-in-out infinite; }
 @keyframes unsealedPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .unsealedDot { animation: none; } }
-.unsealedCard { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-interactive-bg-hover-danger); }
+.executionMode { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; }
+.executionMode p[role='alert'] { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+.executionMode button { min-height: 36px; font: inherit; border-radius: 8px; cursor: pointer; }
+.executionMode .modeAction { margin: 0; padding: 8px 16px; border: 0; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); white-space: nowrap; }
+.executionMode button:disabled { opacity: .5; cursor: default; }
+.executionMode button:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
+@media (hover: hover) {
+  .executionMode .modeAction:hover { background: var(--dsw-alias-button-primary-fill); filter: brightness(.95); }
+}

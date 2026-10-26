@@ -1,5 +1,6 @@
 /** Task module editing and cold-readable resource summaries. @module */
 import { useState } from 'react'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import { analysisModules, resolveModuleSelection, type ModuleSelection as Selection } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
@@ -60,7 +61,7 @@ export function ProjectModules({ value, save, disabled, t }: PropsLocale<typeof 
 
 /** Toggle the direct-execution contract through the existing revision-checked project operation.
  * @param props - committed mode and operator save action.
- * @returns mode switch retaining errors without changing the saved task.
+ * @returns an immediate mode action with hover/focus help; failed saves retain the current mode.
  */
 export function ProjectUnseal({ value, save, disabled, t }: PropsLocale<typeof NS> & {
   value: boolean | undefined
@@ -68,12 +69,13 @@ export function ProjectUnseal({ value, save, disabled, t }: PropsLocale<typeof N
   disabled?: boolean
 }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  return <details className={`${css.card} ${value === true ? css.unsealedCard : ''}`}><summary>{t('unsealTitle')}</summary>
-    <p className={css.summaryHint}>{t('unsealHelp')}</p>
-    <label className={css.resourceOption}><input type="checkbox" checked={value === true} disabled={disabled || busy}
-      onChange={(event) => { setBusy(true); setError(''); void save(event.target.checked).catch((error: unknown) => {
-        setError(error instanceof Error ? error.message : String(error))
-      }).finally(() => { setBusy(false) }) }} />{t(value === true ? 'unsealOn' : 'unsealOff')}</label>
+  return <section className={css.executionMode} aria-label={t('unsealTitle')}>
+    <Tooltip label={`${t(value === true ? 'unsealOn' : 'unsealOff')}\n${t('unsealHelp')}`} portal side="bottom" maxWidth={320}>
+      <button type="button" className={css.modeAction} disabled={disabled || busy} aria-busy={busy}
+        onClick={() => { setBusy(true); setError(''); void save(value !== true).catch((error: unknown) => {
+          setError(error instanceof Error ? error.message : String(error))
+        }).finally(() => { setBusy(false) }) }}>{t(busy ? 'unsealSaving' : value === true ? 'unsealDisable' : 'unsealEnable')}</button>
+    </Tooltip>
     {error && <p role="alert">{error}</p>}
-  </details>
+  </section>
 }

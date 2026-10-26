@@ -301,7 +301,15 @@ export function Dashboard(props: Props) {
   return <section ref={root} className={`${css.root} ${project?.unsealed ? css.unsealed : ''}`} aria-label={t('title')}>
     <div className={css.main}>
       <header className={css.topbar}><h1>{t('dashboardTitle')}</h1>
-        <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button></div>
+        <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button>
+          {project && <ProjectUnseal key={`unseal:${project.id}`} t={t} value={project.unsealed}
+            disabled={busy || !!project.archived} save={async (unsealed) => {
+              const current = generation.current
+              await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                action: { kind: 'unseal', unsealed } }))
+              if (current === generation.current) await refresh()
+            }} />}
+        </div>
       </header>
       {!selected && <nav className={css.navigation} aria-label={t('dashboardNavigation')}>{(['tasks', 'removed', 'toolbox', 'improvements'] as const).map(key => <button key={key} aria-current={section === key ? 'page' : undefined} onClick={() => { navigate(); setSection(key) }}>{t(key === 'tasks' ? 'dashboardTasks' : key === 'removed' ? 'removedProjects' : key === 'improvements' ? 'evoTitle' : 'toolbox')}</button>)}</nav>}
       {selected && project?.unsealed && <div className={css.unsealedBanner} role="status">
@@ -369,21 +377,14 @@ export function Dashboard(props: Props) {
             }} />}
           <details><summary>{t('analysisSettings')}</summary>
             <button disabled={busy || !!project.archived} onClick={() => void perform(() => connect(false, false, true))}>{t('environments')}</button>
-            <ProjectModules key={project.id + JSON.stringify(project.moduleSelection)} t={t} value={project.moduleSelection}
+            <ProjectModules key={`modules:${project.id}:${JSON.stringify(project.moduleSelection)}`} t={t} value={project.moduleSelection}
               disabled={busy || !!project.archived} save={async (selection) => {
                 const current = generation.current
                 await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
                   action: { kind: 'modules', selection } }))
                 if (current === generation.current) await refresh()
               }} />
-            <ProjectUnseal key={project.id + String(project.unsealed)} t={t} value={project.unsealed}
-              disabled={busy || !!project.archived} save={async (unsealed) => {
-                const current = generation.current
-                await props.manageProject(selected, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
-                  action: { kind: 'unseal', unsealed } }))
-                if (current === generation.current) await refresh()
-              }} />
-            <ProjectTaskContext key={project.id + JSON.stringify(project.taskContext)} t={t}
+            <ProjectTaskContext key={`context:${project.id}:${JSON.stringify(project.taskContext)}`} t={t}
               value={project.taskContext} maxBytes={contextSettings?.config.taskContextMaxBytes}
               workspace={contextSettings?.config.workspace ?? undefined} disabled={busy || !!project.archived} loading={busy}
               prepare={() => { if (!busy) void perform(async () => {

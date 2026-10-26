@@ -84,6 +84,27 @@ function harness(extra: object = {}) {
   // The fixture supplies only framework seats consumed by this component.
   return { api, release, props: api as Parameters<typeof Dashboard>[0] }
 }
+it('keeps one execution-mode card through refreshes and preserves its action after unsealing', async () => {
+  const { api, props } = harness()
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  const action = await screen.findByRole('button', { name: en.unsealEnable })
+  expect(screen.getByText(en.analysisSettings, { selector: 'summary' }).closest('details')?.open).toBe(false)
+  expect(action.closest('details')).toBeNull()
+  expect(action.closest('header')?.contains(screen.getByRole('heading', { name: en.dashboardTitle }))).toBe(true)
+  expect(action.parentElement?.parentElement?.contains(screen.getByRole('button', { name: en.newAnalysis }))).toBe(true)
+  const committed = { ...alpha, value: { ...alpha.value, unsealed: true } }
+  api.project.mockResolvedValue({ revision: 2, records: [committed, evidence] })
+  fireEvent.click(action)
+  await screen.findByRole('button', { name: en.unsealDisable })
+  expect(api.manageProject).toHaveBeenCalledWith('Alpha', expect.stringContaining('"kind":"unseal","unsealed":true'))
+  expect(screen.getAllByRole('region', { name: en.unsealTitle })).toHaveLength(1)
+  expect(screen.getByRole('button', { name: en.unsealDisable })).toBe(action)
+  fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+  await waitFor(() => { expect(api.project).toHaveBeenCalledTimes(3) })
+  expect(screen.getAllByRole('region', { name: en.unsealTitle })).toHaveLength(1)
+})
+
 it('browses tasks beside a mounted chat and follows explicit sidebar navigation', async () => {
   const { api, release, props: dashboard } = harness({ findSession: vi.fn(async (id: string) => SessionId(id === 'Alpha' ? 's1' : 's2')) })
   let navigation = { revision: 1, params: { projectId: 'Alpha' } }

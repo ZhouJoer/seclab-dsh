@@ -264,6 +264,13 @@ export function Workbench(props: WorkbenchProps) {
             </strong>
             {project?.kind === 'engagement' && project.value.unsealed
               && <span className={css.unsealedChip} role="status"><span className={css.unsealedDot} aria-hidden="true" />{t('unsealBanner')}</span>}
+            {project?.kind === 'engagement' && <ProjectUnseal key={`unseal:${project.value.id}`}
+              t={t} value={project.value.unsealed} disabled={busy > 0 || !!project.value.archived}
+              save={async (unsealed) => {
+                await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                  action: { kind: 'unseal', unsealed } }))
+                if (activeSession.current === sessionId) await load()
+              }} />}
             <button disabled={busy > 0} onClick={() => void perform(load)}>{t('refresh')}</button>
             {project?.kind === 'engagement' && (
               <button disabled={busy > 0} onClick={() => void perform(() => command({ kind: 'leave' }))}>{t('leaveProject')}</button>
@@ -327,22 +334,15 @@ export function Workbench(props: WorkbenchProps) {
               )}
               {busy > 0 && <p role="status">{t('loading')}</p>}
               <div className={css.body}>
-                {project?.kind === 'engagement' && <ProjectModules key={project.value.id + JSON.stringify(project.value.moduleSelection)}
+                {project?.kind === 'engagement' && <ProjectModules key={`modules:${project.value.id}:${JSON.stringify(project.value.moduleSelection)}`}
                   t={t} value={project.value.moduleSelection} disabled={busy > 0 || !!project.value.archived}
                   save={async (selection) => {
                     await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
                       action: { kind: 'modules', selection } }))
                     if (activeSession.current === sessionId) await load()
                   }} />}
-                {project?.kind === 'engagement' && <ProjectUnseal key={project.value.id + String(project.value.unsealed)}
-                  t={t} value={project.value.unsealed} disabled={busy > 0 || !!project.value.archived}
-                  save={async (unsealed) => {
-                    await props.manageProject(project.value.id, JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
-                      action: { kind: 'unseal', unsealed } }))
-                    if (activeSession.current === sessionId) await load()
-                  }} />}
                 {project?.kind === 'engagement' && <ProjectTaskContext
-                  key={project.value.id + JSON.stringify(project.value.taskContext)} t={t}
+                  key={`context:${project.value.id}:${JSON.stringify(project.value.taskContext)}`} t={t}
                   value={project.value.taskContext} maxBytes={configuration.taskContextMaxBytes}
                   workspace={configuration.workspace ?? undefined}
                   saveDefaults={workspace?.maxAttempts === undefined ? undefined

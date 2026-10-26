@@ -43,6 +43,19 @@ function props(api: WorkbenchActions, sessionId = 'parent', running = false): Wo
     useSession: (select: (snapshot: { running: boolean }) => unknown) => select({ running }),
   } as WorkbenchProps
 }
+it('retains one mode action when task settings arrive and the mode changes', async () => {
+  const api = actions()
+  const mounted = render(<Workbench {...props(api)} autoOpen />)
+  await screen.findByRole('heading', { name: 'Review the sample' })
+  const action = screen.getByRole('button', { name: zh.unsealEnable })
+  const snapshot: WorkbenchView = { revision: 9, records: [recordSchema.parse({ kind: 'engagement',
+    value: { ...project.value, unsealed: true, moduleSelection: { mode: 'manual', modules: ['web'], reason: '' } } })] }
+  mounted.rerender(<Workbench {...props(api)} autoOpen snapshot={snapshot} />)
+  await screen.findByRole('button', { name: zh.unsealDisable })
+  expect(screen.getAllByRole('region', { name: zh.unsealTitle })).toHaveLength(1)
+  expect(screen.getByRole('button', { name: zh.unsealDisable })).toBe(action)
+})
+
 it('updates from parent task facts and rejects an older refresh response', async () => {
   const api = actions()
   const mounted = render(<Workbench {...props(api)} autoOpen />)
