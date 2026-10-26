@@ -21,10 +21,22 @@ This is an independently developed fork of [DeepSeek Harness](https://github.com
 ## What you can do
 
 - **Investigate across materials.** Combine source inspection, reverse engineering, captured traffic and environment-specific tools around one research question.
+- **Choose analysis modules per task.** Combine Android/JVM, native binary, Web, IoT and penetration-testing methods automatically, or fix the module set manually; the [user guide](docs/user/guide/security-analysis.md) explains how modules differ from tool preferences.
+- **Inspect the task beside the conversation.** Open **Security workbench** from chat to browse materials, findings, evidence and reports in the right sidebar; use the **Tools** badge to inspect calls and analysis progress.
 - **Follow each conclusion back to evidence.** Inspect materials, checks, observations, delegated work and independent reviews; export a report tied to a project revision.
 - **Delegate focused questions.** Use specialist agents for reconnaissance, reverse analysis, Web analysis, public research and review, with scoped assets and tools.
 - **Control validation.** Inspect a dedicated execution plan's target, script, expected observation, limits and cleanup before approving its version. Native analysis scripts follow existing DSH permissions through a separate path.
 - **Reuse methods and knowledge.** Manage tools and environments, use analysis skills and scripts, and review reusable knowledge before publication.
+
+## Unseal
+
+The Unseal feature originates from the `dsh-purge` plugin.
+
+**Unseal** enables the direct-execution prompt for the current analysis task, so its associated sessions and delegated children address research requests within the registered scope directly. Open a task and click **Unseal** below the **Security analysis** title. After the change is saved, the button becomes **Seal again** and the page shows a red **Unsealed · direct execution active** indicator.
+
+![The test1 task showing the active direct-execution state and Seal again button](docs/images/security-workbench/unseal-direct-execution.jpg)
+
+The setting is saved with the task. Click **Seal again** to restore the original persona. Execution still follows the task's registered materials and targets, with validation plans, approvals and evidence rules in effect. See [Unseal direct execution](docs/user/guide/security-analysis.md#unseal) for the full procedure.
 
 ## Research examples
 

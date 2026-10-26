@@ -6,8 +6,8 @@
   en: 95f3d436cedff9cd
   zh: 702b3070e4e94393
 /security-analysis-workbench:
-  en: ed0a469776243c8c
-  zh: 5940da527c340647
+  en: 2e6e9f96a064719e
+  zh: 5f765eafe071233c
 /security-analysis-workbench/1-prepare-the-profile:
   en: 8ee79c9b6e123c5d
   zh: c2a4c5b8dcdb0d2c
@@ -21,11 +21,11 @@
   en: 143c65c667bdf488
   zh: 3901645688ba9045
 /security-analysis-workbench/2-start-an-analysis:
-  en: 87f08ce78a74f458
-  zh: 3556efb88701553f
+  en: f1bb5dd1a736d32a
+  zh: 9ebeaae80d87cdbf
 /security-analysis-workbench/2-start-an-analysis/unseal-direct-execution:
-  en: a6e2d0c78c4fb2a1
-  zh: f953322ac5ee43d6
+  en: 3c67dd0e35a05694
+  zh: 91897ae064aa6d28
 /security-analysis-workbench/2-start-an-analysis/inspect-windows-devices-and-analyze-wireless-recordings:
   en: 162639c3d95cbd56
   zh: d7694b030067f554
@@ -33,8 +33,8 @@
   en: 107f9e2cf4e4d94a
   zh: a0982d3570219583
 /security-analysis-workbench/3-collect-and-evaluate-evidence:
-  en: ada432f3befdceac
-  zh: d88f0b59e2abea7b
+  en: a47b5a347bef2413
+  zh: c6a1beb99d70664d
 /security-analysis-workbench/4-approve-and-stop-validation:
   en: 6f61dd707393ee28
   zh: 32b8d687441c1e44
