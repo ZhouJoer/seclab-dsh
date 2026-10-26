@@ -10,7 +10,6 @@
   - button "← Back to tasks"
   - text: Idle, can continue
   - heading "New security analysis" [level=2]
-  - button "Chat"
   - group: Task settings
   - navigation "Task detail navigation":
     - button "Overview" [pressed]

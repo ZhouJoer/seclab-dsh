@@ -23,7 +23,7 @@ export function SidebarWorkbench(props: Props) {
     ? { projectId, ...(projectId === params?.projectId ? { sessionId: props.sessionId } : {}) } : undefined,
   [projectId, params?.projectId, props.sessionId])
   return <div className={css.sidebarWorkbench}>
-    <Dashboard {...props} destination={destination}
+    <Dashboard {...props} destination={destination} sidebarSessionId={props.sessionId}
       selectDestination={(id) => { setSelection({ revision: tab.navigation.revision, projectId: id }) }}
       renderSettings={input => props.renderSlot('security.workbench.sidebar.session', input)} />
   </div>

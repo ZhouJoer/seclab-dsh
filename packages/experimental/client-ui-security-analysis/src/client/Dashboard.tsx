@@ -61,7 +61,9 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
 type Props = DashboardActions & PropsLocale<typeof NS>
   & Pick<PropsRuntime<'main'>, 'useWorkspaces' | 'useResource'>
   & Pick<PropsRenderSlots<'security.workbench.session'>, 'SessionProvider'>
-  & { renderSettings(input: DashboardSessionInput): ReactNode }
+  & { renderSettings(input: DashboardSessionInput): ReactNode
+    /** The native conversation beside this sidebar; omitted by the standalone workbench. */
+    sidebarSessionId?: SessionId }
 /** Render project facts and explicit analysis actions.
  * @param props - project reads, retained Session lifecycle and framework slots.
  * @returns responsive security dashboard. */
@@ -135,6 +137,8 @@ export function Dashboard(props: Props) {
   const refreshGeneration = useRef(0)
   const selectedWorkspace = workspace ?? workspaces[0]?.workspaceId
   const project = view.records.find(item => item.kind === 'engagement')?.value
+  const besideAssociatedChat = props.sidebarSessionId !== undefined && directory.some(item =>
+    item.project.id === selected && item.sessions.some(binding => binding.sessionId === props.sidebarSessionId))
   const activity = useProjectActivity({ ...props, project: selected, changed: (next) => {
     setView(previous => next.revision >= previous.revision ? next : previous)
   } })
@@ -340,7 +344,7 @@ export function Dashboard(props: Props) {
                 } catch (error) { if (current === generation.current) setError(String(error)) }
                 finally { if (current === generation.current) setStopping(false) }
               })()
-            }}>{t(stopping ? 'activityStopping' : 'stop')}</button>}<button className={css.primary} disabled={busy} onClick={() =>{  void perform(() => connect(false)) }}>{t('analysisChat')}</button></>}
+            }}>{t(stopping ? 'activityStopping' : 'stop')}</button>}{!besideAssociatedChat && <button className={css.primary} disabled={busy} onClick={() =>{  void perform(() => connect(false)) }}>{t('openAssociatedChat')}</button>}</>}
             {!project.archived && project.objective && <><button ref={restartTrigger} className={css.restartAction}
               disabled={busy || stopping}
               aria-expanded={restartOpen} aria-controls={restartOpen ? 'security-restart-confirmation' : undefined}

@@ -50,7 +50,7 @@ function harness(extra: object = {}) {
         taskContext: (JSON.parse(input) as { taskContext: TaskContext }).taskContext },
     })),
     followProjects: async function* (signal: AbortSignal) {
-      yield [alpha, beta].map(item => ({ project: item.value, sessions: [], runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '', state: item.value.stopped ? 'stopped' as const : 'idle' as const }))
+      yield [alpha, beta].map(item => ({ project: item.value, sessions: [{ sessionId: item === alpha ? 's1' : 's2', role: 'coordinator', active: true }], runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '', state: item.value.stopped ? 'stopped' as const : 'idle' as const }))
       if (!signal.aborted) await new Promise<void>((resolve) =>{  signal.addEventListener('abort', () =>{  resolve() }, { once: true }) })
     },
     observe: vi.fn(async (_id: string, _input: string) => ({ revision: 2, records: [alpha, evidence] })),
@@ -85,7 +85,7 @@ function harness(extra: object = {}) {
   return { api, release, props: api as Parameters<typeof Dashboard>[0] }
 }
 it('browses tasks beside a mounted chat and follows explicit sidebar navigation', async () => {
-  const { api, release, props: dashboard } = harness()
+  const { api, release, props: dashboard } = harness({ findSession: vi.fn(async (id: string) => SessionId(id === 'Alpha' ? 's1' : 's2')) })
   let navigation = { revision: 1, params: { projectId: 'Alpha' } }
   const props = { ...dashboard, sessionId: SessionId('s1'), renderSlot: vi.fn(() => <div />),
     useTabInfo: (): SidebarRightTabInfo => ({ sidebar: { expanded: true, fullscreen: false }, panel: { id: 'pane' as PaneId },
@@ -99,14 +99,19 @@ it('browses tasks beside a mounted chat and follows explicit sidebar navigation'
   const mounted = render(content)
   const draft = screen.getByRole('textbox', { name: 'Chat draft' })
   await screen.findByRole('heading', { name: 'Alpha' })
+  expect(screen.queryByRole('button', { name: en.openAssociatedChat })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: en.dashboardBack }))
   fireEvent.click(await screen.findByRole('button', { name: /Beta/ }))
   await screen.findByRole('heading', { name: 'Beta' })
   expect(api.selectDestination).not.toHaveBeenCalled()
   expect(api.openChat).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: en.openAssociatedChat }))
+  await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s2') })
+  expect(api.resumeProject).not.toHaveBeenCalled()
   navigation = { revision: 2, params: { projectId: 'Alpha' } }
   mounted.rerender(<><textarea aria-label="Chat draft" defaultValue="Keep this draft" /><SidebarWorkbench {...props} /></>)
   await screen.findByRole('heading', { name: 'Alpha' })
+  expect(screen.queryByRole('button', { name: en.openAssociatedChat })).toBeNull()
   expect(screen.getByRole('textbox', { name: 'Chat draft' })).toBe(draft)
   expect((draft as HTMLTextAreaElement).value).toBe('Keep this draft')
   expect(api.createSession).not.toHaveBeenCalled()
@@ -119,7 +124,7 @@ it('confirms a restart and opens its fresh draft without sending or creating ano
   render(<Dashboard {...props} />)
   fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
   const trigger = await screen.findByRole('button', { name: en.restartTask })
-  expect(trigger.parentElement?.contains(screen.getByRole('button', { name: en.analysisChat }))).toBe(true)
+  expect(trigger.parentElement?.contains(screen.getByRole('button', { name: en.openAssociatedChat }))).toBe(true)
   fireEvent.click(trigger)
   expect(api.restartTask).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
@@ -253,7 +258,7 @@ it('opens the native chat without embedding a second composer', async () => {
   const { api, props } = harness()
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
-  fireEvent.click(await screen.findByRole('button', { name: en.analysisChat }))
+  fireEvent.click(await screen.findByRole('button', { name: en.openAssociatedChat }))
   await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s1') })
   expect(screen.queryByRole('complementary')).toBeNull()
   expect(api.createSession).not.toHaveBeenCalled()
@@ -280,7 +285,7 @@ it('requires an explicit continue action before creating a missing historical Se
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }))
   await screen.findByRole('heading', { name: 'Alpha' })
-  fireEvent.click(screen.getByRole('button', { name: en.analysisChat }))
+  fireEvent.click(screen.getByRole('button', { name: en.openAssociatedChat }))
   await screen.findByText(/No recoverable analysis session/)
   expect(api.createSession).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Continue analysis' }))
@@ -292,7 +297,7 @@ it('opens the stopped assistant without implicitly resuming its task', async () 
   render(<Dashboard {...props} />)
   fireEvent.click(await screen.findByRole('button', { name: /Beta/ }))
   await screen.findByRole('heading', { name: 'Beta' })
-  fireEvent.click(screen.getByRole('button', { name: en.analysisChat }))
+  fireEvent.click(screen.getByRole('button', { name: en.openAssociatedChat }))
   await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s1') })
   expect(api.resumeProject).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Resume task' }))
