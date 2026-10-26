@@ -28,6 +28,12 @@ This is an independently developed fork of [DeepSeek Harness](https://github.com
 - **Control validation.** Inspect a dedicated execution plan's target, script, expected observation, limits and cleanup before approving its version. Native analysis scripts follow existing DSH permissions through a separate path.
 - **Reuse methods and knowledge.** Manage tools and environments, use analysis skills and scripts, and review reusable knowledge before publication.
 
+## Starting a task
+
+Choose **New analysis**, enter and send an objective in chat, then open **Security workbench** in the right sidebar. This 13-second GIF shows one real model interaction in a configured workspace. It holds selected frames for readability and does not represent response latency. See the [user guide](docs/user/guide/security-analysis.md) for the full procedure.
+
+![Creating an analysis, entering an objective, receiving a model response and opening the workbench sidebar](docs/images/security-workbench/task-start.gif)
+
 ## Unseal
 
 The Unseal feature originates from the `dsh-purge` plugin.

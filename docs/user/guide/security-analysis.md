@@ -101,9 +101,9 @@ When the workspace already has its execution settings, the creation entry opens 
 2. Describe the research objective in the native composer, choose a model and reference files as needed. Click **Send message** to begin; creating the task does not itself send a model request.
 3. Click **Security workbench** above the conversation or beside the composer to browse the task's overview, materials, findings, evidence and reports in the right sidebar. Chat stays on the left for further instructions.
 
-The minimal task below requests only one sentence, showing a real model response and the workbench beside chat. It did not run analysis tools or validate a vulnerability.
+The minimal task below requests only one sentence, showing a real model response and the workbench beside chat. It did not run analysis tools or validate a vulnerability. The 13-second GIF holds selected frames for readability and does not represent response latency; a [static screenshot](../../images/security-workbench/task-start-chat-sidebar.jpg) is also available.
 
-![A minimal task with a model response and the security workbench beside native chat](../../images/security-workbench/task-start-chat-sidebar.jpg)
+![Creating a minimal task, sending a message, receiving a response and opening the security workbench](../../images/security-workbench/task-start.gif)
 
 While a task is open or running, its working directory synchronizes into the material library; **Materials** shows the sync state and saved contents. Use **Add materials** for additional inputs. Task search and status filters remain available; “Idle, can continue” does not mean a model is running. Model imports remain limited to `importRoots`; explicit material selection authorizes only that import. Missing historical Sessions require an explicit continuation action. Stopped tasks require resuming, and restoring a removed task does not automatically run analysis.
 
