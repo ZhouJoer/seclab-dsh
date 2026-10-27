@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
@@ -44,6 +45,28 @@ async function harness() {
 const selection = { expectedRevision: 0, environmentIds: ['local'], maxAttempts: 3 }
 
 describe('workspace resource configuration', () => {
+  it('keeps first-message overrides separate, persists them, and restores defaults with revision checks', async () => {
+    const { root, start } = await harness()
+    const first = await start()
+    const id = SessionId('first-message')
+    await first.store.set(root, { ...selection, taskContext: { background: 'Workspace default' } })
+    const settings = { environmentIds: ['device'], maxAttempts: 7, unsealed: true,
+      moduleSelection: { mode: 'manual', modules: ['iot'], reason: '' }, taskContext: null }
+    await first.store.setTask(id, root, { expectedRevision: 0, settings })
+    expect(first.store.get(root)).toMatchObject({ environmentIds: ['local'], taskContext: { background: 'Workspace default' } })
+    expect(first.store.task(SessionId('other'), root)).toBeUndefined()
+    expect(first.store.task(id, join(root, 'other'))).toBeUndefined()
+    await first.close()
+    const reopened = await start()
+    expect(reopened.store.task(id, root)?.settings).toMatchObject({ environmentIds: ['device'], maxAttempts: 7, unsealed: true,
+      moduleSelection: { mode: 'manual', modules: ['iot'] } })
+    expect(reopened.store.task(id, root)?.settings?.taskContext).toBeUndefined()
+    await expect(reopened.store.setTask(id, root, { expectedRevision: 0, settings: null })).rejects.toThrow('changed')
+    await reopened.store.setTask(id, root, { expectedRevision: 1, settings: null })
+    expect(reopened.store.task(id, root)).toEqual({ revision: 2 })
+    expect(reopened.store.get(root)?.taskContext?.background).toBe('Workspace default')
+  })
+
   it('restores a complete optional authorization declaration after closing and reopening storage', async () => {
     const { root, start } = await harness()
     const first = await start()
@@ -91,7 +114,7 @@ describe('workspace resource configuration', () => {
     await first.store.set(root, selection)
     await first.store.set(join(root, 'disabled'), { ...selection, environmentIds: [] })
     await first.close()
-    const bytes = await readFile(join(root, 'security_workspace_intake.json'), 'utf8')
+    const bytes = await readFile(join(root, 'security_workspace_intake_v2.json'), 'utf8')
     expect(bytes).toContain('local')
     const second = await start()
     expect(second.store.get(root)).toEqual({ environmentIds: ['local'], maxAttempts: 3, revision: 1 })

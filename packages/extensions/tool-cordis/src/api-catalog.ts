@@ -2436,6 +2436,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'durable identities; repeating the same request recovers the existing task.',
       },
       {
+        signature: '@Remote(\'prepareAnalysis\') async prepareAnalysis(agent: Agent): Promise<void>',
+        description: 'Associate a security-preset conversation before its first operator prompt.',
+        parameters: [{ name: 'agent', description: 'authenticated conversation; other presets and existing associations are unchanged.' }],
+        returns: 'completion after the task and fixed workspace defaults are committed; retries reuse the association.',
+      },
+      {
+        signature: '@Remote(\'configureStartup\') async configureStartup(agent: Agent, input: string): Promise<WorkbenchConfiguration>',
+        description: 'Save or clear this conversation\'s startup settings without creating a project or changing its preset.',
+        parameters: [{ name: 'agent', description: 'authenticated conversation, still awaiting its first association.' }, { name: 'input', description: 'JSON revision and complete settings; null settings restores workspace defaults.' }],
+        returns: 'configuration after the durable save.',
+      },
+      {
         signature: '@Remote(\'refreshWorkspaceMaterials\') async refreshWorkspaceMaterials(projectId: string): Promise<void>',
         description: 'Retry automatic directory collection while preserving the last successful snapshot.',
         parameters: [{ name: 'projectId', description: 'task whose configured source should be rescanned.' }],
@@ -4582,6 +4594,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'summary', description: 'current list row for the Session.' }],
   },
   {
+    name: 'api-session/before-prompt',
+    mode: 'serial',
+    signature: '\'api-session/before-prompt\'(agent: Agent, message: import(\'@deepseek-ai/dsh-llm\').UserMessage): Promise<void>',
+    summary: 'Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.',
+    description: 'Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.',
+    parameters: [{ name: 'agent', description: 'authenticated destination Agent.' }, { name: 'message', description: 'validated operator content, before enqueueing.' }],
+  },
+  {
     name: 'api-session/error',
     mode: 'emit',
     signature: '\'api-session/error\'(sessionId: SessionId, message: string): void',
@@ -6070,6 +6090,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FinishReasonMap {\n    \'stop\': {\n        kind: \'stop\';\n    };\n    \'tool-calls\': {\n        kind: \'tool-calls\';\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    \'aborted\': {\n        kind: \'aborted\';\n        failure: LlmFailure;\n    };\n    \'error\': {\n        kind: \'error\';\n        failure: LlmFailure;\n    };\n}',
   },
   {
+    name: 'FirstMessageSettings',
+    declaration: 'export interface FirstMessageSettings {\n    environmentIds: string[];\n    maxAttempts: number;\n    taskContext?: TaskContext | undefined;\n    unsealed?: boolean | undefined;\n    moduleSelection?: ModuleSelection | undefined;\n}',
+  },
+  {
     name: 'FrequencyTooHighError',
     declaration: 'export interface FrequencyTooHighError {\n    readonly code: \'frequency_too_high\';\n    readonly message: string;\n}',
   },
@@ -6892,6 +6916,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModTier',
     declaration: 'export type ModTier = \'prepend\' | \'user\' | \'append\' | \'builtin\' | \'core\';',
+  },
+  {
+    name: 'ModuleSelection',
+    declaration: 'export type ModuleSelection = z.infer<typeof moduleSelectionSchema>;',
   },
   {
     name: 'NativeFileApplication',
@@ -9387,7 +9415,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkbenchConfiguration',
-    declaration: 'export interface WorkbenchConfiguration {\n    workspace: {\n        cwd: string;\n        revision: number;\n        configured: boolean;\n        environmentIds: string[];\n        maxAttempts?: number;\n        taskContext?: TaskContext;\n    } | null;\n    materialLimits: {\n        bytes: number;\n        entries: number;\n    };\n    taskContextMaxBytes: number;\n    selectedProject?: string;\n    projects: {\n        id: string;\n        title: string;\n    }[];\n    environments: {\n        id: string;\n        kind: \'local\' | \'docker\' | \'android\';\n        label: string;\n        tools: string[];\n    }[];\n    providers: {\n        id: string;\n        operations: readonly string[];\n    }[];\n    knowledgeIntervalMs: number;\n}',
+    declaration: 'export interface WorkbenchConfiguration {\n    workspace: {\n        cwd: string;\n        revision: number;\n        configured: boolean;\n        environmentIds: string[];\n        maxAttempts?: number;\n        taskContext?: TaskContext | undefined;\n        unsealed?: boolean | undefined;\n        moduleSelection?: ModuleSelection | undefined;\n    } | null;\n    startup?: {\n        revision: number;\n        settings?: FirstMessageSettings | undefined;\n    };\n    materialLimits: {\n        bytes: number;\n        entries: number;\n    };\n    taskContextMaxBytes: number;\n    selectedProject?: string;\n    projects: {\n        id: string;\n        title: string;\n    }[];\n    environments: {\n        id: string;\n        kind: \'local\' | \'docker\' | \'android\';\n        label: string;\n        tools: string[];\n    }[];\n    providers: {\n        id: string;\n        operations: readonly string[];\n    }[];\n    knowledgeIntervalMs: number;\n}',
   },
   {
     name: 'WorkbenchOptions',

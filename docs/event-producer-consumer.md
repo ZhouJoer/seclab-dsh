@@ -24,6 +24,7 @@ This matrix shows which packages dispatch each harness-owned event and which pac
 | `agent/turn-stopping` | `serial` | [`packages/core/agent/src/runtime-types.ts:381`](../packages/core/agent/src/runtime-types.ts) | [`agent-loop`](../packages/core/agent-loop) (`serial`) | [`hooks-claude-code`](../packages/experimental/hooks-claude-code), [`hooks-codex`](../packages/experimental/hooks-codex), [`workspace-changes`](../packages/deliverables/workspace-changes) |
 | `api-session/activity` | `emit` | [`packages/api/session-controller/src/types.ts:629`](../packages/api/session-controller/src/types.ts) | `session-controller` (`emit`) | `remotes` |
 | `api-session/added` | `emit` | [`packages/api/session-controller/src/types.ts:609`](../packages/api/session-controller/src/types.ts) | `session-controller` (`emit`) | `remotes` |
+| `api-session/before-prompt` | `serial` | [`packages/api/session-controller/src/index.ts:83`](../packages/api/session-controller/src/index.ts) | `session-controller` (`serial`) | `security-analysis` |
 | `api-session/error` | `emit` | [`packages/api/session-controller/src/types.ts:636`](../packages/api/session-controller/src/types.ts) | `session-controller` (`emit`) | `remotes` |
 | `api-session/removed` | `emit` | [`packages/api/session-controller/src/types.ts:615`](../packages/api/session-controller/src/types.ts) | `session-controller` (`emit`) | `remotes` |
 | `api-session/status` | `emit` | [`packages/api/session-controller/src/types.ts:622`](../packages/api/session-controller/src/types.ts) | `session-controller` (`emit`) | `remotes` |

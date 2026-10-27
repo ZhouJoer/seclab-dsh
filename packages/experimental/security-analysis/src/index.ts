@@ -14,6 +14,7 @@ import { installSecurityMethods } from './methods.ts'
 import { openWorkspaceIntake, type WorkspaceIntakeStore } from './workspace-intake.ts'
 import { openTaskSettings, type TaskSettings } from './task-settings.ts'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { WorkspaceMaterialSync, type WorkspaceMaterialOptions } from './workspace-materials.ts'
@@ -42,7 +43,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { mkdir } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { isAbsolute, join } from 'node:path'
-import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -90,6 +91,13 @@ import { EvolutionStore } from './evolution-store.ts'
 import type { EvolutionView, EvolutionBundle } from './evolution-model.ts'
 
 const scopeKinds = [...recordSchema.options.map(option => option.shape.kind.value), 'http', 'http-identities']
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** Workspace settings must be completed before a security conversation can send. */
+    'security/setup-required': {}
+  }
+}
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -302,6 +310,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private index: SecuritySearchIndex | undefined
   private readonly shutdown = new AbortController()
   private readonly pending = new Set<Promise<unknown>>()
+  private readonly startupOperations = new Map<SessionId, Promise<void>>()
   private readonly refinements = new Map<string, Promise<void>>()
   private readonly intakeCandidates = new Map<SessionId, {
     message: UserMessage
@@ -847,6 +856,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
         await (await this.ready).bindDelegationChild(pending.delegationId, agent.id)
       }
     })
+    ctx.on('api-session/before-prompt', async (agent, message) => {
+      if (message.source.kind !== 'user' || !('rpcId' in message.source)) return
+      await this.prepareAnalysis(agent)
+    })
     ctx.on('session/event', (session, event) => {
       if (event.type === 'assistant/message') {
         const content = event.data.message.content
@@ -937,7 +950,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const message = messages.find(item => item.source.kind === 'user' && 'rpcId' in item.source
         && item.content.some(part => part.type === 'text' && part.text.trim() !== '')
         && decision.messages.some(admitted => admitted.id === item.id))
-      if (message && !this.intakeCandidates.get(agent.id)?.committed) {
+      if (message && this.ctx.sessionProjections.stateOf(agent.session, 'agentPreset') === undefined
+        && !this.intakeCandidates.get(agent.id)?.committed) {
         assert(this.journal, 'Task intake requires initialized storage')
         const action = resolveWorkspaceTaskAdmission({ message, cwd: agent.session.header.cwd,
           child: agent.session.header.origin === 'subagent',
@@ -1492,7 +1506,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const workspace = workspaces.list().find(item => item.sessionIds.includes(agent.id))
     const cwd = agent.session.header.cwd
     assert(cwd, 'Restart requires a workspace directory')
-    const agentPreset = agent.session.header.agentPreset
+    const agentPreset = this.ctx.sessionProjections.stateOf(agent.session, 'agentPreset')
     const result = await sessions.create({ sessionId: receipt.sessionId,
       ...(workspace ? { workspaceId: workspace.id } : { cwd }),
       ...(agentPreset ? { agentPreset } : {}) })
@@ -1712,8 +1726,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const controller = await this.ready
     const catalog = this.toolCatalog()
     const project = controller.view(agent.id).records.find(item => item.kind === 'engagement')
+    const cwd = agent.session.header.cwd
+    const startup = cwd === undefined ? undefined : this.workspaceIntake?.task(agent.id, cwd)?.settings
     const environments = project?.kind === 'engagement' ? project.value.environmentIds
-      : resolveTaskIntakeResources(this.intakeConfig(agent.session.header.cwd), agent.session.header.cwd)?.environmentIds ?? []
+      : startup?.environmentIds ?? resolveTaskIntakeResources(this.intakeConfig(cwd), cwd)?.environmentIds ?? []
     const tools = catalog.tools.map((tool): ToolPreferenceOptions['tools'][number] => {
       const choice = { id: tool.id, label: tool.label, tags: tool.tags }
       const adapter = toolAdapters.find(item => item.id === tool.id)
@@ -1744,8 +1760,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
         if (!selected.length) throw new Error('No tools match the selected preferences')
         const controller = await this.ready
         const project = controller.view(agent.id).records.find(item => item.kind === 'engagement')
+        const cwd = agent.session.header.cwd
+        const startup = cwd === undefined ? undefined : this.workspaceIntake?.task(agent.id, cwd)?.settings
         const environments = project?.kind === 'engagement' ? project.value.environmentIds
-          : resolveTaskIntakeResources(this.intakeConfig(agent.session.header.cwd), agent.session.header.cwd)?.environmentIds ?? []
+          : startup?.environmentIds ?? resolveTaskIntakeResources(this.intakeConfig(cwd), cwd)?.environmentIds ?? []
         const revision = JSON.stringify([catalog.revision,
           this.toolConfiguration.path === undefined ? null : this.toolConfiguration.read().revision])
         const probes = new Map<string, Set<string>>()
@@ -2200,7 +2218,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     if (!workspace || !sessions) throw new Error('Select an existing workspace')
     const sessionId = brandString<SessionId>(request.sessionId)
     if (!controller.binding(sessionId)) {
-      const created = await sessions.create({ workspaceId: workspace.id, sessionId })
+      const created = await sessions.create({ workspaceId: workspace.id, sessionId, agentPreset: 'security' })
       if (created.sessionId !== sessionId) throw new Error('The requested conversation is no longer available for this analysis')
     }
     const view = await controller.createWorkspaceTask(sessionId, request.operationId, workspace.path,
@@ -2210,11 +2228,76 @@ export default class SecurityWorkbench extends TypertRemoteService {
         if (maxAttempts === undefined) throw new Error('Configure the workspace attempt limit before creating an analysis')
         if (request.environmentIds.some(id => !configuration.environments.some(item => item.id === id)))
           throw new Error('Select an available analysis environment')
-        return { maxAttempts, moduleSelection: resolveModuleSelection(), taskContext: configuration.workspace?.taskContext ?? null }
+        return { maxAttempts, moduleSelection: resolveModuleSelection(configuration.workspace?.moduleSelection),
+          taskContext: configuration.workspace?.taskContext ?? null,
+          unsealed: configuration.workspace?.unsealed ?? false }
       })
     const project = view.records.find(item => item.kind === 'engagement')
     assert(project)
     return { sessionId, projectId: project.value.id }
+  }
+
+  /** Associate a security-preset conversation before its first operator prompt.
+   * @param agent - authenticated conversation; other presets and existing associations are unchanged.
+   * @returns completion after the task and fixed workspace defaults are committed; retries reuse the association.
+   */
+  @Remote('prepareAnalysis')
+  async prepareAnalysis(agent: Agent): Promise<void> {
+    await this.withStartup(agent.id, () => this.prepareAnalysisImpl(agent))
+  }
+
+  private async withStartup<T>(id: SessionId, operation: () => Promise<T>): Promise<T> {
+    const result = (this.startupOperations.get(id) ?? Promise.resolve()).then(() => {
+      this.shutdown.signal.throwIfAborted()
+      return operation()
+    })
+    const tail = result.then(() => {}, () => {})
+    this.startupOperations.set(id, tail)
+    this.pending.add(result)
+    try { return await result }
+    finally {
+      if (this.startupOperations.get(id) === tail) this.startupOperations.delete(id)
+      this.pending.delete(result)
+    }
+  }
+
+  private async prepareAnalysisImpl(agent: Agent): Promise<void> {
+    const preset = this.ctx.sessionProjections.stateOf(agent.session, 'agentPreset')
+    if (preset !== 'security' || agent.session.header.origin === 'subagent') return
+    const controller = await this.ready
+    if (controller.binding(agent.id)) return
+    const cwd = agent.session.header.cwd
+    if (!cwd) throw new RemoteError('security/setup-required', 'Choose a workspace before starting security analysis.', {})
+    await controller.createWorkspaceTask(agent.id, `first-message:${agent.id}`, cwd,
+      { title: 'Security analysis' }, async () => {
+        const configuration = await this.configurationForCwd(cwd)
+        const workspace = this.workspaceIntake?.task(agent.id, cwd)?.settings ?? configuration.workspace
+        if (!workspace?.environmentIds.length || workspace.maxAttempts === undefined
+          || workspace.environmentIds.some(id => !configuration.environments.some(environment => environment.id === id)))
+          throw new RemoteError('security/setup-required', 'Choose available analysis environments and an attempt limit before sending.', {})
+        return { environmentIds: workspace.environmentIds, maxAttempts: workspace.maxAttempts,
+          taskContext: workspace.taskContext ?? null, unsealed: workspace.unsealed ?? false,
+          moduleSelection: resolveModuleSelection(workspace.moduleSelection) }
+      })
+  }
+
+  /** Save or clear this conversation's startup settings without creating a project or changing its preset.
+   * @param agent - authenticated conversation, still awaiting its first association.
+   * @param input - JSON revision and complete settings; null settings restores workspace defaults.
+   * @returns configuration after the durable save.
+   */
+  @Remote('configureStartup')
+  async configureStartup(agent: Agent, input: string): Promise<WorkbenchConfiguration> {
+    return this.withStartup(agent.id, async () => {
+      const controller = await this.ready
+      if (agent.session.header.origin === 'subagent' || controller.binding(agent.id))
+        throw new Error('Startup settings are only available before a task is associated')
+      const cwd = agent.session.header.cwd
+      if (!cwd) throw new Error('Select a workspace before configuring resources')
+      assert(this.workspaceIntake, 'Startup settings require initialized storage')
+      await this.workspaceIntake.setTask(agent.id, cwd, JSON.parse(input))
+      return this.configuration(agent)
+    })
   }
 
   /** Retry automatic directory collection while preserving the last successful snapshot.
@@ -2234,7 +2317,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('configuration')
   async configuration(agent: Agent): Promise<WorkbenchConfiguration> {
-    return this.configurationForCwd(agent.session.header.cwd, (await this.ready).binding(agent.id)?.engagementId)
+    const cwd = agent.session.header.cwd
+    const config = await this.configurationForCwd(cwd, (await this.ready).binding(agent.id)?.engagementId)
+    const startup = cwd === undefined ? undefined : this.workspaceIntake?.task(agent.id, cwd)
+    return { ...config, ...(startup ? { startup } : {}) }
   }
 
   private async configurationForCwd(cwd: string | undefined, selectedProject?: string): Promise<WorkbenchConfiguration> {
@@ -2248,6 +2334,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
         environmentIds: saved?.environmentIds ?? selected?.environmentIds ?? [],
         ...(maxAttempts === undefined ? {} : { maxAttempts }),
         ...(saved?.taskContext ? { taskContext: saved.taskContext } : {}),
+        ...(saved?.unsealed === undefined ? {} : { unsealed: saved.unsealed }),
+        ...(saved?.moduleSelection === undefined ? {} : { moduleSelection: saved.moduleSelection }),
       },
       taskContextMaxBytes: this.config.taskContextMaxBytes,
       materialLimits: { bytes: this.config.maxArtifactBytes, entries: this.config.maxDerivedAssets },

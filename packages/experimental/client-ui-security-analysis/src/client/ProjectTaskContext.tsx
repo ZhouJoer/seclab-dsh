@@ -16,7 +16,7 @@ export function ProjectTaskContext(props: PropsLocale<typeof NS> & {
   maxBytes: number | undefined
   disabled: boolean
   loading?: boolean
-  workspace?: { cwd: string; taskContext?: TaskContext } | undefined
+  workspace?: { cwd: string; taskContext?: TaskContext | undefined } | undefined
   prepare?(this: void): void
   save(value: TaskContext | null): Promise<boolean>
   saveDefaults?: ((value: TaskContext | null) => Promise<boolean>) | undefined

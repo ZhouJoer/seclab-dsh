@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../preset/agent-preset-registry"
+    },
+    {
       "path": "../../api/session-controller/tsconfig.host.json"
     },
     {

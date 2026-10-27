@@ -1127,6 +1127,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-conversation TodoDock id \'todo\'',
       'client-ui-goal GoalDock id \'goal\'',
       'experimental-client-ui-claude-code-mods Band id \'claude-code-mods\'',
+      'experimental-client-ui-security-analysis FirstMessageSetup id \'security-first-message\'',
       'experimental-client-ui-security-analysis ConversationProgressLauncher id \'security-workbench\'',
     ],
     replaceRisk: 'none',
@@ -2996,7 +2997,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'security.workbench.session\', () => ctx.slots.register(\n      { name: \'security.workbench.session\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/experimental/client-ui-security-analysis/src/client/index.ts:39',
+    source: 'packages/experimental/client-ui-security-analysis/src/client/index.ts:41',
   },
   {
     key: 'security.workbench.sidebar.session',
@@ -3040,7 +3041,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'security.workbench.sidebar.session\', () => ctx.slots.register(\n      { name: \'security.workbench.sidebar.session\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/experimental/client-ui-security-analysis/src/client/index.ts:41',
+    source: 'packages/experimental/client-ui-security-analysis/src/client/index.ts:43',
   },
   {
     key: 'settings.action',

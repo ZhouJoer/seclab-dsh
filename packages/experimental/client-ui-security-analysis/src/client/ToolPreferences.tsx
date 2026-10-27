@@ -13,6 +13,8 @@ export interface ToolPreferenceActions {
 type Props = ToolPreferenceActions & PropsLocale<typeof NS> & {
   sessionId: SessionId
   disabled?: boolean
+  compact?: boolean
+  onDirtyChange?: (dirty: boolean) => void
   onReadyChange?: (ready: boolean) => void
 }
 /** Apply checked selections while retaining the draft and saved preferences on failure.
@@ -29,6 +31,8 @@ function PreferenceEditor(props: Props) {
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false)
   const [open, setOpen] = useState(false)
   const [dirty, setDirty] = useState(false), [retry, setRetry] = useState(0)
+  const [baseline, setBaseline] = useState<Preferences>()
+  const changed = (value: boolean) => { setDirty(value); props.onDirtyChange?.(value) }
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -47,7 +51,10 @@ function PreferenceEditor(props: Props) {
         const selected = selection.toolIds.length + selection.tags.length + selection.collectionIds.length
           ? catalog.tools.filter(tool => ((!selection.toolIds.length && !selection.collectionIds.length) || ids.has(tool.id))
             && (!selection.tags.length || selection.tags.some(tag => tool.tags.includes(tag)))).map(tool => tool.id) : []
-        if (active) { setCatalog(catalog); setSelection({ toolIds: selected, tags: [], collectionIds: [] }); setSaved(false) }
+        if (active) {
+          const value = { toolIds: selected, tags: [], collectionIds: [] }
+          setCatalog(catalog); setSelection(value); setBaseline(value); setSaved(false)
+        }
       }).catch((error: unknown) => { if (active) setError(String(error)) }).finally(() => { if (active) setBusy(false) })
     }
     return () => { active = false }
@@ -57,7 +64,7 @@ function PreferenceEditor(props: Props) {
     try {
       const next = await props.toolPreferences(sessionId, JSON.stringify(value))
       if (mounted.current) {
-        setSelection(next); setSaved(true); setDirty(false)
+        setSelection(next); setBaseline(next); setSaved(true); changed(false)
       }
     } catch (error) { if (mounted.current) setError(String(error)) }
     finally { if (mounted.current) setBusy(false) }
@@ -66,7 +73,7 @@ function PreferenceEditor(props: Props) {
     if (event.currentTarget.open) setOpen(true)
   }}>
     <summary>{t('toolPreferenceTitle')}</summary>
-    <p>{t('toolPreferenceHelp')}</p>
+    {!props.compact && <p>{t('toolPreferenceHelp')}</p>}
     {selection && <fieldset className={css.toolFields} disabled={busy || props.disabled}>
       {catalog?.collections.map(group => <label key={group.id}><input type="checkbox"
         disabled={!group.toolIds.length}
@@ -74,20 +81,24 @@ function PreferenceEditor(props: Props) {
           setSelection({ toolIds: event.target.checked
             ? [...new Set([...selection.toolIds, ...group.toolIds])]
             : selection.toolIds.filter(id => !group.toolIds.includes(id)), tags: [], collectionIds: [] })
-          setSaved(false); setDirty(true)
+          setSaved(false); changed(true)
         }} />{group.label}</label>)}
       <details><summary>{t('toolChooseType')}</summary><div className={css.toolFields}>{catalog?.tools.map(tool => <label key={tool.id}><input type="checkbox" disabled={!!tool.unavailable && !selection.toolIds.includes(tool.id)} checked={selection.toolIds.includes(tool.id)} onChange={(event) => {
         setSelection({ ...selection, toolIds: event.target.checked
-          ? [...selection.toolIds, tool.id] : selection.toolIds.filter(id => id !== tool.id) }); setSaved(false); setDirty(true)
+          ? [...selection.toolIds, tool.id] : selection.toolIds.filter(id => id !== tool.id) }); setSaved(false); changed(true)
       }} />{tool.label}{tool.unavailable && <span>{t(tool.unavailable === 'adapter' ? 'toolPreferenceNoAdapter'
         : tool.unavailable === 'sample' ? 'toolPreferenceNeedsSample'
           : tool.unavailable === 'provider' ? 'toolPreferenceNoProvider' : 'toolPreferenceNeedsConfiguration')}</span>}
       {tool.detail && <details><summary>{t('toolPreferenceDetails')}</summary>{tool.detail}</details>}</label>)}</div></details>
-      <button onClick={() => void apply(selection)}>{t('toolPreferenceSave')}</button>
-      <button onClick={() => void apply({ toolIds: [], collectionIds: [], tags: [] })}>{t('toolPreferenceAuto')}</button>
+      {(!props.compact || dirty) && <button onClick={() => void apply(selection)}>{t('toolPreferenceSave')}</button>}
+      {props.compact && dirty && <button onClick={() => {
+        setSelection(baseline); changed(false); setError(''); setSaved(false)
+      }}>{t('startupCancelEdits')}</button>}
+      {(!props.compact || !dirty && selection.toolIds.length > 0)
+        && <button onClick={() => void apply({ toolIds: [], collectionIds: [], tags: [] })}>{t('toolPreferenceAuto')}</button>}
     </fieldset>}
-    {saved && <p role="status">{t('toolPreferenceSaved')}</p>}
-    {dirty && props.onReadyChange && <p role="status">{t('toolPreferenceUnsaved')}</p>}
+    {!props.compact && saved && <p role="status">{t('toolPreferenceSaved')}</p>}
+    {!props.compact && dirty && props.onReadyChange && <p role="status">{t('toolPreferenceUnsaved')}</p>}
     {error && <p role="alert">{selection && t('toolPreferenceFailed')} {error}</p>}
     {error && !selection && <button disabled={busy || props.disabled}
       onClick={() => { setRetry(value => value + 1) }}>{t('refresh')}</button>}

@@ -68,7 +68,7 @@ import * as NativeFs from '@deepseek-ai/dsh-tool-fs'
 import * as NativeBash from '@deepseek-ai/dsh-tool-bash'
 import * as NativePwsh from '@deepseek-ai/dsh-tool-pwsh'
 import SessionQuery from '@deepseek-ai/dsh-session-query'
-import AgentPresets from '@deepseek-ai/dsh-agent-preset-registry'
+import AgentPresets, { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import * as NativeJobs from '@deepseek-ai/dsh-tool-jobs'
 import BrowserUse from '@deepseek-ai/dsh-browser-use'
 import * as PlaywrightBrowser from '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
@@ -363,6 +363,100 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
     operationId: JSON.stringify(action), expectedRevision: controller.view(agent.id).revision, action,
   }, true)
 }
+
+describe('first-message security preparation', () => {
+  it('saves task-only mode and modules before creation and prevents edits after association', async () => {
+    const { ctx, agent, controller } = await load(false, 0, { taskIntake: 'current' })
+    ctx.effect(() => ctx.sessionProjections.register(agentPresetProjectionDefinition))
+    agent.session.append('agent-preset/selected', { agentPreset: 'security' })
+    const settings = { environmentIds: ['local'], maxAttempts: 6, unsealed: true,
+      moduleSelection: { mode: 'manual', modules: ['web'], reason: '' }, taskContext: { background: 'Only this task' } }
+    await ctx.securityWorkbench.configureStartup(agent, JSON.stringify({ expectedRevision: 0, settings }))
+    expect(controller.projects()).toEqual([])
+    const configuration = await ctx.securityWorkbench.configuration(agent)
+    expect(configuration.workspace?.taskContext).toBeUndefined()
+    expect(configuration.startup?.settings).toEqual(settings)
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    expect(controller.projects()[0]).toMatchObject(settings)
+    await expect(ctx.securityWorkbench.configureStartup(agent, JSON.stringify({ expectedRevision: 1, settings: null })))
+      .rejects.toThrow('before a task is associated')
+    const restarted = await controller.restart(agent.id, 'startup-restart', 'startup-restart-operation', {}, async () => {})
+    expect(restarted.records.find(item => item.kind === 'engagement')?.value).toMatchObject(settings)
+  })
+
+  it('restores workspace defaults without changing security mode and ignores saved settings in ordinary chat', async () => {
+    const { ctx, agent, controller } = await load(false, 0, { taskIntake: 'current' })
+    ctx.effect(() => ctx.sessionProjections.register(agentPresetProjectionDefinition))
+    agent.session.append('agent-preset/selected', { agentPreset: 'security' })
+    await ctx.securityWorkbench.configureStartup(agent, JSON.stringify({ expectedRevision: 0,
+      settings: { environmentIds: ['local'], maxAttempts: 6, unsealed: true } }))
+    await ctx.securityWorkbench.configureStartup(agent, JSON.stringify({ expectedRevision: 1, settings: null }))
+    expect(ctx.sessionProjections.stateOf(agent.session, 'agentPreset')).toBe('security')
+    expect((await ctx.securityWorkbench.configuration(agent)).startup).toEqual({ revision: 2 })
+    agent.session.append('agent-preset/selected', { agentPreset: 'standard' })
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    expect(controller.projects()).toEqual([])
+    agent.session.append('agent-preset/selected', { agentPreset: 'security' })
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    expect(controller.projects()[0]?.unsealed).toBe(false)
+  })
+
+  it('creates before a text-only model response, keeps defaults fixed, and never treats a mentioned URL as an asset', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
+    ctx.effect(() => ctx.sessionProjections.register(agentPresetProjectionDefinition))
+    agent.session.append('agent-preset/selected', { agentPreset: 'security' })
+    model.scopeCalls = 0
+    const taskContext = { authorization: { basis: 'Owned fixture', scope: 'Local files only', allowedActions: 'Read',
+      restrictions: 'No network', expiresAt: 1577836800000 }, background: 'Keep the original background' }
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 0,
+      environmentIds: ['local'], maxAttempts: 4, taskContext }))
+    const message = webPrompt('Explain the files; https://example.com is only a reference.')
+    await Promise.all([ctx.serial('api-session/before-prompt', agent, message), ctx.securityWorkbench.prepareAnalysis(agent)])
+    expect(model.requests).toHaveLength(0)
+    expect(controller.projects()).toHaveLength(1)
+    const original = controller.projects()[0]!
+    expect(original).toMatchObject({ environmentIds: ['local'], maxAttempts: 4, taskContext,
+      mainSessionId: agent.id, workspaceMaterials: { root: agent.session.header.cwd } })
+    expect(controller.view(agent.id).records.filter(item => item.kind === 'asset')).toEqual([])
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 1,
+      environmentIds: [], maxAttempts: 9, taskContext: null }))
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    expect(controller.projects()).toEqual([original])
+    agent.followup(message)
+    await agent.whenIdle()
+    expect(model.requests).toHaveLength(1)
+    await vi.waitFor(() => { expect(controller.projects()[0]).toMatchObject({ taskContext, maxAttempts: 4,
+      objective: 'Explain the files; https://example.com is only a reference.' }) })
+    expect(controller.view(agent.id).records.some(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'web')).toBe(false)
+    const restarted = await controller.restart(agent.id, 'restarted', 'first-message-restart', {}, async () => {})
+    const project = restarted.records.find(item => item.kind === 'engagement')!
+    expect(project.value).toMatchObject({ taskContext, maxAttempts: 4, environmentIds: ['local'] })
+  })
+
+  it('preserves missing authorization and refuses incomplete setup before any task or model request', async () => {
+    const { ctx, agent, controller, model } = await load()
+    ctx.effect(() => ctx.sessionProjections.register(agentPresetProjectionDefinition))
+    agent.session.append('agent-preset/selected', { agentPreset: 'security' })
+    await expect(ctx.serial('api-session/before-prompt', agent, webPrompt('Read the files')))
+      .rejects.toMatchObject({ code: 'security/setup-required' })
+    expect(controller.projects()).toEqual([])
+    expect(model.requests).toEqual([])
+    await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 0, environmentIds: ['local'], maxAttempts: 2 }))
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    expect(controller.projects()[0]?.taskContext).toBeUndefined()
+  })
+
+  it('leaves ordinary conversations unassociated even when their model calls a security tool', async () => {
+    const { ctx, agent, controller } = await load(false, 0, { taskIntake: 'current' })
+    ctx.effect(() => ctx.sessionProjections.register(agentPresetProjectionDefinition))
+    agent.session.append('agent-preset/selected', { agentPreset: 'standard' })
+    const message = webPrompt('Explain security analysis')
+    await ctx.serial('api-session/before-prompt', agent, message)
+    agent.followup(message)
+    await agent.whenIdle()
+    expect(controller.projects()).toEqual([])
+  })
+})
 
 describe('security workbench Loader composition', () => {
   it('filters session-owned browser tools and records success, failure and project cancellation', async () => {

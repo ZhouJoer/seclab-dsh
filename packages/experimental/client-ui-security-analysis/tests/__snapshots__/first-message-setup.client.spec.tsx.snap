@@ -1,0 +1,207 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`uses one expandable summary, marks edits and saves before starting 1`] = `
+<DocumentFragment>
+  <section
+    aria-busy="false"
+    aria-label="Security analysis"
+    class="_setup_8aaa19"
+  >
+    <details
+      open=""
+    >
+      <summary>
+        <svg
+          aria-hidden="true"
+          fill="none"
+          height="16"
+          stroke-width="1"
+          viewBox="0 0 16 16"
+          width="16"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M6.80132 2.14853C7.70663 1.80917 8.70422 1.80919 9.60952 2.14859L14.1296 3.84317V7.11961C14.1296 11.6089 10.7615 13.5975 8.20543 14.5779C5.64931 13.5975 2.28052 11.6089 2.28052 7.11961V3.84317L6.80132 2.14853Z"
+            stroke="currentColor"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <span
+          class="_summary_8aaa19"
+        >
+          <strong>
+            Security analysis · selected
+          </strong>
+          <span>
+            Workspace defaults
+          </span>
+          <span>
+            Lab
+          </span>
+          <span>
+            Sealed · standard mode
+          </span>
+          <span>
+            No declaration (optional)
+          </span>
+        </span>
+        <span
+          class="_configure_8aaa19"
+        >
+          Configure
+          <svg
+            aria-hidden="true"
+            class="_chevron_8aaa19"
+            fill="none"
+            height="16"
+            stroke-width="1"
+            viewBox="0 0 16 16"
+            width="16"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M4 6L7.29289 9.29289C7.68342 9.68342 8.31658 9.68342 8.70711 9.29289L12 6"
+              stroke="currentColor"
+            />
+          </svg>
+        </span>
+      </summary>
+      <div
+        class="_fields_8aaa19"
+      >
+        <div
+          class="_resourceForm_394143"
+        >
+          <fieldset>
+            <legend>
+              Analysis environments
+            </legend>
+            <label
+              class="_resourceOption_394143"
+            >
+              <input
+                checked=""
+                type="checkbox"
+              />
+              <span>
+                Lab
+              </span>
+            </label>
+          </fieldset>
+          <label
+            class="_field_394143"
+          >
+            Execution mode
+            <select>
+              <option
+                value="sealed"
+              >
+                Sealed · standard mode
+              </option>
+              <option
+                value="unsealed"
+              >
+                Unsealed · direct execution
+              </option>
+            </select>
+          </label>
+          <details>
+            <summary>
+              Execution limits
+            </summary>
+            <label
+              class="_field_394143"
+            >
+              Attempt limit per check
+              <input
+                min="1"
+                step="1"
+                type="number"
+                value="3"
+              />
+            </label>
+          </details>
+          <details>
+            <summary>
+              Analysis modules · Automatic
+            </summary>
+            <fieldset
+              class="_toolFields_394143"
+            >
+              <legend>
+                Analysis modules
+              </legend>
+              <label>
+                Selection
+                <select>
+                  <option
+                    value="auto"
+                  >
+                    Automatic
+                  </option>
+                  <option
+                    value="manual"
+                  >
+                    Manual
+                  </option>
+                </select>
+              </label>
+            </fieldset>
+          </details>
+          <details>
+            <summary>
+              Authorization and task context
+            </summary>
+            <div
+              class="_taskContextFields_394143"
+            >
+              <label
+                class="_resourceOption_394143"
+              >
+                <input
+                  type="checkbox"
+                />
+                Include an authorization declaration (optional)
+              </label>
+              <label
+                class="_field_394143"
+              >
+                Task background (optional)
+                <textarea
+                  placeholder="System purpose, known symptoms, prior findings and focus; do not repeat the objective or include secrets"
+                  rows="3"
+                />
+              </label>
+              <details>
+                <summary>
+                  Exact model input · 0 / 4096 UTF-8 bytes
+                </summary>
+                <p>
+                  No authorization or background set
+                </p>
+              </details>
+            </div>
+          </details>
+          <div
+            class="_taskActions_394143"
+          >
+            <button
+              class="_button_4d2f85 _primary_4d2f85 _md_4d2f85"
+              type="button"
+            >
+              Save task settings
+            </button>
+          </div>
+        </div>
+        <details
+          class="_card_394143"
+        >
+          <summary>
+            Active session tool preferences
+          </summary>
+        </details>
+      </div>
+    </details>
+  </section>
+</DocumentFragment>
+`;

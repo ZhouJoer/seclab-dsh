@@ -326,6 +326,19 @@ Optional security profile service; default application compositions remain indep
  * @returns durable identities; repeating the same request recovers the existing task. */
 @Remote('startAnalysis') async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }>
 
+/** Associate a security-preset conversation before its first operator prompt.
+ * @param agent - authenticated conversation; other presets and existing associations are unchanged.
+ * @returns completion after the task and fixed workspace defaults are committed; retries reuse the association.
+ */
+@Remote('prepareAnalysis') async prepareAnalysis(agent: Agent): Promise<void>
+
+/** Save or clear this conversation's startup settings without creating a project or changing its preset.
+ * @param agent - authenticated conversation, still awaiting its first association.
+ * @param input - JSON revision and complete settings; null settings restores workspace defaults.
+ * @returns configuration after the durable save.
+ */
+@Remote('configureStartup') async configureStartup(agent: Agent, input: string): Promise<WorkbenchConfiguration>
+
 /** Retry automatic directory collection while preserving the last successful snapshot.
  * @param projectId - task whose configured source should be rescanned.
  * @returns completion after a fresh snapshot is published. */

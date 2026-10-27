@@ -3,25 +3,35 @@ import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { workspaceKey } from './task-bootstrap.ts'
 import { taskContextSchema, resolveTaskContext } from './task-context.ts'
+import { moduleSelectionSchema } from './analysis-modules.ts'
 
 const selectionSchema = z.object({
   environmentIds: z.array(z.string().trim().min(1)).refine(ids => new Set(ids).size === ids.length, 'Environment IDs must be unique'),
   maxAttempts: z.number().int().positive(),
+  unsealed: z.boolean().optional(),
+  moduleSelection: moduleSelectionSchema.optional(),
 }).strict()
 const recordSchema = selectionSchema.extend({ revision: z.number().int().positive(), taskContext: taskContextSchema.optional() }).strict()
 const updateSchema = selectionSchema.extend({ expectedRevision: z.number().int().nonnegative(),
   taskContext: taskContextSchema.nullable().optional() }).strict()
+const taskSelectionSchema = selectionSchema.extend({ taskContext: taskContextSchema.optional() }).strict()
+const taskRecordSchema = z.object({ revision: z.number().int().positive(), settings: taskSelectionSchema.optional() }).strict()
+const taskUpdateSchema = z.object({ expectedRevision: z.number().int().nonnegative(),
+  settings: selectionSchema.extend({ taskContext: taskContextSchema.nullable().optional() }).nullable() }).strict()
 const workspaceIntakeDomain = defineDomain({
-  name: 'security_workspace_intake', version: 1,
-  tables: { workspaces: domainTable(recordSchema) },
+  name: 'security_workspace_intake_v2', version: 2,
+  tables: { workspaces: domainTable(recordSchema), tasks: domainTable(taskRecordSchema) },
 })
 
 /** An empty environment selection explicitly disables intake for this workspace. */
 export type WorkspaceIntakeRecord = z.infer<typeof recordSchema>
 /** User-authored resource selection with the revision shown by the configuration UI. */
 export type WorkspaceIntakeUpdate = z.infer<typeof updateSchema>
+/** Saved first-message override; absence of settings follows workspace defaults. */
+export type TaskIntakeRecord = z.infer<typeof taskRecordSchema>
 
 /** Resource selections are independent of existing project permissions and import roots. */
 export interface WorkspaceIntakeStore {
@@ -35,6 +45,15 @@ export interface WorkspaceIntakeStore {
    * @returns detached committed selection with its new revision.
    */
   set(cwd: string, input: unknown): Promise<WorkspaceIntakeRecord>
+  /** @param id - destination conversation. @param cwd - its workspace. @returns detached first-message override. */
+  task(id: SessionId, cwd: string): TaskIntakeRecord | undefined
+  /** Save or clear this conversation's override without changing workspace defaults.
+   * @param id - destination conversation.
+   * @param cwd - its workspace.
+   * @param input - revision and complete settings, or null to restore defaults.
+   * @returns durable override revision.
+   */
+  setTask(id: SessionId, cwd: string, input: unknown): Promise<TaskIntakeRecord>
   /** @returns completion after accepted writes drain and the domain closes; new writes reject immediately. */
   close(): Promise<void>
 }
@@ -55,6 +74,7 @@ export async function openWorkspaceIntake(ctx: Context, configuredEnvironmentIds
   taskContextMaxBytes: number): Promise<WorkspaceIntakeStore> {
   const domain = await ctx.storageDomain.open(workspaceIntakeDomain)
   const table = domain.table('workspaces')
+  const tasks = domain.table('tasks')
   let writes = Promise.resolve()
   let closing: Promise<void> | undefined
   return {
@@ -75,8 +95,35 @@ export async function openWorkspaceIntake(ctx: Context, configuredEnvironmentIds
           taskContextMaxBytes)
         const record = recordSchema.parse({ environmentIds: update.environmentIds,
           maxAttempts: update.maxAttempts, revision: update.expectedRevision + 1,
+          ...((update.unsealed ?? current?.unsealed) === undefined ? {} : { unsealed: update.unsealed ?? current?.unsealed }),
+          ...((update.moduleSelection ?? current?.moduleSelection) === undefined
+            ? {} : { moduleSelection: update.moduleSelection ?? current?.moduleSelection }),
           ...(taskContext ? { taskContext } : {}) })
         await table.put(key, record)
+        return structuredClone(record)
+      })
+      writes = pending.then(() => {}, () => {})
+      return pending
+    },
+    task(id, cwd) {
+      return structuredClone(tasks.get(JSON.stringify([id, keyOf(cwd)])))
+    },
+    async setTask(id, cwd, input) {
+      if (closing !== undefined) throw new Error('Workspace resource configuration is closing')
+      const key = JSON.stringify([id, keyOf(cwd)])
+      const update = taskUpdateSchema.parse(input)
+      const settings = update.settings
+      if (settings) for (const environment of settings.environmentIds)
+        if (!configuredEnvironmentIds.includes(environment)) throw new Error('Unknown workspace environment: ' + environment)
+      const taskContext = resolveTaskContext(settings?.taskContext, taskContextMaxBytes)
+      const pending = writes.then(async () => {
+        if ((tasks.get(key)?.revision ?? 0) !== update.expectedRevision)
+          throw new Error('Task configuration changed; reload before saving')
+        const record = taskRecordSchema.parse({ revision: update.expectedRevision + 1,
+          ...(settings ? { settings: { environmentIds: settings.environmentIds, maxAttempts: settings.maxAttempts,
+            unsealed: settings.unsealed ?? false, ...(settings.moduleSelection ? { moduleSelection: settings.moduleSelection } : {}),
+            ...(taskContext ? { taskContext } : {}) } } : {}) })
+        await tasks.put(key, record)
         return structuredClone(record)
       })
       writes = pending.then(() => {}, () => {})

@@ -913,7 +913,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionPresentation',
-    declaration: 'export interface SessionPresentation {\n    title?: string;\n    reserved?: boolean;\n    rename?(title: string): Promise<void>;\n}',
+    declaration: 'export interface SessionPresentation {\n    title?: string;\n    composerPlaceholder?: string;\n    reserved?: boolean;\n    rename?(title: string): Promise<void>;\n}',
   },
   {
     name: 'SessionProjectionSnapshot',

@@ -458,12 +458,16 @@ export class SecurityController {
    * @param resolve - resolve workspace defaults only for the first successful commit.
    * @returns committed task scope. */
   async createWorkspaceTask(sessionId: SessionId, operationId: string, root: string,
-    input: { title: string; environmentIds: string[] },
-    resolve: () => Promise<Pick<Extract<SecurityCommand['action'], { kind: 'create' }>, 'maxAttempts' | 'moduleSelection' | 'taskContext'>>): Promise<WorkbenchView> {
+    input: { title: string; environmentIds?: string[] },
+    resolve: () => Promise<Pick<Extract<SecurityCommand['action'], { kind: 'create' }>, 'maxAttempts' | 'moduleSelection' | 'taskContext' | 'unsealed'>
+      & { environmentIds?: string[] }>): Promise<WorkbenchView> {
     await this.journal.commit(operationId, undefined, { sessionId, root, input }, async (view) => {
       if (view.records.some(item => item.kind === 'binding' && item.value.sessionId === sessionId))
         throw new Error('Conversation already belongs to an analysis task')
-      const action = { ...await resolve(), ...input, kind: 'create' as const, objective: '' }
+      const defaults = await resolve()
+      const environmentIds = input.environmentIds ?? defaults.environmentIds
+      if (!environmentIds?.length) throw new Error('Select an available analysis environment')
+      const action = { ...defaults, ...input, environmentIds, kind: 'create' as const, objective: '' }
       return this.createRecords(sessionId, action).map(record => record.kind === 'engagement'
         ? { ...record, value: { ...record.value, mainSessionId: sessionId, automaticTitle: true, workspaceMaterials: { root } } }
         : record)
@@ -596,6 +600,8 @@ export class SecurityController {
       const view = this.view(sessionId)
       const project = view.records.find(item => item.kind === 'engagement')?.value
       if (!project || this.binding(sessionId)?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+      if (project.environmentIds.some(id => !this.options.environments.some(environment => environment.id === id)))
+        throw new Error('Restore the task analysis environments before restarting')
       const samples = view.records.filter(item => item.kind === 'asset')
         .map(item => item.value).filter(asset => !('parentId' in asset && asset.parentId))
         .filter(asset => !project.workspaceMaterials || !('kind' in asset) || asset.kind !== 'source'

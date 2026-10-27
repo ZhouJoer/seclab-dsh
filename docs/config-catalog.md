@@ -220,7 +220,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-session-controller`
 
 - `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/session-controller/src/index.ts:94`](../packages/api/session-controller/src/index.ts)
+- `source`: [`packages/api/session-controller/src/index.ts:102`](../packages/api/session-controller/src/index.ts)
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -1249,7 +1249,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:102`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:112`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */

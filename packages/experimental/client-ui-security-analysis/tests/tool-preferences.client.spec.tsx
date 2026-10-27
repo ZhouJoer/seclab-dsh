@@ -10,6 +10,21 @@ import { ToolPreferences } from '../src/client/ToolPreferences.tsx'
 import { preferenceOptions } from './preference-options.client.ts'
 import { zh } from '../src/client/locales.ts'
 afterEach(cleanup)
+it('cancels compact tool edits without writing the saved selection', async () => {
+  const action = vi.fn(async () => ({ toolIds: [], collectionIds: [], tags: [] }))
+  const dirty = vi.fn()
+  render(<ToolPreferences compact sessionId={SessionId('cancel-tools')} t={makeTranslate(zh, commonZh)}
+    toolPreferences={action} onDirtyChange={dirty} toolPreferenceOptions={async () => preferenceOptions} />)
+  const details = screen.getByText(zh.toolPreferenceTitle).closest('details')!
+  details.open = true; fireEvent(details, new Event('toggle'))
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'IoT / 物联网' }))
+  expect(dirty).toHaveBeenLastCalledWith(true)
+  fireEvent.click(screen.getByRole('button', { name: zh.startupCancelEdits }))
+  expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'IoT / 物联网' }).checked).toBe(false)
+  expect(action).toHaveBeenCalledOnce()
+  expect(dirty).toHaveBeenLastCalledWith(false)
+})
+
 it('opens without a probe, applies a checked collection preference and restores automatic discovery', async () => {
   const action = vi.fn(async (_id: SessionId, input?: string) => input
     ? JSON.parse(input) as Preferences : { toolIds: [], collectionIds: [], tags: [] })

@@ -64,6 +64,8 @@ Queue 预览启用空白折叠和文档边缘 trim，保留 emoji，并使用 CS
 <a id="shell-and-standard-props"></a>
 ## Shell 与标准 props
 
+普通发送创建本地回显前，`conversation/before-send` 允许插件准备 Session 所属状态。拒绝时通过现有提交恢复机制保留草稿和附件。Session 展示信息可以提供输入框占位提示；输入被阻止时仍优先显示阻止原因。
+
 共享图片插槽属性将展示选择与持久化引用分开：`thumbnail` 请求完整缩放的附件列表缩略图，`compact` 请求裁剪的图片方块。每张图片可通过可选的 `label` 提供无障碍展示名称；加载和缓存标识仍使用原始附件引用。`MessageImagesContentInput` 为 root 作用域的 `conversation.images.content` Factory 增加可选的完整 `MessageImageLabels`。消息、工具及 Factory 输入显式携带视图提供的授权 `loadImage` 回调；读取和 URL 缓存仍由资源所有者负责。[ui-attachment](../ui-attachment/README.zh.md) 提供该 Factory，负责渲染与灯箱。
 
 控件组的尺寸、内容、可见性或字体加载状态变化后，composer 测量展开状态下的控件组。若无法排在同一行，控制栏为模型位设置 `--dsh-composer-model-text-display: none` 和 `--dsh-composer-model-icon-display: block`；两者默认值分别为 `block` 和 `none`。若连图标也放不下，仍允许换行。

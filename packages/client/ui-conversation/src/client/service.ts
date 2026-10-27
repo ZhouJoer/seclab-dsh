@@ -32,6 +32,17 @@ import type {
 } from './contract/input.ts'
 import type { InputSubmitMode } from './contract/composer-submission.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Prepare feature state before the composer publishes and sends a message. Rejection retains its draft and attachments.
+     * @mode serial
+     * @param sessionId - exact destination conversation.
+     * @param signal - cancellation of this submission, when supplied.
+     */
+    'conversation/before-send'(sessionId: SessionId, signal: AbortSignal | undefined): Promise<void>
+  }
+}
+
 /**
  * The outward conversation face (`ctx.conversation`): the scope-addressed
  * verbs and the input registry other plugins may reach — and exactly what a
@@ -261,6 +272,8 @@ export class ConversationController extends Service implements IConversation {
         ? { type: 'image' as const, ...await this.encodeImage(attachment.file) }
         : { type: 'file' as const, receiptId: uploadFor(attachment).receiptId }),
     )
+    await this.ctx.serial('conversation/before-send', session.sessionId, signal)
+    signal?.throwIfAborted()
     let finishRetirement: ((retirement: PendingSubmissionRetirement) => void) | undefined
     const retirement = attachments.length === 0
       ? undefined

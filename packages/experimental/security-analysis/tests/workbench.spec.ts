@@ -179,6 +179,15 @@ describe('security workbench', () => {
     expect(stopped).not.toHaveBeenCalled()
     expect(controller.projects()[0]?.stopped).toBe(false)
   })
+  it('requires the original environment before stopping the previous task on restart', async () => {
+    const { controller } = await harness()
+    const stopped = vi.fn(async () => {})
+    controller.options.environments.splice(0)
+    await expect(controller.restart('parent', 'fresh', randomUUID(), {}, stopped)).rejects.toThrow('Restore the task analysis environments')
+    expect(stopped).not.toHaveBeenCalled()
+    expect(controller.projects()[0]?.stopped).toBe(false)
+    expect(controller.binding('fresh')).toBeUndefined()
+  })
   it('reuses a legacy material snapshot after explicit confirmation without guessing its live path', async () => {
     const { controller, assetId, root, artifacts } = await harness()
     await writeFile(join(root, 'sample.exe'), 'MZ changed live file')

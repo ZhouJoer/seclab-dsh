@@ -82,7 +82,7 @@ it('keeps the chat entry compact and shows a live count before the sidebar opens
       ] }
       await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
     }} />)
-  const entry = screen.getByTitle('Tools & progress')
+  const entry = await screen.findByTitle('Tools & progress')
   await waitFor(() => { expect(entry.textContent).toContain('37') })
   expect(screen.getByRole('img', { name: 'Running' })).toBeTruthy()
   fireEvent.click(entry)

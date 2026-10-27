@@ -17,6 +17,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { ApiSessionAgentController } from '../src/agent.ts'
 import { SessionCommandController } from '../src/commands.ts'
 import type { SessionRequestId } from '../src/types.ts'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 
 const SESSION = SessionId('upload-session')
 
@@ -126,6 +127,29 @@ function promptRequest(content: Parameters<SessionCommandController['prompt']>[0
 }
 
 describe('Session file uploads', () => {
+  it('waits for prompt preparation and preserves uploaded receipts when preparation rejects', async () => {
+    const { ctx, controller, uploads, agent, followup } = await uploadHarness()
+    const receipt = await uploads.upload(agent, { data: 'AAAA', name: 'notes.pdf' }, new AbortController().signal)
+    const pending = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    const off = ctx.on('api-session/before-prompt', async (destination, message) => {
+      expect(destination).toBe(agent)
+      expect(message.content).toEqual([{ type: 'file', attachment: receipt.file }])
+      entered.resolve(undefined)
+      await pending.promise
+    })
+    const request = promptRequest([{ type: 'file', receiptId: receipt.receiptId }])
+    const sending = controller.prompt(request, USER_SOURCE)
+    const rejected = expect(sending).rejects.toMatchObject({ code: 'gateway/bad-request' })
+    await entered.promise
+    expect(followup).not.toHaveBeenCalled()
+    pending.reject(new RemoteError('gateway/bad-request', 'Complete setup', {}))
+    await rejected
+    expect(uploads.resolve(agent, receipt.receiptId)).toEqual(receipt.file)
+    off()
+    await controller.prompt(request, USER_SOURCE)
+    expect(followup).toHaveBeenCalledOnce()
+  })
   it('registers an HTTP route bound to the upload service', async () => {
     const { uploadRoute } = await uploadHarness()
     await expect(uploadRoute(new Request('http://host/upload')))

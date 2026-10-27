@@ -32,6 +32,8 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import { NS, zh, en, type SecurityKey } from './locales.ts'
 import { SidebarWorkbench, SidebarWorkbenchTitle } from './SidebarWorkbench.tsx'
 import { IconShieldOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FirstMessageSetup, type FirstMessageSetupInjected } from './FirstMessageSetup.tsx'
+import { FirstMessagePreparation } from './first-message.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -116,6 +118,52 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.effect(() => { directory.start(); return () => directory.close() })
     scoped.on('connection/reset', () => { directory.start() })
     scoped.effect(() => scoped.sessions.registerPresentation(directory.presentations))
+    const preparation = new FirstMessagePreparation(id => remote.prepareAnalysis(id), code => scoped.locale.bind(NS)(
+      code === 'security/setup-required' ? 'startupSetupRequired' : code === 'unsaved' ? 'startupUnsaved'
+        : code === 'tools-busy' ? 'startupToolsBusy' : 'startupCreateFailed'))
+    scoped.effect(() => () => preparation.close())
+    scoped.effect(() => scoped.sessions.registerPresentation(preparation.presentations))
+    const associated = (id: SessionId) => directory.getSnapshot().projects.some(project =>
+      project.sessions.some(session => session.sessionId === id))
+    const refreshHints = () => {
+      const sessions = scoped.sessions.list.getSnapshot()
+      for (const id of sessions.ids) {
+        const state = preparation.state.getSnapshot()[id]
+        if (sessions.byId[id]?.projectionValues?.agentPreset !== 'security'
+          && (state?.needsSave || state?.toolsDirty || state?.toolsBusy)) preparation.reset(id)
+      }
+      preparation.present(sessions.ids.filter(id => sessions.byId[id]?.projectionValues?.agentPreset === 'security' && !associated(id)),
+        scoped.locale.bind(NS)('startupPlaceholder'))
+    }
+    scoped.effect(() => scoped.sessions.list.subscribe(refreshHints))
+    scoped.effect(() => directory.subscribe(refreshHints))
+    scoped.on('locale/change', refreshHints)
+    refreshHints()
+    scoped.on('conversation/before-send', async (id, signal) => {
+      signal?.throwIfAborted()
+      if (scoped.sessions.list.getSnapshot().byId[id]?.projectionValues?.agentPreset !== 'security' || associated(id)) return
+      await preparation.run(id)
+    })
+    scoped.effect(() => scoped.resources.register<'security-startup'>({ protocol: 'security-startup',
+      async *open(address, { signal }) {
+        const id = decodeURIComponent(new URL(address).pathname.slice(1)) as SessionId
+        const result = await remote.configuration(id)
+        if (!signal.aborted) yield result
+      },
+    }))
+    scoped.slots.inject('conversation.input.dock', () => scoped.slots.register({ name: 'conversation.input.dock',
+      id: 'security-first-message', order: -30, locale: NS,
+      inject: (): FirstMessageSetupInjected => ({ hooks: { preparation: preparation.state, directory },
+        saveSetup: async (id, input) => { await unwrap(remote.configureStartup(id, input)); preparation.refresh(id) },
+        saveDefaults: async (id, input) => { await unwrap(remote.configureWorkspace(id, input)); preparation.refresh(id) },
+        refreshSetup: (id) => { preparation.refresh(id) },
+        editSetup: (id) => { preparation.edited(id) },
+        toolPreferenceOptions: id => unwrap(remote.toolPreferenceOptions(id)),
+        toolPreferences: (id, input) => unwrap(remote.toolPreferences(id, input)),
+        editTools: (id, toolsDirty) => { preparation.tools(id, { toolsDirty }) },
+        toolsReady: (id, ready) => { preparation.tools(id, { toolsBusy: !ready }) },
+      }),
+    }, FirstMessageSetup))
     const openWorkbench = (projectId: string, sessionId?: SessionId) => {
       scoped.layout.beginNavigation()
       destination.set(projectId ? { kind: 'project', projectId, ...(sessionId ? { sessionId } : {}) } : { kind: 'overview' })

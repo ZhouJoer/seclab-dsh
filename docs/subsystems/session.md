@@ -1188,6 +1188,25 @@ A Session became visible or its Agent was created or disposed. Consumers upsert 
 
 Source: [`packages/api/session-controller/src/types.ts`](../../packages/api/session-controller/src/types.ts)
 
+<a id="api-sessionbefore-prompt--serial"></a>
+
+#### `api-session/before-prompt` — serial
+
+Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.
+
+```ts cordis-catalog
+/** Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.
+ * @mode serial
+ * @param agent - authenticated destination Agent.
+ * @param message - validated operator content, before enqueueing.
+ */
+'api-session/before-prompt'(agent: Agent, message: import('@deepseek-ai/dsh-llm').UserMessage): Promise<void>
+```
+
+Types: [Agent](core.md)
+
+Source: [`packages/api/session-controller/src/index.ts`](../../packages/api/session-controller/src/index.ts)
+
 <a id="api-sessionerror--emit"></a>
 
 #### `api-session/error` — emit

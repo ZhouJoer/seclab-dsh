@@ -31,10 +31,11 @@ function localDate(value: number | undefined): string {
  * @param props - controlled draft, deployment limit and localized labels.
  * @returns editable fields and a deterministic, non-model-generated preview.
  */
-export function TaskContextFields({ value, maxBytes, disabled, onChange, t }: PropsLocale<typeof NS> & {
+export function TaskContextFields({ value, maxBytes, disabled, onChange, compact, t }: PropsLocale<typeof NS> & {
   value: TaskContext | null | undefined
   maxBytes: number
   disabled: boolean
+  compact?: boolean
   onChange(this: void, value: TaskContext | null): void
 }) {
   const [commissioned, setCommissioned] = useState(false)
@@ -57,15 +58,15 @@ export function TaskContextFields({ value, maxBytes, disabled, onChange, t }: Pr
     } })
   }
   return <div className={css.taskContextFields}>
-    <p className={css.summaryHint}>{t('taskContextHint')}</p>
-    <fieldset disabled={disabled}><legend>{t('taskContextTemplates')}</legend>
+    {!compact && <p className={css.summaryHint}>{t('taskContextHint')}</p>}
+    {!compact && <fieldset disabled={disabled}><legend>{t('taskContextTemplates')}</legend>
       <div className={css.taskActions}>
         <button type="button" onClick={() => { template('own') }}>{t('taskContextOwn')}</button>
         <button type="button" onClick={() => { template('commissioned') }}>{t('taskContextCommissioned')}</button>
         <button type="button" onClick={() => { template('lab') }}>{t('taskContextLab')}</button>
       </div>
       {commissioned && <p>{t('taskContextCommissionHint')}</p>}
-    </fieldset>
+    </fieldset>}
     <label className={css.resourceOption}><input type="checkbox" checked={!!auth} disabled={disabled}
       onChange={(event) => { onChange(event.target.checked ? { ...value, authorization: emptyAuth } : value?.background ? { background: value.background } : null) }} />{t('taskContextEnable')}</label>
     {auth && <fieldset disabled={disabled}>

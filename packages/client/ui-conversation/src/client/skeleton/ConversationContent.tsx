@@ -33,6 +33,7 @@ export function ConversationContent(props: ConversationContentProps) {
     sessionId === undefined ? undefined : snapshot.get(sessionId)?.pendingInteraction)
   const inputState = useInput(s => s)
   const cwd = useSessions(s => sessionId === undefined ? undefined : s.byId[sessionId]?.cwd)
+  const composerPlaceholder = useSessions(s => sessionId === undefined ? undefined : s.byId[sessionId]?.composerPlaceholder)
   const workspaces = useWorkspaces(s => s)
   // A plugin this package cannot import (ui-model-selection) says this session cannot
   // send; its reason is already localized by whoever raised it.
@@ -158,7 +159,7 @@ export function ConversationContent(props: ConversationContentProps) {
         // block keeps the model seat live because choosing a model is how the
         // user clears it.
         ? { blocked: composerBlock, placeholder: composerBlock.reason }
-        : hero ? { placeholder: t('placeholder.hero') } : {}),
+        : composerPlaceholder ? { placeholder: composerPlaceholder } : hero ? { placeholder: t('placeholder.hero') } : {}),
   })
 
   const composerBar = (

@@ -179,6 +179,8 @@ export interface ISessions {
 /** Plugin-owned presentation; reservation keeps an empty business task visible and prevents reuse. */
 export interface SessionPresentation {
   title?: string
+  /** Localized composer hint supplied by the owning feature. */
+  composerPlaceholder?: string
   reserved?: boolean
   rename?(title: string): Promise<void>
 }
