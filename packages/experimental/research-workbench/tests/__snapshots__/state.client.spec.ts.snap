@@ -1,0 +1,95 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`keeps same-path projects, selection and unsaved text through fullscreen and tab-local recovery 1`] = `
+{
+  "active": "two:a.txt",
+  "comparison": null,
+  "documents": [
+    {
+      "draft": "draft",
+      "epoch": 0,
+      "original": {
+        "complete": true,
+        "language": "text",
+        "text": "saved",
+        "version": "v1",
+      },
+      "resource": {
+        "group": "one",
+        "id": "one:a.txt",
+        "label": "a.txt",
+        "locator": {
+          "path": "a.txt",
+          "project": "one",
+        },
+        "source": "security",
+      },
+      "scroll": 0,
+      "selection": {
+        "from": 1,
+        "text": "draft",
+        "to": 1,
+      },
+    },
+    {
+      "epoch": 0,
+      "resource": {
+        "group": "two",
+        "id": "two:a.txt",
+        "label": "a.txt",
+        "locator": {
+          "path": "a.txt",
+          "project": "two",
+        },
+        "source": "security",
+      },
+      "scroll": 0,
+    },
+  ],
+  "expanded": true,
+  "fullscreen": false,
+  "group": "two",
+  "height": 30,
+  "notice": "",
+  "panel": "",
+  "panels": [],
+  "sources": [],
+}
+`;
+
+exports[`restores a historical floating reader without persisting binary content or creating a draft 1`] = `
+{
+  "active": "history:a.txt",
+  "comparison": null,
+  "documents": [
+    {
+      "epoch": 0,
+      "floating": {
+        "height": 720,
+        "width": 1040,
+        "x": 24,
+        "y": 40,
+      },
+      "resource": {
+        "group": "history",
+        "id": "history:a.txt",
+        "label": "a.txt",
+        "locator": {
+          "path": "a.txt",
+          "project": "history",
+        },
+        "source": "security",
+      },
+      "scroll": 0,
+    },
+  ],
+  "expanded": false,
+  "fullscreen": false,
+  "group": "history",
+  "height": 30,
+  "notice": "",
+  "panel": "",
+  "panels": [],
+  "sources": [],
+}
+`;

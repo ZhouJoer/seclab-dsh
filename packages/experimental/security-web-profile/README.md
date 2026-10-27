@@ -40,6 +40,8 @@ This composition includes the optional [Advisor controls](../../client/ui-helper
 
 This package composes capabilities through a profile patch or input dock slot. It changes neither default profiles nor agent-loop. The browser calls the domain through generated Remote methods and uses bilingual dictionaries. No invariant companion is published because this package owns disposable composition/UI registrations; the domain owns business state.
 
+The source launcher also selects the [research bundle](../research-workbench-bundle/README.md). For a manually assembled profile, include that bundle before this layer to activate the independent `research-security` adapter. Its bottom reader coexists with the native right sidebar; `research-workbench`, `research-runtime` and `research-security` have separate disable entries.
+
 </details>
 
 -----

@@ -1,6 +1,7 @@
 /** Expandable material snapshots with file previews and framework-owned reads. @module */
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { useState } from 'react'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { MaterialBrowserView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { CodeBlock, IconFolderCloseRegular, IconFolderOpenRegular, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NS } from './locales.ts'
@@ -12,8 +13,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'security-material': MaterialBrowserView
   }
 }
-type Props = PropsLocale<typeof NS> & Pick<PropsRuntime<'main'>, 'useResource'> & {
+type Props = PropsRenderFactories & PropsLocale<typeof NS> & Pick<PropsRuntime<'main'>, 'useResource'> & {
+  sessionId?: SessionId | undefined
   project: string
+  sourceRoot?: string | undefined
   asset: string
   label: string
   directory: boolean
@@ -64,7 +67,7 @@ function FilePreview(props: ReadProps) {
   const resource = props.useResource<'security-material'>(address(props, 'file', 0, retry))
   const value = resource.value
   return <section className={css.preview} aria-label={props.t('materialsPreview')}>
-    <header><strong>{props.path || basename(props.label)}</strong>{value && value.kind !== 'directory' && <small>{value.size.toLocaleString()} {props.t('dashboardBytes')}</small>}</header>
+    <header><strong>{props.path || basename(props.label)}</strong>{value && value.kind !== 'directory' && <small>{value.size.toLocaleString()} {props.t('dashboardBytes')}</small>}{props.renderFactorySlot('security.resource.actions', { projectId: props.project, sessionId: props.sessionId, resource: { kind: 'material', assetId: props.asset, path: props.path, label: props.path || props.label, sourceRoot: props.sourceRoot } })}</header>
     {resource.status === 'loading' && <div className={css.loading} role="status" aria-label={props.t('dashboardLoading')}><StateDot state="ongoing" /></div>}
     {resource.status === 'failed' && <p role="alert">{props.t('materialsFileUnavailable')} <button onClick={() => { setRetry(value => value + 1) }}>{props.t('dashboardRetry')}</button></p>}
     {value?.kind === 'text' && <>{value.truncated && <p role="status">{props.t('dashboardTruncated')}</p>}

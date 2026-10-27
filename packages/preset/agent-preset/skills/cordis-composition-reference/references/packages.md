@@ -202,6 +202,10 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-experimental-cua-macos` | yes | macOS native provider for shared Computer Use application and window objects |
 | `@deepseek-ai/dsh-experimental-inspector` | yes | Experimental cross-realm CDP hub for Host debugging and Client Runtime inspection |
 | `@deepseek-ai/dsh-experimental-ptc-runtime-python` | yes | CPython subprocess implementation of the DeepSeek Harness PTC execution seam |
+| `@deepseek-ai/dsh-experimental-research-runtime` | no | Research workbench threads, subagents, tool network records and terminals |
+| `@deepseek-ai/dsh-experimental-research-security` | no | research security |
+| `@deepseek-ai/dsh-experimental-research-workbench` | yes | research workbench |
+| `@deepseek-ai/dsh-experimental-research-workbench-bundle` | no | research workbench bundle |
 | `@deepseek-ai/dsh-experimental-security-analysis` | yes | Scoped reverse engineering with GhidraMCP, Frida, evidence records, and reconnaissance delegation |
 | `@deepseek-ai/dsh-experimental-security-profile` | no | Opt-in security workbench Host composition |
 | `@deepseek-ai/dsh-experimental-session-inspector` | no | Experimental virtualized Session log and live Chat group/node inspectors |

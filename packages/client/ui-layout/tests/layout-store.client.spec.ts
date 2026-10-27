@@ -13,6 +13,7 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot()).toEqual({
       panelInfo: { activePanelId: null },
       layoutInfo: {
+        bottomPlacement: 'frame',
         sidebar: 280,
         viewportWidth: 1920,
         narrowExpanded: false,

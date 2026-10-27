@@ -23,6 +23,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+根作用域的 `document.pdf` Factory 根据调用方提供的版本身份渲染完整 PDF 字节。它复用按需加载的 PDF 阅读器和缩放控件，无需 Session，也不解析文件系统路径；卸载时释放渲染资源。
+
 -----
 
 <a id="what-it-registers"></a>

@@ -204,6 +204,7 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@types/yauzl": "^2.10.3",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
-    "@deepseek-ai/dsh-workspace": "workspace:*"
+    "@deepseek-ai/dsh-workspace": "workspace:*",
+    "@deepseek-ai/dsh-office-to-pdf": "workspace:*"
   }
 }

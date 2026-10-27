@@ -86,8 +86,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'rightbar': { kind: 'single'; scope: 'root'; owner: RightbarOwnerProps }
     /**
-     * Full-width bottom content below all three columns. Its rendered height
-     * reduces the columns' available height; empty content reserves no space.
+     * Bottom content, full-width by default. registerBottomPlacement('center')
+     * limits it to the center and preserves full-height side columns.
+     * Empty content reserves no space.
      * The occupant owns its height, visibility, and controls. It receives no
      * Session binding and remains mounted across main-panel navigation.
      */

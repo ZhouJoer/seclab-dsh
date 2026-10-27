@@ -15,7 +15,7 @@ const overlay = vi.hoisted(() => ({ create: vi.fn(), render: vi.fn(), cancel: vi
 vi.mock('../src/client/pdf/text.ts', () => ({ pdfTextRenderer: (host: HTMLDivElement) => { overlay.create(host); return overlay.render } }))
 vi.mock('../src/client/pdf/runtime.ts', () => ({ openPdf: engine.open }))
 vi.mock('../src/client/pdf/document.ts', () => ({ renderPdfPage: engine.render }))
-import { PdfBody, type PdfBodyProps } from '../src/client/pdf/pdf.tsx'
+import { PdfBody, PdfContent, type PdfBodyProps } from '../src/client/pdf/pdf.tsx'
 import { createPdfStore, type PdfState } from '../src/client/pdf/store.ts'
 import { en } from '../src/client/pdf/locales.ts'
 import { LoadingIndicator } from '../src/client/LoadingIndicator.tsx'
@@ -102,6 +102,18 @@ function harness() {
 }
 
 const documentOf = (numPages = 3): PdfDocument => ({ numPages, getPage: vi.fn() })
+
+it('renders immutable PDF bytes without a Session and releases rendering when closed', async () => {
+  const view = render(<PdfContent data={new TextEncoder().encode('snapshot')} signal={new AbortController().signal}
+    view={{ page: 1 }} onPage={() => {}} onZoom={() => {}} scrollportRef={() => {}}
+    ZoomViewport={ZoomViewport} zoomSurfaceClass={zoomSurfaceClass} t={makeTranslate(en)} loading={<p>Loading</p>} />)
+  await act(async () => { loads[0]!.deferred.resolve(documentOf(1)) })
+  expect(screen.getByRole('img', { name: 'PDF page 1' })).toBeDefined()
+  const signal = engine.open.mock.calls[0]![1]
+  view.unmount()
+  expect(signal.aborted).toBe(true)
+  expect(loads[0]!.dispose).toHaveBeenCalledOnce()
+})
 
 describe('PDF body', () => {
   it('reports non-byte contents without starting PDF.js', () => {

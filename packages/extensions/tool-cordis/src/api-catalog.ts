@@ -2040,6 +2040,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'researchFiles',
+    summary: 'File operations never activate an Agent or change immutable evidence.',
+    description: 'File operations never activate an Agent or change immutable evidence.',
+    methods: [
+      {
+        signature: 'async scope(sessionId: SessionId, signal: AbortSignal): Promise<ResearchScope>',
+        description: 'Resolve current directory without activating a historical Agent.',
+        parameters: [{ name: 'sessionId', description: 'authenticated Session resource.' }, { name: 'signal', description: 'operation lifetime.' }],
+        returns: 'canonical directory and the Session\'s standing file policy.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async list(sessionId: SessionId, path: string, signal: AbortSignal): Promise<ResearchDirectory>',
+        description: 'List only canonical descendants of the current directory.',
+        parameters: [{ name: 'sessionId', description: 'admitted Session.' }, { name: 'path', description: 'relative directory, or empty for its root.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'bounded children and the exact working directory.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async read(sessionId: SessionId, path: string, signal: AbortSignal): Promise<ResearchFile>',
+        description: 'Read complete UTF-8 with a stable before/after version.',
+        parameters: [{ name: 'sessionId', description: 'admitted Session.' }, { name: 'path', description: 'existing work file.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'original text and the replacement preconditions.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async save(sessionId: SessionId, request: ResearchSave, signal: AbortSignal): Promise<ResearchFile>',
+        description: 'Replace one unchanged existing text file; failures preserve caller drafts.',
+        parameters: [{ name: 'sessionId', description: 'admitted Session.' }, { name: 'request', description: 'exact read identity and replacement text.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'committed version and text; never retries an unknown write outcome.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -2463,6 +2494,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Browse saved project materials without changing Session or evidence records.',
         parameters: [{ name: 'projectId', description: 'project authorizing the asset read.' }, { name: 'input', description: 'serialized asset identity, snapshot path, operation and offset.' }],
         returns: 'a directory page or bounded file preview.',
+      },
+      {
+        signature: '@Remote(\'projectMaterialDocument\') async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument>',
+        description: 'Preview an exact saved material without resolving a live workspace file.',
+        parameters: [{ name: 'projectId', description: 'Project authorizing the asset read.' }, { name: 'input', description: 'Serialized asset identity and exact snapshot member path.' }, { name: 'signal', description: 'Operator request lifetime.' }],
+        returns: 'Read-only text, image or PDF with the original artifact digest.',
       },
     ],
   },
@@ -6685,6 +6722,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MaterialBrowserView = {\n    kind: \'directory\';\n    entries: MaterialEntry[];\n    next: number | null;\n    total: number;\n} | {\n    kind: \'text\';\n    path: string;\n    size: number;\n    text: string;\n    truncated: boolean;\n} | {\n    kind: \'image\';\n    path: string;\n    size: number;\n    url: string;\n} | {\n    kind: \'binary\';\n    path: string;\n    size: number;\n    hex: string;\n};',
   },
   {
+    name: 'MaterialDocument',
+    declaration: 'export type MaterialDocument = {\n    name: string;\n    version: string;\n    size: number;\n} & ({\n    kind: \'text\';\n    text: string;\n    truncated: boolean;\n} | {\n    kind: \'pdf\';\n    data: Uint8Array;\n    missingFonts: string[];\n} | {\n    kind: \'image\';\n    data: Uint8Array;\n    mediaType: string;\n} | {\n    kind: \'binary\';\n    hex: string;\n});',
+  },
+  {
     name: 'MaterialEntry',
     declaration: 'export type MaterialEntry = {\n    kind: \'directory\';\n    path: string;\n    fileCount: number;\n} | {\n    kind: \'file\';\n    path: string;\n    size: number;\n};',
   },
@@ -7375,6 +7416,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RequestUserInput',
     declaration: 'export interface RequestUserInput {\n    readonly role: \'user\';\n    readonly content: UserMessage[\'content\'];\n    readonly id?: never;\n    readonly source?: never;\n}',
+  },
+  {
+    name: 'ResearchDirectory',
+    declaration: 'export interface ResearchDirectory {\n    root: string;\n    path: string;\n    entries: {\n        name: string;\n        path: string;\n        directory: boolean;\n    }[];\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'ResearchFile',
+    declaration: 'export interface ResearchFile {\n    path: string;\n    root: string;\n    rootKey: FsTargetKey;\n    targetKey: FsTargetKey;\n    version: FsVersion;\n    text: string;\n    bytes: number;\n    bom: boolean;\n    newline: \'lf\' | \'crlf\' | \'mixed\';\n    writable: boolean;\n    reason: \'binary\' | \'encoding\' | \'mixed\' | \'policy\' | null;\n}',
+  },
+  {
+    name: 'ResearchSave',
+    declaration: 'export interface ResearchSave {\n    path: string;\n    rootKey: FsTargetKey;\n    targetKey: FsTargetKey;\n    version: FsVersion;\n    text: string;\n}',
+  },
+  {
+    name: 'ResearchScope',
+    declaration: 'export interface ResearchScope {\n    root: FsTarget;\n    cwd: string;\n    policy: SandboxExecutionPolicy;\n}',
   },
   {
     name: 'ResolvedAlwaysRetryPolicy',

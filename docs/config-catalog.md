@@ -1224,6 +1224,25 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-ptc-runtime-python -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-research-workbench -->
+<a id="deepseek-aidsh-experimental-research-workbench"></a>
+
+## `@deepseek-ai/dsh-experimental-research-workbench`
+
+- `inject`: `fs` · `sessionQuery` · `workingDirectory` · `sandboxPolicy` · `typert`
+- `source`: [`packages/experimental/research-workbench/src/index.ts:22`](../packages/experimental/research-workbench/src/index.ts)
+
+```ts config-catalog
+/** Bounds on a complete editor buffer and one directory listing. */
+export interface Config {
+  /** Maximum complete UTF-8 file size for editing and saves, in bytes. */
+  maxTextBytes: number
+  /** Maximum number of entries returned by a directory listing. */
+  maxEntries: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-research-workbench -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-security-analysis -->
 <a id="deepseek-aidsh-experimental-security-analysis"></a>
 
@@ -4966,6 +4985,9 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-experimental-client-ui-security-analysis` | — | [`packages/experimental/client-ui-security-analysis/src/index.ts`](../packages/experimental/client-ui-security-analysis/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-research-runtime` | — | [`packages/experimental/research-runtime/src/index.ts`](../packages/experimental/research-runtime/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-research-security` | — | [`packages/experimental/research-security/src/index.ts`](../packages/experimental/research-security/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-research-workbench-bundle` | — | [`packages/experimental/research-workbench-bundle/src/index.ts`](../packages/experimental/research-workbench-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-security-profile` | `agentPresets` | [`packages/experimental/security-profile/src/index.ts`](../packages/experimental/security-profile/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-inspector` | — | [`packages/experimental/session-inspector/src/index.ts`](../packages/experimental/session-inspector/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `tools` · `worktrees` | [`packages/experimental/tool-worktree/src/index.ts`](../packages/experimental/tool-worktree/src/index.ts) |

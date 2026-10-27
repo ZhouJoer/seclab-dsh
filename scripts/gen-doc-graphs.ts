@@ -352,6 +352,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Serves stat, paged text, byte windows, directory listings, and the change feed for files inside a Session\'s workspace root, confined by lstat, containment, and a stat re-check.',
   },
   {
+    key: 'researchFiles',
+    pkg: 'experimental-research-workbench',
+    title: 'Host research file editor Remote service',
+    mode: 'core',
+    note: 'Reads bounded complete text and saves existing work files after checking the effective directory, file identity and original version.',
+  },
+  {
     key: 'workspaceChanges',
     pkg: 'workspace-changes',
     title: 'Host per-turn changed-file summaries',

@@ -53,6 +53,9 @@
     "packages/client/*/tests/**/*.host.ts"
   ],
   "references": [
+    { "path": "./packages/experimental/research-workbench/tsconfig.client.json" },
+    { "path": "./packages/experimental/research-security" },
+    { "path": "./packages/experimental/research-runtime" },
     { "path": "./packages/experimental/client-ui-security-analysis" },
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.client.json" },
     { "path": "./packages/client/product-analytics/tsconfig.client.json" },

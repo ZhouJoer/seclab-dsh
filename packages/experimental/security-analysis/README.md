@@ -29,6 +29,8 @@ Tasks optionally persist `moduleSelection` with `mode`, `modules` and `reason`. 
 
 The operator `skillUsage` read folds committed skill catalogs, successful model reads, explicit user injections and failed reads across historical task bindings. Rows include Session IDs, instruction-render hashes and event positions. Fork prefixes are excluded; reload does not increment counts. Missing logs and ambiguous historical task attribution remain visible. Task-context messages record task identity even without extra context. Skill reads do not prove compliance, and no tool or finding is attributed to a skill merely because it ran afterwards.
 
+`projectMaterialDocument` authorizes a project asset and its exact snapshot member, returning immutable text, raster, PDF or binary-prefix content with its artifact digest. Office conversion uses the optional `officeToPdf` service with deferred bounded reads. It accepts no Host path, exposes no write operation and does not create a Session.
+
 -----
 
 <a id="use-this-package"></a>

@@ -1,6 +1,8 @@
 import { projectSkillUsage, type SecuritySkillUsagePage } from './skill-usage.ts'
 import { readProjectMaterial } from './material-browser.ts'
-import type { MaterialBrowserView } from './material-browser-types.ts'
+import { readMaterialDocument } from './material-document.ts'
+import type {} from '@deepseek-ai/dsh-office-to-pdf'
+import type { MaterialBrowserView, MaterialDocument } from './material-browser-types.ts'
 /** Host service exposing the security workbench to tools and generated Remote clients. @module */
 import './service.ts'
 import type { WorkbenchConfiguration } from './workbench-configuration-types.ts'
@@ -2380,6 +2382,21 @@ export default class SecurityWorkbench extends TypertRemoteService {
   async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView> {
     const controller = await this.ready
     return readProjectMaterial(controller.projectView(projectId).records, controller.artifacts, input, this.config.maxOutputBytes)
+  }
+  /** Preview an exact saved material without resolving a live workspace file.
+   * @param projectId - Project authorizing the asset read.
+   * @param input - Serialized asset identity and exact snapshot member path.
+   * @param signal - Operator request lifetime.
+   * @returns Read-only text, image or PDF with the original artifact digest. */
+  @Remote('projectMaterialDocument')
+  async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument> {
+    const combined = AbortSignal.any([signal, this.shutdown.signal])
+    const controller = await this.ready
+    combined.throwIfAborted()
+    const pending = readMaterialDocument(controller.projectView(projectId).records, controller.artifacts,
+      input, this.config.maxOutputBytes, this.ctx.get('officeToPdf'), combined)
+    this.pending.add(pending)
+    try { return await pending } finally { this.pending.delete(pending) }
   }
   private async readArtifact(records: WorkbenchView['records'], sha256: string): Promise<string> {
     const controller = await this.ready

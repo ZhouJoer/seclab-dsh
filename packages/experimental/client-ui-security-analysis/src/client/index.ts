@@ -1,4 +1,5 @@
 /** Mount the generated security Remote contribution and localized workbench. @module */
+import { ResourceActions } from './ResourceActions.tsx'
 import securityRemote from '@deepseek-ai/dsh-experimental-security-analysis/remote'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
@@ -67,6 +68,7 @@ async function unwrap<T>(pending: Promise<RemoteResult<T>>): Promise<T> {
  * @returns disposer that awaits both UI and Remote teardown.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  ctx.effect(() => ctx.slots.registerFactory({ name: 'security.resource.actions', scope: 'root', children: { 'security.resource.actions.item': { kind: 'list', scope: 'root' } } }, ResourceActions))
   const disposeRemote = await ctx.remote.$mount(securityRemote)
   const ui = ctx.inject(['remote.securityWorkbench', 'slots', 'locale'], (scoped) => {
     scoped.effect(() => scoped.locale.register(NS, { zh, en }))
@@ -306,3 +308,5 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     await disposeRemote()
   }
 }
+
+export type { SecurityResourceAction } from './ResourceActions.tsx'

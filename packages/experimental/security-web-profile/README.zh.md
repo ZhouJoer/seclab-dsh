@@ -40,6 +40,8 @@ kind: "package-bundle"
 
 此包通过 profile patch 或消息输入框的 dock slot 组合能力，不修改默认 profile 或 agent-loop。浏览器通过生成的 Remote 调用领域服务，文案由双语字典提供。不发布 invariant companion，因为包只有可撤销的组合或 UI 注册，业务状态由领域服务持有。
 
+源码启动器还会选择[研究 bundle](../research-workbench-bundle/README.zh.md)。手动组合 profile 时，在本层之前包含该 bundle，以启用独立的 `research-security` 适配器。底部阅读器与原生右栏共存；`research-workbench`、`research-runtime` 和 `research-security` 均有独立禁用条目。
+
 </details>
 
 -----

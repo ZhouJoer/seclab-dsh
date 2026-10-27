@@ -92,6 +92,8 @@ kind: "package-reference"
 
 调查链路是当前 WorkbenchView 的只读投影，与执行时间线共用 Dashboard 既有的项目活动订阅，仅在选择观察时读取制品预览。浏览链路不产生模型轮次或持久关联。审批和执行仍由既有领域方法负责。
 
+根级 `security.resource.actions` Factory 为两种工作台显示方式唯一声明 `security.resource.actions.item`。材料预览、证据详情和调查详情将项目及不可变资源身份交给可选贡献者。[研究适配器](../research-security/README.zh.md)拥有对应按钮；禁用后原预览保持可用。
+
 </details>
 
 -----

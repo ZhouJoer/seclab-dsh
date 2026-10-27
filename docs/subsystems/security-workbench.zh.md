@@ -10,6 +10,8 @@
 
 `MaterialBrowserView` 是 `projectMaterial` 的只读结果：带下一页偏移量的目录列表、带截断标记的文本、位图 URL，或二进制文件的十六进制前缀。[材料浏览类型](../../packages/experimental/security-analysis/src/material-browser-types.ts)定义各个分支；[包参考](../../packages/experimental/security-analysis/README.zh.md)说明快照范围和读取限制。
 
+`MaterialDocument` 是 `projectMaterialDocument` 的结果：制品名称、摘要和大小，以及受限文本、完整 PDF 或光栅图片字节，或二进制前缀。项目和确切的清单成员授权读取。可选 Office 转换通过转换器的字节上限和取消信号读取不可变制品，不接受实时文件系统路径。
+
 `WorkbenchConfiguration` 是 `configuration` 与 `configureWorkspace` 返回的对象，包含材料限制、项目、provider、环境和经验整理间隔。没有工作区时，其 workspace 值为 null；尝试次数在配置前缺省。[配置类型](../../packages/experimental/security-analysis/src/workbench-configuration-types.ts)定义浏览器可用字段。
 
 `ToolboxDirectory` 包含已配置的环境选项和一份实测或显式未检测的 `ToolboxInventory`。其中的 `ToolboxTool` 条目分别描述可用性、调用方式和可选 provider 集成。可用 Docker 工具提供宿主 `command` 和 `prefixArgs`，并在 `installation` 中保留原始容器可执行文件与参数，供配置持久化使用。这些只读观察不属于项目证据或执行权限；字段定义见[工具箱类型](../../packages/experimental/security-analysis/src/toolbox-types.ts)。
@@ -396,6 +398,13 @@ Optional security profile service; default application compositions remain indep
  * @returns a directory page or bounded file preview.
  */
 @Remote('projectMaterial') async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView>
+
+/** Preview an exact saved material without resolving a live workspace file.
+ * @param projectId - Project authorizing the asset read.
+ * @param input - Serialized asset identity and exact snapshot member path.
+ * @param signal - Operator request lifetime.
+ * @returns Read-only text, image or PDF with the original artifact digest. */
+@Remote('projectMaterialDocument') async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument>
 ```
 
 Types: [Agent](core.zh.md) · [SessionId](core.zh.md)

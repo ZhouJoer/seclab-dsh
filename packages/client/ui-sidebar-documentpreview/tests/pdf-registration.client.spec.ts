@@ -31,6 +31,7 @@ describe('PDF registration', () => {
     const ctx = new Context()
     const previews = new DocumentPreviewRegistry()
     const dictionaries = new Map<string, unknown>()
+    const factories = new Set<string>()
     const entries: Array<{
       name: string
       key: string
@@ -49,6 +50,11 @@ describe('PDF registration', () => {
       bind: () => makeTranslate(en),
     } as never)
     ctx.provide('slots', {
+      registerFactory: (options: { name: string; scope: string }) => {
+        expect(options).toMatchObject({ name: 'document.pdf', scope: 'root' })
+        factories.add(options.name)
+        return () => { factories.delete(options.name) }
+      },
       inject: (_name: string, callback: () => () => void) => callback(), register,
     } as never)
     const fiber = ctx.plugin({ apply })
@@ -59,6 +65,7 @@ describe('PDF registration', () => {
       ])
       expect(previews.candidates('report.pdf')[0]!.title()).toBe('PDF')
       expect(dictionaries.get('sidebarPdf')).toEqual({ zh, en })
+      expect(factories.has('document.pdf')).toBe(true)
       expect(entries[0]).toMatchObject({ name: 'sidebar.right.tab.document', key: PDF_BODY_ID, locale: 'sidebarPdf' })
       const instance = entries[0]!.store.create()
       const face = entries[0]!.inject('s1' as SessionId, instance.actions)
@@ -85,6 +92,7 @@ describe('PDF registration', () => {
       expect(previews.getSnapshot()).toEqual([])
       expect(entries).toEqual([])
       expect(dictionaries.size).toBe(0)
+      expect(factories.size).toBe(0)
     } finally {
       await fiber.dispose()
     }

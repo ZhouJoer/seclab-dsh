@@ -237,6 +237,8 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/experimental/research-workbench/tsconfig.host.json" },
+    { "path": "./packages/experimental/research-workbench-bundle" },
     { "path": "./packages/experimental/advisor-jev" },
     { "path": "./packages/subagent/helper" },
     { "path": "./packages/experimental/security-profile" },

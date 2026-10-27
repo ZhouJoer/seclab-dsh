@@ -5,7 +5,7 @@ import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/c
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { CaptureControls } from './CaptureControls.tsx'
 import { IconRefreshOutlineRegular, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -58,7 +58,7 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   Promise<{ sessionId: SessionId; projectId: string; objective: string }>
   openRestartDraft(sessionId: SessionId, objective: string): Promise<void>
 }
-type Props = DashboardActions & PropsLocale<typeof NS>
+type Props = PropsRenderFactories & DashboardActions & PropsLocale<typeof NS>
   & Pick<PropsRuntime<'main'>, 'useWorkspaces' | 'useResource'>
   & Pick<PropsRenderSlots<'security.workbench.session'>, 'SessionProvider'>
   & { renderSettings(input: DashboardSessionInput): ReactNode
@@ -455,7 +455,7 @@ export function Dashboard(props: Props) {
               })} /></div>
           </>}
           {tab === 'assets' && <section className={css.panel}>{assets.length ? assets.map(item => <article className={css.record} key={project.workspaceMaterials?.assetId === item.value.id ? 'workspace-materials' : item.value.id}>
-            {'artifact' in item.value ? <MaterialBrowser t={t} useResource={props.useResource} project={project.id} asset={item.value.id} label={item.value.label} directory={'kind' in item.value} /> : <><h3>{item.value.label}</h3><span className={css.muted}>{item.value.kind}</span></>}
+            {'artifact' in item.value ? <MaterialBrowser sourceRoot={project.workspaceMaterials?.assetId === item.value.id ? project.workspaceMaterials.root : undefined} renderFactorySlot={props.renderFactorySlot} sessionId={sessionId} t={t} useResource={props.useResource} project={project.id} asset={item.value.id} label={item.value.label} directory={'kind' in item.value} /> : <><h3>{item.value.label}</h3><span className={css.muted}>{item.value.kind}</span></>}
             {!('kind' in item.value) && <CaptureControls t={t} disabled={busy || project.stopped || Boolean(project.archived)}
               environments={captureEnvironments.filter(environment => project.environmentIds.includes(environment.id))}
               analyze={async (operation, protocol, environmentId) => { await perform(async () => {
@@ -470,7 +470,7 @@ export function Dashboard(props: Props) {
           </article>) : <p className={css.empty}>{t('dashboardNoMaterials')}</p>}</section>}
           {tab === 'findings' && <section className={css.panel}>{findings.length ? findings.map(item => <article className={css.record} key={item.value.id}><span className={css.badge}>{t(item.value.status)}</span><h3>{item.value.title}</h3><p>{item.value.explanation}</p><details><summary>{t('advancedDetails')}</summary><p>{item.value.conditions}</p><p>{item.value.review}</p><div className={css.actions}>{item.value.evidenceIds.map(id => <button key={id} onClick={() => { setTab('evidence'); setEvidenceId(id) }}>{evidence.find(entry => entry.value.id === id)?.value.title ?? t('unavailableReference')}</button>)}</div></details></article>) : <p className={css.empty}>{t('dashboardNoFindings')}</p>}</section>}
           {tab === 'evidence' && <section className={css.panel}>{chosenEvidence ? <>
-            <button className={css.back} onClick={() =>{  setEvidenceId('') }}>{t('dashboardBackEvidence')}</button><h2>{chosenEvidence.title}</h2><p>{chosenEvidence.summary}</p><dl className={css.metadata}><dt>{t('dashboardSource')}</dt><dd>{chosenEvidence.provider} · {chosenEvidence.operation}</dd><dt>{t('dashboardMethod')}</dt><dd>{chosenEvidence.method ?? t('incomplete')}</dd><dt>{t('dashboardToolVersion')}</dt><dd>{chosenEvidence.toolVersion}</dd></dl>
+            <button className={css.back} onClick={() =>{  setEvidenceId('') }}>{t('dashboardBackEvidence')}</button><h2>{chosenEvidence.title}</h2><p>{chosenEvidence.summary}</p>{props.renderFactorySlot('security.resource.actions', { projectId: project.id, sessionId, resource: { kind: 'evidence', evidenceId: chosenEvidence.id, sha256: chosenEvidence.artifact.sha256, label: chosenEvidence.title } })}<dl className={css.metadata}><dt>{t('dashboardSource')}</dt><dd>{chosenEvidence.provider} · {chosenEvidence.operation}</dd><dt>{t('dashboardMethod')}</dt><dd>{chosenEvidence.method ?? t('incomplete')}</dd><dt>{t('dashboardToolVersion')}</dt><dd>{chosenEvidence.toolVersion}</dd></dl>
             {chosenEvidence.failure && <p className={css.error}>{t('failed')}: {chosenEvidence.failure}</p>}{chosenEvidence.cleanup && <p>{t('dashboardCleanup')}: {chosenEvidence.cleanup}</p>}{chosenEvidence.incomplete && <p className={css.notice}>{t('incomplete')}</p>}
             {chosenEvidence.http ? <HttpHistory {...props} project={selected} evidenceId={chosenEvidence.id} revision={view.revision} /> : artifact ? <>{artifact.truncated && <p role="status">{t('dashboardTruncated')}</p>}<>{artifact.binary ? <p>{t('graphBinary')}</p> : <EvidencePreview text={artifact.text} provider={chosenEvidence.provider} t={t} />}</></> : <p role="status">{t(reading ? 'dashboardLoading' : 'dashboardReadFailed')}</p>}
           </> : <><div className={css.listHeader}><h3>{t('evidence')}</h3><input aria-label={t('dashboardEvidenceSearch')} placeholder={t('dashboardEvidenceSearch')} value={evidenceQuery} onChange={(event) => { setEvidenceQuery(event.target.value) }} /></div>{evidence.filter(item => (item.value.title + item.value.summary).toLowerCase().includes(evidenceQuery.toLowerCase())).map(item => <button className={css.evidenceRow} key={item.value.id} onClick={() =>{  setEvidenceId(item.value.id) }}><strong>{item.value.title}</strong><span>{item.value.summary}</span><small>{item.value.provider} · {item.value.method ?? t('incomplete')}</small></button>)}{!evidence.length && <p className={css.empty}>{t('dashboardNoEvidence')}</p>}</>}</section>}

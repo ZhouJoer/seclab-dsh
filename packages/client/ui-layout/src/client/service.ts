@@ -15,6 +15,9 @@ import type { createLayoutStore } from './stores.ts'
 /** Identity shared by a sidebar panel entry and its main-slot occupant. */
 export type MainPanelId = Branded<'MainPanelId'>
 
+/** Horizontal extent of the bottom slot; center preserves full-height side columns. */
+export type BottomPlacement = 'frame' | 'center'
+
 /** Root-scoped navigation state exposed to panel-aware components. */
 export interface PanelInfo {
   /** Selected global panel; null displays the current Conversation. */
@@ -51,11 +54,18 @@ export interface ILayout {
   openRightbar(track: boolean, fullscreen: boolean): void
   /** Report the right panel as hidden: no track, no handle. */
   closeRightbar(): void
+  /**
+   * Set the bottom slot's extent for an occupant's lifetime. The latest registration wins.
+   * @param placement - full frame or central column only.
+   * @returns an idempotent disposer restoring the remaining registration, or full frame.
+   */
+  registerBottomPlacement(placement: BottomPlacement): () => void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
 export class LayoutController implements ILayout {
   private navigation = new AbortController()
+  private readonly bottomPlacements = new Map<object, BottomPlacement>()
 
   /**
    * @param panels - actions of the instance shared with the root entry.
@@ -102,5 +112,15 @@ export class LayoutController implements ILayout {
   /** Report the right panel as hidden: no track, no handle. */
   closeRightbar(): void {
     this.panels.closeRightbar()
+  }
+
+  registerBottomPlacement(placement: BottomPlacement): () => void {
+    const token = {}
+    this.bottomPlacements.set(token, placement)
+    this.panels.setBottomPlacement(placement)
+    return () => {
+      if (!this.bottomPlacements.delete(token)) return
+      this.panels.setBottomPlacement([...this.bottomPlacements.values()].at(-1) ?? 'frame')
+    }
   }
 }

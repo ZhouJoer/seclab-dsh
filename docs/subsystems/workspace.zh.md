@@ -228,6 +228,45 @@ Host service backing the generated `ctx.remote.directoryPicker` namespace. The s
 
 Source: [`packages/api/workspace-controller/src/directory-picker.ts`](../../packages/api/workspace-controller/src/directory-picker.ts)
 
+<a id="ctxresearchfiles--researchfiles"></a>
+
+### `ctx.researchFiles` — `ResearchFiles`
+
+File operations never activate an Agent or change immutable evidence.
+
+```ts cordis-catalog
+/** Resolve current directory without activating a historical Agent.
+ * @param sessionId - authenticated Session resource.
+ * @param signal - operation lifetime.
+ * @returns canonical directory and the Session's standing file policy. */
+async scope(sessionId: SessionId, signal: AbortSignal): Promise<ResearchScope>
+
+/** List only canonical descendants of the current directory.
+ * @param sessionId - admitted Session.
+ * @param path - relative directory, or empty for its root.
+ * @param signal - caller cancellation.
+ * @returns bounded children and the exact working directory. */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async list(sessionId: SessionId, path: string, signal: AbortSignal): Promise<ResearchDirectory>
+
+/** Read complete UTF-8 with a stable before/after version.
+ * @param sessionId - admitted Session.
+ * @param path - existing work file.
+ * @param signal - caller cancellation.
+ * @returns original text and the replacement preconditions. */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async read(sessionId: SessionId, path: string, signal: AbortSignal): Promise<ResearchFile>
+
+/** Replace one unchanged existing text file; failures preserve caller drafts.
+ * @param sessionId - admitted Session.
+ * @param request - exact read identity and replacement text.
+ * @param signal - caller cancellation.
+ * @returns committed version and text; never retries an unknown write outcome. */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async save(sessionId: SessionId, request: ResearchSave, signal: AbortSignal): Promise<ResearchFile>
+```
+
+Types: [SessionId](core.zh.md)
+
+Source: [`packages/experimental/research-workbench/src/index.ts`](../../packages/experimental/research-workbench/src/index.ts)
+
 <a id="ctxterminalcontroller--terminalcontroller"></a>
 
 ### `ctx.terminalController` — `TerminalController`

@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/research-workbench-bundle/README.md
+/:
+  en: 5cf31a399a9164f8
+  zh: f47c86c7b9e051cc
+/deepseek-ai-dsh-experimental-research-workbench-bundle:
+  en: a3c44454875d80ac
+  zh: 0c33c6482641f07e
+/deepseek-ai-dsh-experimental-research-workbench-bundle/summary:
+  en: a0d54d9b96ed0145
+  zh: 7be4dd63eec896a9
+/deepseek-ai-dsh-experimental-research-workbench-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 405b30feaf48c087
+/deepseek-ai-dsh-experimental-research-workbench-bundle/use-this-package:
+  en: e8160c8be4eea2af
+  zh: 0a12fe28ed632b7b
+/deepseek-ai-dsh-experimental-research-workbench-bundle/understand-the-implementation:
+  en: bcd935c86b0591a9
+  zh: 03b2fd19bb0d0bdb
+/deepseek-ai-dsh-experimental-research-workbench-bundle/further-exploration:
+  en: f8159a2083530647
+  zh: dcfd9b487bd1ea5e
+/deepseek-ai-dsh-experimental-research-workbench-bundle/dev-note:
+  en: 57bc572027bf4939
+  zh: 2a8de25b82cb7512
+/deepseek-ai-dsh-experimental-research-workbench-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-research-workbench-bundle/model-experience/operator-research:
+  en: ff6ea988b81d9388
+  zh: a0f254aebeba826a
+/deepseek-ai-dsh-experimental-research-workbench-bundle/model-experience/operator-research/what-the-model-sees:
+  en: ce6ec9abfebae949
+  zh: e21b53ccfaa6602f
+/deepseek-ai-dsh-experimental-research-workbench-bundle/model-experience/operator-research/token-effect:
+  en: ae0f3fe726a65f0d
+  zh: 3e99a456f56c6e07
+/deepseek-ai-dsh-experimental-research-workbench-bundle/model-experience/operator-research/kv-cache-effect:
+  en: 57837917bafe192d
+  zh: 172bf502051167c2
+/deepseek-ai-dsh-experimental-research-workbench-bundle/known-limitations-and-deferred-work:
+  en: 94cd57f8d2776fd6
+  zh: ef62febdcf51f2db

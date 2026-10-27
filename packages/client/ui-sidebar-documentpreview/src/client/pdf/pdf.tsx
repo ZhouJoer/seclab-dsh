@@ -46,28 +46,43 @@ export function PdfBody(props: PdfBodyProps & { readonly loading: ReactNode }): 
   const { tab } = props.useTabInfo()
   const view = props.useStore(state => state.byTab[tab.id] ?? DEFAULT_PDF_VIEW)
   const data = props.content.kind === 'bytes' ? props.content.data : undefined
+  const { retainTab, actions } = props
+  const pageVisible = useCallback((page: number) => { actions.page(tab.id, page) }, [actions, tab.id])
+  const setPreference = useCallback((value: ZoomPreference) => { actions.zoom(tab.id, value) }, [actions, tab.id])
+  useEffect(() => { retainTab(tab.id, tab.signal) }, [retainTab, tab.id, tab.signal])
+  return <PdfContent {...props} data={data} signal={tab.signal} view={view} onPage={pageVisible} onZoom={setPreference} />
+}
+
+/** PDF presentation independent of Session or tab ownership. */
+export type PdfContentProps = PropsLocale<'sidebarPdf'> & Pick<PdfBodyInjected, 'ZoomViewport' | 'zoomSurfaceClass'> & {
+  data: Uint8Array<ArrayBuffer> | undefined
+  signal: AbortSignal
+  view: PdfView
+  onPage: (page: number) => void
+  onZoom: (value: ZoomPreference) => void
+  scrollportRef: ZoomViewportProps['scrollportRef']
+  loading: ReactNode
+}
+
+/** Render immutable PDF bytes in an owner-controlled viewport.
+ * @param props - Complete bytes, lifetime, locale and viewing preferences.
+ * @returns The shared PDF reader. */
+export function PdfContent(props: PdfContentProps): ReactNode {
+  const { data, signal: ownerSignal, view, onPage: pageVisible, onZoom: setPreference } = props
   const [load, setLoad] = useState<LoadState>()
   const [attempt, setAttempt] = useState(0)
   const [pageWidth, setPageWidth] = useState<number>()
   const [renderZoom, setRenderZoom] = useState(1)
-  const { retainTab, actions, t, ZoomViewport, zoomSurfaceClass } = props
+  const { t, ZoomViewport, zoomSurfaceClass } = props
   const preference = view.zoom ?? FIT_WIDTH
   const labels: ZoomLabels = {
     controls: t('zoomControls'), menu: t('zoomMenu'), out: t('zoomOut'), into: t('zoomIn'),
     fitWidth: t('zoomFitWidth'), value: percent => t('zoomValue', { percent }),
   }
-  const pageVisible = useCallback((page: number): void => {
-    actions.page(tab.id, page)
-  }, [actions, tab.id])
-  const setPreference = useCallback((value: ZoomPreference): void => {
-    actions.zoom(tab.id, value)
-  }, [actions, tab.id])
-
-  useEffect(() => { retainTab(tab.id, tab.signal) }, [retainTab, tab.id, tab.signal])
   useEffect(() => {
-    if (data === undefined || tab.signal.aborted) return
+    if (data === undefined || ownerSignal.aborted) return
     const lifetime = new AbortController()
-    const signal = AbortSignal.any([lifetime.signal, tab.signal])
+    const signal = AbortSignal.any([lifetime.signal, ownerSignal])
     setLoad(undefined)
     const session = openPdf(data, signal, (error) => {
       if (!signal.aborted) setLoad({ kind: 'failed', data, error })
@@ -80,7 +95,7 @@ export function PdfBody(props: PdfBodyProps & { readonly loading: ReactNode }): 
       lifetime.abort()
       void session.dispose()
     }
-  }, [data, tab.signal, attempt])
+  }, [data, ownerSignal, attempt])
   if (data === undefined) return <p className={css.status} role="alert">{t('unsupported')}</p>
   if (load?.data !== data) return props.loading
   if (load.kind === 'failed') {
@@ -92,12 +107,12 @@ export function PdfBody(props: PdfBodyProps & { readonly loading: ReactNode }): 
   const pages = <section className={css.body} data-pdf-preview>
     {Array.from({ length: load.document.numPages }, (_, index) => (
       <PdfPage key={index} document={load.document} page={index + 1}
-        requested={index === 0 || view.page === index + 1} onVisible={pageVisible} signal={tab.signal}
+        requested={index === 0 || view.page === index + 1} onVisible={pageVisible} signal={ownerSignal}
         onWidth={index === 0 ? setPageWidth : undefined} zoom={renderZoom} zoomSurfaceClass={zoomSurfaceClass} t={t} />
     ))}
   </section>
   return <ZoomViewport preference={preference} intrinsicWidth={pageWidth} horizontalInset={24} labels={labels}
-    signal={tab.signal} scrollportRef={props.scrollportRef} onPreference={setPreference} onRenderZoom={setRenderZoom}>
+    signal={ownerSignal} scrollportRef={props.scrollportRef} onPreference={setPreference} onRenderZoom={setRenderZoom}>
     {pages}
   </ZoomViewport>
 }

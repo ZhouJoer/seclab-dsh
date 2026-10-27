@@ -1,0 +1,81 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "references": [
+    { "path": "../../client/ui-sidebar-right" },
+    { "path": "../../client/ui-sidebar-documentpreview/tsconfig.client.json" },
+    { "path": "../../util/workspace-path" },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../api/remotes/tsconfig.client.json"
+    },
+    {
+      "path": "../../api/session-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/locale/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/resources"
+    },
+    {
+      "path": "../../client/store"
+    },
+    {
+      "path": "../../client/ui-conversation/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-layout"
+    },
+    {
+      "path": "../../client/ui-primitives"
+    },
+    {
+      "path": "../../client/ui-renderer"
+    },
+    {
+      "path": "../../client/ui-session"
+    },
+    {
+      "path": "../../client/ui-slots"
+    },
+    {
+      "path": "../../client/ui-workspace"
+    },
+    {
+      "path": "../research-workbench/tsconfig.client.json"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../client/ui-chat/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-sidebar-terminal"
+    },
+    {
+      "path": "../../api/terminal-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-theme/tsconfig.client.json"
+    },
+    {
+      "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../util/crypto"
+    }
+  ],
+  "include": [
+    "src"
+  ]
+}

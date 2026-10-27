@@ -5,6 +5,7 @@ import type { MainPanelId, PanelActions } from '../src/client/service.ts'
 
 function fakePanels(): PanelActions {
   return {
+    setBottomPlacement: vi.fn(),
     selectPanel: vi.fn(),
     retainMainPanels: vi.fn(),
     setSidebar: vi.fn(),
@@ -17,6 +18,24 @@ function fakePanels(): PanelActions {
 }
 
 describe('LayoutController', () => {
+  it('restores bottom placement when occupants unload in either order', () => {
+    const panels = fakePanels()
+    const service = new LayoutController(panels, () => true, createSnapshotStore({ activePanelId: null }))
+    const releaseCenter = service.registerBottomPlacement('center')
+    expect(panels.setBottomPlacement).toHaveBeenLastCalledWith('center')
+    const releaseFrame = service.registerBottomPlacement('frame')
+    releaseFrame()
+    expect(panels.setBottomPlacement).toHaveBeenLastCalledWith('center')
+    const releaseSecond = service.registerBottomPlacement('center')
+    releaseCenter()
+    expect(panels.setBottomPlacement).toHaveBeenLastCalledWith('center')
+    releaseSecond()
+    expect(panels.setBottomPlacement).toHaveBeenLastCalledWith('frame')
+    vi.mocked(panels.setBottomPlacement).mockClear()
+    releaseSecond()
+    expect(panels.setBottomPlacement).not.toHaveBeenCalled()
+  })
+
   it('forwards right column transitions to the constructor-supplied actions', () => {
     const panels = fakePanels()
     const service = new LayoutController(panels, () => true, createSnapshotStore({ activePanelId: null }))

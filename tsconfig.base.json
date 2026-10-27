@@ -28,6 +28,14 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-experimental-research-workbench": ["./packages/experimental/research-workbench/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-research-workbench/client": ["./packages/experimental/research-workbench/src/client/index.ts"],
+      "@deepseek-ai/dsh-experimental-research-workbench/types": ["./packages/experimental/research-workbench/src/types.ts"],
+      "@deepseek-ai/dsh-experimental-research-security": ["./packages/experimental/research-security/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-research-runtime": ["./packages/experimental/research-runtime/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-research-runtime/client": ["./packages/experimental/research-runtime/src/client/index.tsx"],
+      "@deepseek-ai/dsh-experimental-research-security/client": ["./packages/experimental/research-security/src/client/index.tsx"],
+      "@deepseek-ai/dsh-experimental-research-workbench-bundle": ["./packages/experimental/research-workbench-bundle/src/index.ts"],
       "@deepseek-ai/dsh-experimental-advisor-jev": ["./packages/experimental/advisor-jev/src/index.ts"],
       "@deepseek-ai/dsh-experimental-advisor-jev/types": ["./packages/experimental/advisor-jev/src/types.ts"],
       "@deepseek-ai/dsh-helper": ["./packages/subagent/helper/src/index.ts"],

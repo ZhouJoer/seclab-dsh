@@ -92,6 +92,8 @@ This package composes capabilities through a profile patch or input dock slot. I
 
 The investigation graph is a read-only projection of the current WorkbenchView. It shares the Dashboard's existing project activity subscription with the execution timeline, and loads artifact previews only when selected. Graph navigation creates no model turn or persistent relationship. Existing domain methods continue to own approval and execution.
 
+The root `security.resource.actions` Factory declares `security.resource.actions.item` once for both workbench occurrences. It passes project and immutable resource identity to optional contributors at material previews, evidence details and investigation details. The [research adapter](../research-security/README.md) owns its buttons; disabling it leaves the original previews intact.
+
 </details>
 
 -----

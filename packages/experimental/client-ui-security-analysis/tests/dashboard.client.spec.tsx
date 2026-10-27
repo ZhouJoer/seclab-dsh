@@ -79,6 +79,7 @@ function harness(extra: object = {}) {
     t: makeTranslate(en, common), useWorkspaces: (select: (state: object) => unknown) => select({ items: [{ workspaceId: 'workspace', path: '/owned', title: 'Owned' }] }),
     SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
     renderSettings: () => <textarea aria-label="Assistant draft" defaultValue="" />,
+    renderFactorySlot: () => null,
     ...extra,
   }
   // The fixture supplies only framework seats consumed by this component.

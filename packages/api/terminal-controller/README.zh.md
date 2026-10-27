@@ -67,6 +67,8 @@ Client 在分配前将每条 Session/内容与终端身份的关联保存到独�
 
 关闭时先保存未完成的清理请求并释放标签页，再在后台等待 Host 清理。失败时提供重试通知。每个请求使用独立的终端 ID localStorage key，清理成功或收到明确的 `session/not-found` 响应后删除；启动时重试已保存的请求。传输失败时保留请求。清理请求独立于标签关联和侧栏布局持久化。浏览器存储不可用时，内存中的清理仍可工作，但刷新后无法恢复该请求。
 
+独立界面向 `retainTabs` 传入稳定的 owner 对象。更新或释放一个 owner 不影响其他 owner 的终端持有关系；省略 owner 时表示原生右栏。
+
 </details>
 
 <a id="further-exploration"></a>

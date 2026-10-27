@@ -3,7 +3,7 @@
  * The registration supplies a fresh store and binds its actions to ctx.layout.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
-import type { MainPanelId } from './service.ts'
+import type { BottomPlacement, MainPanelId } from './service.ts'
 import {
   clampWidth, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN,
   SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
@@ -22,6 +22,7 @@ type LayoutState = {
 }
 
 type LayoutInfo = {
+  bottomPlacement: BottomPlacement
   sidebar: number
   /** Last positive frame measurement; window width bootstraps the first render. */
   viewportWidth: number
@@ -56,6 +57,7 @@ type LayoutInfo = {
  * return type); drift fails assignability at the defineStore call.
  */
 type LayoutActions = {
+  setBottomPlacement: (draft: LayoutState, placement: BottomPlacement) => void
   selectPanel: (draft: LayoutState, panelId: MainPanelId | null) => void
   retainMainPanels: (draft: LayoutState, panelIds: readonly string[]) => void
   setSidebar: (draft: LayoutState, px: number) => void
@@ -80,6 +82,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
     init: (): LayoutState => ({
       panelInfo: { activePanelId: null },
       layoutInfo: {
+        bottomPlacement: 'frame',
         sidebar: SIDEBAR_DEFAULT,
         viewportWidth: window.innerWidth,
         narrowExpanded: false,
@@ -91,6 +94,9 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
     }),
     actions: {
+      setBottomPlacement: (d, placement: BottomPlacement) => {
+        d.layoutInfo.bottomPlacement = placement
+      },
       selectPanel: (d, panelId: MainPanelId | null) => {
         d.panelInfo.activePanelId = panelId
       },
