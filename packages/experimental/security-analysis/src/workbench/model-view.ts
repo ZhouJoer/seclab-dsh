@@ -18,7 +18,7 @@ interface RecordSummary {
     status?: string
     findingHash?: string
     assetId?: string
-    assetKind?: 'file' | 'source' | 'web' | 'external-web'
+    assetKind?: 'file' | 'source' | 'workspace' | 'web' | 'external-web'
     format?: FileAsset['format']
     origin?: string
     pathPrefix?: string

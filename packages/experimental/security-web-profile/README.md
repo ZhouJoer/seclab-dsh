@@ -28,6 +28,8 @@ Compose `@deepseek-ai/dsh-base`, an application bundle, and `@deepseek-ai/dsh-ex
 
 The security Web profile listens on `127.0.0.1:3081` by default; the ordinary Web profile uses port `3080`. An explicit `--port` overrides the security default, including `--port 0` for an allocated port. A busy port fails at bind; the profile does not silently switch ports.
 
+Analysis uses the selected workspace as its source target. This profile disables the harness development context, so the running installation's implementation checkout and GUI URL are not advertised as investigation targets. Local source review starts with native file tools and does not require a second checkout or specialist module selection.
+
 This composition includes the optional [Advisor controls](../../client/ui-helper/README.md). Advisor starts disabled; choose an API expert or ChatGPT Codex in Plugins → Advisor and enable it per session. The coordinator can consult it when enabled. The source launcher keeps these bundle layers below user settings, so saved model choices survive restart.
 
 -----
@@ -61,7 +63,7 @@ The source launcher also selects the [research bundle](../research-workbench-bun
 
 #### What the model sees
 
-This package supplies no direct model input; `security_scope` belongs to the domain service. Domain tools record model-visible results in the Session.
+The domain service supplies the selected task and workspace in logged runtime context. `security_scope` retrieves additional state when needed. Domain tools record model-visible results in the Session.
 
 #### Token effect
 

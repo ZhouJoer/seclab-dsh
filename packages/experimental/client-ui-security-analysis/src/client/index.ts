@@ -141,7 +141,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     refreshHints()
     scoped.on('conversation/before-send', async (id, signal) => {
       signal?.throwIfAborted()
-      if (scoped.sessions.list.getSnapshot().byId[id]?.projectionValues?.agentPreset !== 'security' || associated(id)) return
+      if (scoped.sessions.list.getSnapshot().byId[id]?.projectionValues?.agentPreset !== 'security') return
+      preparation.requireReady(id)
+      if (associated(id)) return
       await preparation.run(id)
     })
     scoped.effect(() => scoped.resources.register<'security-startup'>({ protocol: 'security-startup',
@@ -232,12 +234,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       })
     }
     const dashboardActions: DashboardActions = {
+      toolPreferenceOptions: actions.toolPreferenceOptions,
+      toolPreferences: actions.toolPreferences,
       generateReport: (id, revision) => scoped.sessions.using(id, { source: 'securityWorkbench' }, () =>
         actions.command(id, JSON.stringify({ operationId: randomUUID(), expectedRevision: revision, action: { kind: 'report' } }))),
       beginAnalysis,
       openChat: (id) => { scoped.uiWorkspace.openSession(id) },
       selectDestination: (id) => { openWorkbench(id) },
-      refreshWorkspaceMaterials: id => unwrap(remote.refreshWorkspaceMaterials(id)),
       configureWorkspace: (id, input) => actions.configureWorkspace(id, input),
       followProjects: signal => directory.followProjects(signal),
       httpHistory: (project, input) => unwrap(remote.httpHistory(project, input)),

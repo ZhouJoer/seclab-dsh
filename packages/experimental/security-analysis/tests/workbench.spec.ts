@@ -15,6 +15,7 @@ import { SecurityController } from '../src/workbench/controller.ts'
 import { BinaryProvider } from '../src/workbench/binary.ts'
 import type { SecurityCommand } from '../src/workbench/controller.ts'
 import type { AnalysisOperation } from '../src/workbench/model.ts'
+import { taskCompletionSchema } from '../src/workbench/model.ts'
 import { findingHash } from '../src/workbench/assessment.ts'
 import { bindDelegatedChild } from './delegation-fixture.ts'
 import { refineKnowledge, refinementSchema } from '../src/workbench/knowledge.ts'
@@ -22,7 +23,8 @@ import { SecuritySearchIndex } from '../src/workbench/search.ts'
 import { openTaskSettings } from '../src/task-settings.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
-async function harness(generateReport?: (prompt: string, signal: AbortSignal) => Promise<string>) {
+async function harness(generateReport?: (prompt: string, signal: AbortSignal) => Promise<string>,
+  citationReader?: ConstructorParameters<typeof SecurityController>[6]) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-workbench-'))
   const ctx = new Context()
   const backend = new JsonStorageBackend(root)
@@ -45,16 +47,16 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
     approvalTtlMs: 60000,
     maxArtifactBytes: 65536,
     maxDerivedAssets: 10,
-    reportLimits: { inputBytes: 32768, maxChars: 1200, maxFindings: 5, maxLessons: 3, outputBytes: 16384 },
-  }, generateReport ?? (async (prompt) => {
-    const data = JSON.parse(prompt.split('\nData: ')[1]!) as { findings: { index: number; status: string }[] }
-    return JSON.stringify({ assessment: 'Only recorded implementation paths were assessed.',
-      scope: [], attackPath: [], objectives: [],
-      findings: data.findings.filter(item => item.status !== 'refuted').map(item => ({ index: item.index, mechanism: 'Target behavior requires review',
-        conditions: 'Owned sample', impact: 'Potential security impact', location: 'sample', fix: 'Check the implementation' })),
-      excludedIndices: data.findings.filter(item => item.status === 'refuted').map(item => item.index),
-      lessons: [], uncovered: ['Other paths remain unexamined.'] })
-  }))
+    reportLimits: { maxFindings: 5, outputBytes: 16384 },
+  }, undefined, undefined, undefined, citationReader)
+  if (generateReport) {
+    const put = artifacts.put.bind(artifacts)
+    vi.spyOn(artifacts, 'put').mockImplementation(async (bytes, mediaType) => {
+      if (mediaType === 'text/markdown') await generateReport(Buffer.from(bytes).toString(), new AbortController().signal)
+      return put(bytes, mediaType)
+    })
+  }
+
   onTestFinished(async () => {
     await controller.dispose()
     await facility.closeAll()
@@ -114,10 +116,10 @@ it('saves outcomes without findings and reuses the report across chat and operat
   expect(controller.view('parent').records.filter(item => item.kind === 'report')).toHaveLength(1)
   expect(controller.view('parent').records.filter(item => item.kind === 'finding')).toHaveLength(0)
   expect(generate.mock.calls[0]?.[0]).toContain('first / second / third / fourth')
-  expect(generate.mock.calls[0]?.[0]).toContain('observations')
+  expect(generate.mock.calls[0]?.[0]).toContain('引用')
 })
 
-it('retains saved outcomes after synthesis failure and retries through report', async () => {
+it('retains saved outcomes after artifact publication failure and retries through report', async () => {
   let fail = true
   const { send, controller, action } = await completionFixture(async () => {
     if (fail) throw new Error('Provider unavailable')
@@ -131,7 +133,7 @@ it('retains saved outcomes after synthesis failure and retries through report', 
   expect(controller.projects()[0]!.completion?.status).toBe('completed')
 })
 
-it.each(['cancel', 'change', 'stop'] as const)('does not publish completion when %s occurs during synthesis', async (reason) => {
+it.each(['cancel', 'change', 'stop'] as const)('does not publish completion when %s occurs during publication', async (reason) => {
   const entered = Promise.withResolvers<undefined>()
   const output = Promise.withResolvers<string>()
   const { controller, journal, send, action } = await completionFixture(async () => { entered.resolve(undefined); return output.promise })
@@ -158,13 +160,13 @@ it.each(['cancel', 'change', 'stop'] as const)('does not publish completion when
   expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(false)
 })
 
-it('recovers interrupted report delivery without repeating synthesis', async () => {
+it('recovers interrupted report delivery without rewriting artifacts', async () => {
   const generate = vi.fn(async () => outcomeReport)
   const { controller, journal, action } = await completionFixture(generate)
   if (action.kind !== 'complete-task') throw new Error('Missing outcome action')
   const project = controller.projects()[0]!
   await journal.commit(randomUUID(), journal.view().revision, { interrupted: true }, () => [{ kind: 'engagement', value: {
-    ...project, completion: { results: action.results, limitations: action.limitations, status: 'running', detail: '', updatedAt: 1 },
+    ...project, completion: taskCompletionSchema.parse({ results: action.results, limitations: action.limitations, status: 'running', detail: '', updatedAt: 1 }),
   } }])
   await controller.recover()
   expect(controller.projects()[0]!.completion?.status).toBe('interrupted')
@@ -356,7 +358,8 @@ describe('security workbench', () => {
     const { controller, send, assetId, artifacts, journal } = await harness()
     const projectId = controller.binding('parent')!.engagementId
     await controller.captureAnalysis('parent', assetId, ['export-observation'], Buffer.alloc(64000, 120), new AbortController().signal)
-    await send({ kind: 'report' })
+    await send({ kind: 'complete-task', results: [{ title: '分析结果', result: '已记录观察，结论见技术发现。',
+      evidenceIds: controller.view('parent').records.filter(item => item.kind === 'evidence').map(item => item.value.id) }], limitations: '未检查的路径仍待验证。' })
     const report = controller.view('parent').records.find(item => item.kind === 'report')!
     if (report.kind !== 'report') throw new Error('Missing report')
     if (action === 'purge') await controller.manageProject(projectId, { operationId: randomUUID(), expectedRevision: journal.view().revision, action: { kind: 'archive' } })
@@ -513,7 +516,9 @@ describe('security workbench', () => {
     expect(first.value.planId).toBeUndefined()
     expect(await artifacts.read(first.value.artifact)).toEqual(bytes)
     await expect(controller.captureAnalysis('parent', 'foreign', ['script-call'], bytes, signal)).rejects.toThrow('scope')
-    const assignment = await bindDelegatedChild(controller, 'parent', 'reviewer', assetId, 'reviewer')
+    const assignment = await controller.admitDelegation('parent', 'review-script-log', { assetId, role: 'reviewer', task: 'review',
+      question: 'Review the supplied script log', criterion: 'Report evidence limitations', inputEvidenceIds: [first.value.id] })
+    await controller.bindDelegationChild(assignment.id, 'reviewer')
     await expect(controller.captureAnalysis('reviewer', assetId, ['call'], bytes, signal)).rejects.toThrow('role')
     await controller.settleDelegation(assignment.id, { status: 'completed', report: {
       summary: 'Script log reviewed', evidenceIds: [first.value.id],
@@ -533,7 +538,7 @@ describe('security workbench', () => {
     const assessment = reviewed.records.findLast(item => item.kind === 'review')!
     if (assessment.kind !== 'review') throw new Error('Review required')
     await send({ kind: 'conclude', reviewId: assessment.value.id })
-    await send({ kind: 'report' })
+    await send({ kind: 'complete-task', results: [{ title: '分析结果', result: '已记录观察。', evidenceIds: [first.value.id] }], limitations: '实现未验证。' })
     expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(true)
     await send({ kind: 'stop' }, true)
     await expect(controller.captureAnalysis('parent', assetId, ['next'], bytes, signal)).rejects.toThrow('stopped')
@@ -1328,7 +1333,8 @@ async function reviewedFixture(incomplete = false, phase: 'validation' | 'recon'
 it.each(['confirmed', 'refuted', 'inconclusive'] as const)('derives %s from an independent version-bound review and exports it', async (verdict) => {
   const { controller, send, review, artifacts } = await reviewedFixture()
   await send({ kind: 'conclude', reviewId: await review(verdict) })
-  await send({ kind: 'report' })
+  await send({ kind: 'complete-task', results: [{ title: '复核结果', result: '已记录独立复核。',
+    evidenceIds: controller.view('parent').records.filter(item => item.kind === 'evidence').map(item => item.value.id) }], limitations: '' })
   const projectId = controller.projects()[0]!.id
   const view = controller.projectView(projectId)
   expect(view.records.some(item => item.kind === 'binding')).toBe(false)
@@ -1336,7 +1342,7 @@ it.each(['confirmed', 'refuted', 'inconclusive'] as const)('derives %s from an i
   const report = view.records.find(item => item.kind === 'report')!
   if (report.kind !== 'report') throw new Error('Missing report')
   expect((await artifacts.read(report.value.markdown)).toString()).toContain(
-    verdict === 'confirmed' ? '已确认' : verdict === 'inconclusive' ? '未定' : '当前没有可确认的目标风险',
+    verdict === 'confirmed' ? '已确认' : verdict === 'inconclusive' ? '未定' : '本任务未记录漏洞发现',
   )
   expect(JSON.parse((await artifacts.read(report.value.json)).toString())).toMatchObject({ revision: report.value.revision })
 })
@@ -1344,8 +1350,8 @@ it('generates a report outside the journal queue and rejects stale analysis', as
   const entered = Promise.withResolvers<undefined>()
   const output = Promise.withResolvers<string>()
   const generate = vi.fn(async () => { entered.resolve(undefined); return output.promise })
-  const { controller, journal, send } = await harness(generate)
-  const command = { operationId: 'report-pending', expectedRevision: journal.view().revision, action: { kind: 'report' } }
+  const { controller, journal, send, action } = await completionFixture(generate)
+  const command = { operationId: 'report-pending', expectedRevision: journal.view().revision, action }
   const first = controller.command('parent', command)
   const second = controller.command('parent', command)
   await entered.promise
@@ -1361,8 +1367,8 @@ it('generates a report outside the journal queue and rejects stale analysis', as
 it('replays a completed report without another model request', async () => {
   const generate = vi.fn(async () => JSON.stringify({ assessment: 'Binary safety has not been assessed.', scope: [], attackPath: [], objectives: [], findings: [],
     excludedIndices: [], lessons: [], uncovered: ['Only file identity is known.'] }))
-  const { controller, journal } = await harness(generate)
-  const command = { operationId: 'report-once', expectedRevision: journal.view().revision, action: { kind: 'report' } }
+  const { controller, journal, action } = await completionFixture(generate)
+  const command = { operationId: 'report-once', expectedRevision: journal.view().revision, action }
   await controller.command('parent', command)
   await controller.command('parent', command)
   expect(generate).toHaveBeenCalledTimes(1)
@@ -1372,10 +1378,10 @@ it('does not publish a report after its request is cancelled', async () => {
   const entered = Promise.withResolvers<undefined>()
   const output = Promise.withResolvers<string>()
   const generate = vi.fn(async () => { entered.resolve(undefined); return output.promise })
-  const { controller, journal } = await harness(generate)
+  const { controller, journal, action } = await completionFixture(generate)
   const abort = new AbortController()
   const pending = controller.command('parent', { operationId: 'report-cancelled',
-    expectedRevision: journal.view().revision, action: { kind: 'report' } }, false, abort.signal)
+    expectedRevision: journal.view().revision, action }, false, abort.signal)
   await entered.promise
   abort.abort(new Error('Cancelled'))
   output.resolve(JSON.stringify({ assessment: 'Unknown safety.', scope: [], attackPath: [], objectives: [], findings: [], excludedIndices: [],
@@ -1627,4 +1633,98 @@ it('marks a same-operation delivery retry running and rejects changed retry inpu
   await retry()
   expect(attempts).toBe(2)
   expect(controller.projects()[0]!.completion?.status).toBe('completed')
+})
+
+it('fixes native citations before publication and retries without rereading the source Session', async () => {
+  let workspaceRoot = ''
+  let observed = 'original code'
+  const reader = vi.fn(async () => ({ callId: 'read-1', resultSeq: 2, title: 'src/a.ts:1-1', workspaceRoot,
+    bytes: Buffer.from(observed), incomplete: false,
+    citation: { path: 'src/a.ts', startLine: 1, endLine: 1, text: observed, resultSeq: 2 } }))
+  const { controller, journal, root, artifacts } = await harness(undefined, reader)
+  workspaceRoot = root
+  await controller.createWorkspaceTask(SessionId('source'), 'source-task', root, { title: 'Source' },
+    async () => ({ environmentIds: ['local'], maxAttempts: 3 }))
+  const action = { kind: 'complete-task', summary: 'Source result', results: [{ title: 'Result', result: 'Observed code',
+    citations: [{ kind: 'source', path: 'src/a.ts', startLine: 1, endLine: 1 }] }], limitations: 'Static only' }
+  const put = artifacts.put.bind(artifacts)
+  const writer = vi.spyOn(artifacts, 'put').mockImplementation(async (bytes, mediaType) => {
+    if (mediaType === 'text/markdown') throw new Error('Publication failed')
+    return put(bytes, mediaType)
+  })
+  await expect(controller.command('source', { operationId: 'source-report', expectedRevision: journal.view().revision, action })).rejects.toThrow('Publication failed')
+  expect(reader).toHaveBeenCalledOnce()
+  observed = 'changed code'
+  writer.mockRestore()
+  await controller.command('source', { operationId: 'retry-source', expectedRevision: journal.view().revision, action: { kind: 'report' } })
+  expect(reader).toHaveBeenCalledOnce()
+  const report = controller.view('source').records.find(item => item.kind === 'report')!
+  expect((await artifacts.read(report.value.markdown)).toString()).toContain('original code')
+  expect(controller.view('source').records.filter(item => item.kind === 'evidence')).toHaveLength(1)
+})
+
+it('rejects source observations from another workspace or foreign project', async () => {
+  const reader = vi.fn(async () => ({ callId: 'read-1', resultSeq: 2, title: 'src/a.ts:1', workspaceRoot: 'another-root',
+    bytes: Buffer.from('text'), incomplete: false, citation: { path: 'src/a.ts', startLine: 1, endLine: 1, text: 'text', resultSeq: 2 } }))
+  const { controller, journal, root } = await harness(undefined, reader)
+  await controller.createWorkspaceTask(SessionId('source'), 'source-task', root, { title: 'Source' },
+    async () => ({ environmentIds: ['local'], maxAttempts: 3 }))
+  const submit = (sessionId?: string) => controller.command('source', { operationId: randomUUID(), expectedRevision: journal.view().revision,
+    action: { kind: 'complete-task', results: [{ title: 'Result', result: 'Observed code', citations: [
+      { kind: 'source', path: 'src/a.ts', startLine: 1, endLine: 1, ...(sessionId ? { sessionId } : {}) }],
+    }], limitations: 'Static only' } })
+  await expect(submit()).rejects.toThrow('different workspace')
+  await expect(submit('parent')).rejects.toThrow('outside the task scope')
+  expect(reader).toHaveBeenCalledOnce()
+  expect(controller.view('source').records.some(item => item.kind === 'evidence')).toBe(false)
+  expect(controller.view('source').records.find(item => item.kind === 'engagement')!.value.completion).toBeUndefined()
+})
+
+it('does not retry an older operation using a replacement report submission', async () => {
+  const { controller, journal, action } = await completionFixture(async () => { throw new Error('Write failed') })
+  const first = { operationId: 'first-submission', expectedRevision: journal.view().revision, action }
+  await expect(controller.command('parent', first)).rejects.toThrow('Write failed')
+  if (action.kind !== 'complete-task') throw new Error('Outcome required')
+  await expect(controller.command('parent', { operationId: 'replacement', expectedRevision: journal.view().revision,
+    action: { ...action, summary: 'Replacement summary' } })).rejects.toThrow('Write failed')
+  await expect(controller.command('parent', { ...first, expectedRevision: journal.view().revision })).rejects.toThrow('superseded')
+  expect(controller.projects()[0]!.completion?.summary).toBe('Replacement summary')
+})
+
+it('retries a failed report operation against its saved submission', async () => {
+  let attempts = 0
+  const { controller, journal, action } = await completionFixture(async () => {
+    if (++attempts < 3) throw new Error('Write failed')
+    return outcomeReport
+  })
+  await expect(controller.command('parent', { operationId: 'save-result', expectedRevision: journal.view().revision, action })).rejects.toThrow('Write failed')
+  const retry = () => controller.command('parent', { operationId: 'publish-result', expectedRevision: journal.view().revision, action: { kind: 'report' } })
+  await expect(retry()).rejects.toThrow('Write failed')
+  await retry()
+  expect(attempts).toBe(3)
+  expect(controller.projects()[0]!.completion?.status).toBe('completed')
+})
+
+it('restricts child evidence references to its own or explicitly assigned observations', async () => {
+  const { controller, send, assetId, action } = await completionFixture()
+  if (action.kind !== 'complete-task') throw new Error('Outcome required')
+  const parentEvidence = action.results[0]!.evidenceIds[0]!
+  const assignment = await bindDelegatedChild(controller, 'parent', 'child', assetId, 'reverse-analyst')
+  const finding = (evidenceId: string): SecurityCommand['action'] => ({ kind: 'finding', finding: {
+    assetId, title: 'Observed path', explanation: 'Read observation', conditions: 'Static only',
+    evidenceIds: [evidenceId], status: 'suspected', review: '',
+  } })
+  await expect(send(finding(parentEvidence), false, 'child')).rejects.toThrow('not assigned')
+  await expect(controller.settleDelegation(assignment.id, { status: 'completed', report: {
+    summary: 'Unassigned observation', evidenceIds: [parentEvidence], uncertainty: '', nextSteps: [],
+  } })).rejects.toThrow('foreign evidence')
+  const own = await controller.observe('child', { provider: 'binary', operation: 'hex', assetId,
+    environmentId: 'local', parameters: {}, impact: 'observe' }, 'child-observation', new AbortController().signal)
+  if (own.kind !== 'evidence') throw new Error('Evidence required')
+  await send(finding(own.value.id), false, 'child')
+  const assigned = await controller.admitDelegation('parent', 'assigned-input', { assetId, role: 'reverse-analyst', task: 'assessment',
+    question: 'Inspect supplied observation', criterion: 'Report limits', inputEvidenceIds: [parentEvidence] })
+  await controller.bindDelegationChild(assigned.id, 'assigned-child')
+  await send(finding(parentEvidence), false, 'assigned-child')
+  expect(controller.view('parent').records.filter(item => item.kind === 'finding')).toHaveLength(2)
 })

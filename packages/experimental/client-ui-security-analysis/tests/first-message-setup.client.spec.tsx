@@ -7,6 +7,8 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as common } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
+import { engagementSchema } from '@deepseek-ai/dsh-experimental-security-analysis/src/workbench/model.ts'
+import { preferenceOptions } from './preference-options.client.ts'
 import { FirstMessageSetup } from '../src/client/FirstMessageSetup.tsx'
 import { workbenchConfiguration } from './configuration-fixture.client.ts'
 import { en } from '../src/client/locales.ts'
@@ -86,4 +88,29 @@ it('keeps cleared task authorization separate from workspace defaults in the edi
   expect(screen.queryByRole('button', { name: en.startupSaveTask })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: en.startupCancelSaved }))
   expect(api.saveSetup).toHaveBeenCalledWith(api.sessionId, JSON.stringify({ expectedRevision: 1, settings: null }))
+})
+
+it('shows the actual environment and editable preferences in an associated blank restart draft', async () => {
+  const api = props()
+  api.toolPreferenceOptions = vi.fn(async () => preferenceOptions)
+  api.useDirectory = select => select({ failed: false, projects: [{
+    project: engagementSchema.parse({ id: 'restarted', title: 'Restarted', objective: 'Review owned files',
+      environmentIds: ['mining'], maxAttempts: 3, stopped: false }),
+    sessions: [{ sessionId: api.sessionId, role: 'coordinator', active: true }], state: 'idle',
+    runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '',
+  }] })
+  render(<FirstMessageSetup {...api} />)
+  expect(screen.getByText('Environment: mining')).toBeTruthy()
+  await screen.findByText(en.toolPreferenceAutomatic, { exact: false })
+  const details = screen.getByText(en.toolPreferenceTitle).closest('details')!
+  details.open = true; fireEvent(details, new Event('toggle'))
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Firmware and native binaries' }))
+  expect(api.editTools).toHaveBeenLastCalledWith(api.sessionId, true)
+  expect(details.querySelector('summary')?.textContent).toContain(en.toolPreferenceAutomatic)
+  fireEvent.click(screen.getByRole('button', { name: en.toolPreferenceSave }))
+  await waitFor(() => { expect(api.toolPreferences).toHaveBeenCalledWith(api.sessionId,
+    JSON.stringify({ toolIds: ['radare2'], tags: [], collectionIds: [] })) })
+  expect(api.toolPreferenceOptions).toHaveBeenCalledOnce()
+  expect(api.saveSetup).not.toHaveBeenCalled()
+  expect(api.saveDefaults).not.toHaveBeenCalled()
 })

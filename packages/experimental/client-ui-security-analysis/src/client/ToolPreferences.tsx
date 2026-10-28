@@ -14,6 +14,7 @@ type Props = ToolPreferenceActions & PropsLocale<typeof NS> & {
   sessionId: SessionId
   disabled?: boolean
   compact?: boolean
+  eager?: boolean
   onDirtyChange?: (dirty: boolean) => void
   onReadyChange?: (ready: boolean) => void
 }
@@ -28,7 +29,7 @@ export function ToolPreferences(props: Props) {
 function PreferenceEditor(props: Props) {
   const { t, sessionId } = props
   const [catalog, setCatalog] = useState<ToolPreferenceOptions>(), [selection, setSelection] = useState<Preferences>()
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false)
+  const [error, setError] = useState(''), [busy, setBusy] = useState(!!props.eager), [saved, setSaved] = useState(false)
   const [open, setOpen] = useState(false)
   const [dirty, setDirty] = useState(false), [retry, setRetry] = useState(0)
   const [baseline, setBaseline] = useState<Preferences>()
@@ -41,9 +42,10 @@ function PreferenceEditor(props: Props) {
   useLayoutEffect(() => {
     props.onReadyChange?.(!busy)
   }, [busy, props.onReadyChange])
+  const load = open || !!props.eager
   useEffect(() => {
     let active = true
-    if (open) {
+    if (load) {
       setBusy(true); setError('')
       void Promise.all([props.toolPreferenceOptions(sessionId), props.toolPreferences(sessionId)]).then(([catalog, selection]) => {
         const ids = new Set([...selection.toolIds, ...catalog.collections
@@ -58,7 +60,7 @@ function PreferenceEditor(props: Props) {
       }).catch((error: unknown) => { if (active) setError(String(error)) }).finally(() => { if (active) setBusy(false) })
     }
     return () => { active = false }
-  }, [sessionId, open, retry, props.toolPreferenceOptions, props.toolPreferences])
+  }, [sessionId, load, retry, props.toolPreferenceOptions, props.toolPreferences])
   const apply = async (value: Preferences) => {
     setBusy(true); setError('')
     try {
@@ -72,7 +74,9 @@ function PreferenceEditor(props: Props) {
   return <details className={css.card} onToggle={(event) => {
     if (event.currentTarget.open) setOpen(true)
   }}>
-    <summary>{t('toolPreferenceTitle')}</summary>
+    <summary><span>{t('toolPreferenceTitle')}</span>{props.eager && <span> · {baseline
+      ? baseline.toolIds.length ? `${catalog?.collections.filter(group => group.toolIds.length && group.toolIds.every(id => baseline.toolIds.includes(id))).map(group => group.label).join('、') || t('toolPreferenceSelected')} (${baseline.toolIds.length})`
+        : t('toolPreferenceAutomatic') : t('loading')}{dirty && ' · ' + t('toolPreferenceUnsaved')}</span>}</summary>
     {!props.compact && <p>{t('toolPreferenceHelp')}</p>}
     {selection && <fieldset className={css.toolFields} disabled={busy || props.disabled}>
       {catalog?.collections.map(group => <label key={group.id}><input type="checkbox"

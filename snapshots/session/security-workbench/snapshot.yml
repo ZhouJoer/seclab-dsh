@@ -3,11 +3,10 @@ scenario: security-workbench
 profile: headless
 composition: security-workbench
 recording: authored
+sessionFormat:
+  version: 4
+  coverage: [retired-tools]
 header:
   class: security-workbench
-  pin: true
-  changes: 2
-  childSystemPrompts: [1, 2]
-  childToolSchemas: [1, 2]
 replay:
   override: true

@@ -1,5 +1,7 @@
 /** Real Loader composition for scoped evidence, workflow, and tool enforcement. */
 import { mkdtemp, mkdir, rm, writeFile, readFile, readdir } from 'node:fs/promises'
+import * as fileOperations from 'node:fs/promises'
+import * as chokidar from 'chokidar'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -70,8 +72,22 @@ import * as NativePwsh from '@deepseek-ai/dsh-tool-pwsh'
 import SessionQuery from '@deepseek-ai/dsh-session-query'
 import AgentPresets, { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import * as NativeJobs from '@deepseek-ai/dsh-tool-jobs'
+import Commands from '@deepseek-ai/dsh-commands'
+import Helper from '@deepseek-ai/dsh-helper'
+import * as SessionJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
+import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import { createSessionTestController } from '../../../api/session-controller/tests/test-remote.ts'
 import BrowserUse from '@deepseek-ai/dsh-browser-use'
 import * as PlaywrightBrowser from '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
+
+vi.mock('node:fs/promises', async (original) => {
+  const actual = await original<typeof import('node:fs/promises')>()
+  return { ...actual, readdir: vi.fn(actual.readdir) }
+})
+vi.mock('chokidar', async (original) => {
+  const actual = await original<typeof import('chokidar')>()
+  return { ...actual, watch: vi.fn(actual.watch) }
+})
 
 class ExactQuery extends SessionQuery {
   searchSessions(): Promise<never> { return Promise.reject(new Error('Search is outside this fixture')) }
@@ -97,7 +113,6 @@ class ScopeModel extends LlmAdapter {
   usageTokens = 0
   cacheReadTokens = 0
   exactUsageTotal = true
-  reportFailure = false
   childReport: NonNullable<SessionBinding['report']> = {
     summary: 'Assigned evidence review completed.', evidenceIds: [], uncertainty: 'No observations collected.', nextSteps: [],
   }
@@ -105,7 +120,6 @@ class ScopeModel extends LlmAdapter {
   evolutionOutput: ((prompt: string) => string) | undefined
   evolutionTruncated = false
   reasoning: LlmResolvedModelInfo['reasoning']
-  reportOutput: ((prompt: string) => string) | undefined
   refinementWait: ((signal: AbortSignal | undefined) => Promise<void>) | undefined
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model, inputModalities: ['text'],
@@ -128,15 +142,10 @@ class ScopeModel extends LlmAdapter {
     }
     const refinement = options.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).find(text => text.includes('\nNotes: '))
     const evolution = options.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).find(text => text.includes('\nObservations: '))
-    const report = options.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).find(text => text.includes('\nData: '))
-    if (report && this.reportFailure) {
-      yield { type: 'finish', reason: { kind: 'error', failure: { message: 'Fixture model rejected report', code: 'UNKNOWN' } } }
-      return
-    }
-    if ((refinement && this.refinementOutput) || (report && this.reportOutput) || (evolution && this.evolutionOutput)) {
+    if ((refinement && this.refinementOutput) || (evolution && this.evolutionOutput)) {
       await this.refinementWait?.(options.signal)
       const text = evolution && this.evolutionOutput ? this.evolutionOutput(evolution)
-        : refinement && this.refinementOutput ? this.refinementOutput(refinement) : this.reportOutput!(report!)
+        : this.refinementOutput!(refinement!)
       yield { type: 'block-start', index: 0, blockType: 'text' }
       yield { type: 'text-delta', index: 0, text }
       yield { type: 'block-end', index: 0, block: { type: 'text', text } }
@@ -198,7 +207,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; analysisProgressCalls?: number; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { advisor?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -251,6 +260,9 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     ['packet-capture', PacketCapture],
     ['laboratory', Laboratory],
   ])
+  if (options.advisor) {
+    modules.set('commands', Commands); modules.set('helper', Helper); modules.set('session-jsonl', SessionJsonl)
+  }
   if (options.skills) {
     modules.set('query', ExactQuery)
     modules.set('skills', Skills)
@@ -277,7 +289,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
         id: name,
         name: 'cordis:' + name,
         config:
-          name === 'browser-playwright' ? { mode: 'launch', headless: true, executablePath: process.env.DSH_BROWSER_EXECUTABLE } : name === 'loop'
+          name === 'session-jsonl' ? { root: join(root, 'sessions'), compression: 'none' } : name === 'browser-playwright' ? { mode: 'launch', headless: true, executablePath: process.env.DSH_BROWSER_EXECUTABLE } : name === 'loop'
             ? { agents: [] }
             : name === 'storage-json'
               ? { root: join(root, 'domain') }
@@ -289,7 +301,6 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                     ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
                       ...(options.evolution ? { evolution: options.evolution } : {}),
                       ...(options.analysisTurnTokens === undefined ? {} : { analysisTurnTokens: options.analysisTurnTokens }),
-                      ...(options.analysisProgressCalls === undefined ? {} : { analysisProgressCalls: options.analysisProgressCalls }),
                       ...(options.maxConcurrentDelegations === undefined ? {}
                         : { maxConcurrentDelegations: options.maxConcurrentDelegations }),
                       ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
@@ -304,7 +315,8 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                       ...(options.adapters ? { ...(options.adapters === 'deployment' ? {} : { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' } }),
                         toolAdapters: { bindings: { radare2: 'local', ...options.bindings } } } : {}),
                       environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root,
-                        ...(options.deviceId ? { deviceId: options.deviceId } : {}), tools: options.installations ?? [] }] }
+                        ...(options.deviceId ? { deviceId: options.deviceId } : {}), tools: options.installations ?? [] },
+                      ...(options.advisor ? [{ id: 'mining', kind: 'local', label: 'Mining', cwd: root, tools: options.installations ?? [] }] : [])] }
                     : {},
       })),
     ),
@@ -417,7 +429,7 @@ describe('first-message security preparation', () => {
     const original = controller.projects()[0]!
     expect(original).toMatchObject({ environmentIds: ['local'], maxAttempts: 4, taskContext,
       mainSessionId: agent.id, workspaceMaterials: { root: agent.session.header.cwd } })
-    expect(controller.view(agent.id).records.filter(item => item.kind === 'asset')).toEqual([])
+    expect(controller.view(agent.id).records.filter(item => item.kind === 'asset')).toMatchObject([{ value: { kind: 'workspace', root: agent.session.header.cwd } }])
     await ctx.securityWorkbench.configureWorkspace(agent, JSON.stringify({ expectedRevision: 1,
       environmentIds: [], maxAttempts: 9, taskContext: null }))
     await ctx.securityWorkbench.prepareAnalysis(agent)
@@ -542,7 +554,7 @@ describe('security workbench Loader composition', () => {
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Missing fixture address')
     const origin = `http://127.0.0.1:${address.port}`
-    const { ctx, agent, model, controller } = await load(false, 0, { browser: true, analysisProgressCalls: 100 })
+    const { ctx, agent, model, controller } = await load(false, 0, { browser: true })
     const send = operator(controller, agent)
     const navigate = 'mcp__playwright-mcp__browser_navigate'
     expect((await execute(ctx, agent, navigate, { url: origin })).isError).toBe(true)
@@ -784,7 +796,7 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
   })
 
   it('retains one independent snapshot across twenty requests and changing runtime context', async () => {
-    const { ctx, agent, controller, model } = await load(false, 0, { analysisProgressCalls: 100 })
+    const { ctx, agent, controller, model } = await load(false, 0, {})
     await operator(controller, agent)({ kind: 'create', title: 'Context', objective: 'Read source', environmentIds: ['local'], maxAttempts: 3,
       taskContext: { background: 'Stable background' } })
     ctx.systemPrompt.context({ name: 'fixture:changing-progress', order: 1, text: () => String(model.requests.length) })
@@ -1664,11 +1676,8 @@ else if (args.includes('--output')) {
     const review = reviewed.records.findLast(item => item.kind === 'review')
     if (review?.kind !== 'review') throw new Error('Missing independent HTTP review')
     await send({ kind: 'conclude', reviewId: review.value.id })
-    reportModel.reportOutput = () => JSON.stringify({ assessment: 'The approved observation was independently reviewed.',
-      scope: ['Owned HTTP target'], attackPath: ['Read the authorized response'], objectives: ['Observed the expected response'],
-      findings: [{ index: 0, mechanism: 'Authorized response', conditions: 'Owned test identity', impact: 'Observation only',
-        location: '/', fix: 'No application change requested' }], excludedIndices: [], lessons: [], uncovered: ['Other application routes'] })
-    await send({ kind: 'report' })
+    await send({ kind: 'complete-task', summary: 'Approved observation reviewed.', results: [{ title: 'HTTP response', result: 'Observed the authorized response', evidenceIds: [evidenceId] }], limitations: 'Other routes remain unverified.' })
+    expect(reportModel.requests).toHaveLength(0)
     const report = controller.view(agent.id).records.findLast(item => item.kind === 'report')
     if (report?.kind !== 'report') throw new Error('Missing HTTP report')
     const exported = (await controller.artifacts.read(report.value.json)).toString()
@@ -2174,7 +2183,7 @@ it('runs logged tool-free refinement through the Loader and disposes its model S
   expect(model.requests).toHaveLength(1)
 })
 
-it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loader and stores a readable report', async (format) => {
+it('publishes submitted conclusions through the Loader without a report model request', async () => {
   const { ctx, agent, controller, model } = await load(false, 0, { dedicatedModel: false })
   ctx.systemPrompt.section({ name: 'fixture:requires-model', order: 5, text: 'Model {{model}} from {{provider}}' })
   const send = operator(controller, agent)
@@ -2208,36 +2217,18 @@ it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loa
     if (session.id !== agent.id && event.type === 'user/message' && event.data.source.kind === 'user')
       loggedInputs.push(event.data.content.filter(block => block.type === 'text').map(block => block.text).join(''))
   })
-  let submittedPrompt = ''
-  model.reportOutput = (prompt) => {
-    submittedPrompt = prompt
-    const material = JSON.parse(prompt.split('\nData: ')[1]!) as { project: unknown; findings: unknown[] }
-    expect(material.project).toMatchObject({ requestedObjective: '仅静态检查此文件。没有独立复核时保持待复核状态。' })
-    expect(material.findings).toMatchObject([{ status: 'confirmed', review: {
-      accepted: true, verdict: 'confirmed', basis: 'static', uncertainty: 'Callers and runtime behavior remain unverified.',
-    } }])
-    const output = JSON.stringify({ assessment: '目标已完成独立静态复核，运行行为仍未验证。',
-      scope: ['已导入的 report-source.js。'], attackPath: ['从调用参数追踪到记录返回。'], objectives: ['已识别对象级授权缺失。'], findings: [{ index: 0,
-        mechanism: '认证后直接返回记录', conditions: '调用方可提供其他用户的记录', impact: '对象级权限检查缺失',
-        location: 'report-source.js:1', fix: '读取前校验记录所有权' }], excludedIndices: [],
-      lessons: [], uncovered: ['调用方与运行行为未验证。'] })
-    return format === 'fenced' ? '```json\n' + output + '\n```' : output
-  }
-  const result = await send({ kind: 'report' })
+  const result = await send({ kind: 'complete-task', summary: '目标已完成独立静态复核。', results: [{ title: '权限检查', result: '已识别对象级授权缺失。', evidenceIds: [observation.value.id] }], limitations: '调用方与运行行为未验证。', recommendations: [{ findingId: review.value.findingId, text: '读取前校验记录所有权' }] })
   const report = result.records.find(item => item.kind === 'report')
   expect(report?.kind).toBe('report')
   if (report?.kind !== 'report') throw new Error('Report missing')
   const markdown = (await controller.artifacts.read(report.value.markdown)).toString()
-  expect(markdown).toContain('已确认，静态分析')
+  expect(markdown).toContain('已确认，静态复核')
   expect(markdown).toContain('调用方与运行行为未验证。')
   expect(markdown).not.toContain('读取前校验记录所有权')
   expect((await controller.artifacts.read(report.value.recommendationsMarkdown!)).toString()).toContain('读取前校验记录所有权')
-  expect(loggedInputs).toEqual([submittedPrompt])
-  if (format === 'plain') expect(loggedInputs[0]!.replaceAll(asset.value.id, '<asset-id>'))
-    .toMatchSnapshot('logged report Session input with an accepted static review')
-  expect(model.requests).toHaveLength(1)
-  expect(model.requests[0]?.tools ?? []).toHaveLength(0)
-  if (format === 'plain') {
+  expect(loggedInputs).toEqual([])
+  expect(model.requests).toHaveLength(0)
+  {
     const projectId = controller.binding(agent.id)!.engagementId
     const download = () => controller.exportReport(projectId, report.value.id, 4e6, new Request('http://localhost/export', { method: 'HEAD' }))
     expect((await download()).status).toBe(200)
@@ -2254,151 +2245,26 @@ it.each(['plain', 'fenced'] as const)('generates a %s JSON brief through the Loa
   }
 })
 
-it('rejects a fenced report with missing required fields without publishing an artifact', async () => {
+it('requires saved conclusions before publishing a report without calling a model', async () => {
   const { agent, controller, model } = await load(false, 0, { dedicatedModel: false })
   const send = operator(controller, agent)
-  await send({ kind: 'create', title: 'Invalid report', objective: 'Assess source', environmentIds: ['local'], maxAttempts: 1 })
-  model.reportOutput = () => '```json\n{"assessment":"Incomplete response"}\n```'
-  await expect(send({ kind: 'report' })).rejects.toThrow(/findings/u)
+  await send({ kind: 'create', title: 'Empty report', objective: 'Assess source', environmentIds: ['local'], maxAttempts: 1 })
+  await expect(send({ kind: 'report' })).rejects.toThrow(/Submit task results/)
   expect(controller.view(agent.id).records.some(item => item.kind === 'report')).toBe(false)
-})
-it('reports the model failure and does not publish a partial report', async () => {
-  const { agent, controller, model } = await load(false, 0, { dedicatedModel: false })
-  const send = operator(controller, agent)
-  await send({ kind: 'create', title: 'Failed report', objective: 'Assess source', environmentIds: ['local'], maxAttempts: 1 })
-  model.reportFailure = true
-  await expect(send({ kind: 'report' })).rejects.toThrow('Fixture model rejected report')
-  expect(controller.view(agent.id).records.some(item => item.kind === 'report')).toBe(false)
+  expect(model.requests).toHaveLength(0)
 })
 
-it('requires saved research progress before more analysis and groups a changed question separately', async () => {
-  const { ctx, agent, controller, model } = await load(false, 0, { analysisProgressCalls: 2 })
+it('continues native exploration without requiring progress bookkeeping', async () => {
+  const { ctx, agent, controller } = await load(false, 0)
   const send = operator(controller, agent)
-  await send({ kind: 'create', title: 'Progress', objective: 'Inspect two questions', environmentIds: ['local'], maxAttempts: 1 })
-  const sample = join(roots[roots.length - 1]!, 'progress.bin')
-  await writeFile(sample, Buffer.from([0, 1, 2, 3]))
-  await send({ kind: 'import', path: sample, label: 'Sample' })
-  const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+  await send({ kind: 'create', title: 'Progress', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
   const projectId = controller.binding(agent.id)!.engagementId
-  const activity = controller.activity!
-  for (const callId of ['first', 'second']) await activity.start({ projectId, sessionId: agent.id, callId,
-    checkpointId: '', tools: ['script'], verified: false, parameters: '' })
-  const before = controller.view(agent.id).revision
-  const denied = await execute(ctx, agent, 'security_static', {}, 'progress-denied')
-  expect(denied.isError).toBe(true)
-  expect(JSON.stringify(denied)).toContain('Save research progress')
-  expect(activity.has(agent.id, 'progress-denied')).toBe(false)
-  expect(controller.view(agent.id).revision).toBe(before)
-  expect((await execute(ctx, agent, 'security_help', { action: 'checkpoint' })).isError).not.toBe(true)
-  model.nativeCalls = [{ name: 'security_command', args: () => ({ command: JSON.stringify({
-    operationId: 'save-progress', expectedRevision: controller.view(agent.id).revision,
-    action: { kind: 'checkpoint', phase: 'recon', title: 'Inspect headers', reason: 'Identify format',
-      summary: 'Headers read', next: 'Inspect resources', evidenceIds: [], findingIds: [] },
-  }) }) }]
-  agent.followup(webPrompt('Save the current progress.'))
-  await agent.whenIdle()
-  expect(JSON.stringify(agent.session.snapshotEvents())).toContain('callsSinceCheckpoint')
-  expect(JSON.stringify(model.requests[0]!.messages)).toContain('Save research progress')
-  const checkpoint = controller.view(agent.id).records.find(record => record.kind === 'checkpoint')
-  if (checkpoint?.kind !== 'checkpoint') throw new Error('Missing checkpoint')
-  expect(activity.progress(projectId, agent.id, checkpoint.value).pending).toBe(0)
-  expect(activity.page(projectId, checkpoint.value.id, 0, 10).items).toHaveLength(2)
-  const resumed = await execute(ctx, agent, 'security_static', { provider: 'binary', operation: 'hex',
-    assetId: asset.value.id, environmentId: 'local', parameters: JSON.stringify({ offset: 0, length: 1 }) }, 'after-progress')
-  expect(resumed.isError).toBe(false)
-  expect(activity.invocation(agent.id, 'after-progress')?.checkpointId).toBe(checkpoint.value.id)
-  await send({ kind: 'checkpoint', phase: 'surface', title: 'Inspect resources', reason: 'New question',
-    summary: '', next: 'Read resource table', evidenceIds: [], findingIds: [] })
-  const second = controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').at(-1)!
-  expect(second.value.previousCheckpointId).toBe(checkpoint.value.id)
-  await activity.start({ projectId, sessionId: agent.id, callId: 'third', checkpointId: second.value.id,
-    tools: ['script'], verified: false, parameters: '' })
-  expect(activity.usage(projectId).map(row => [row.checkpointId, row.total])).toEqual([
-    [checkpoint.value.id, 2], [checkpoint.value.id, 1], [second.value.id, 1],
-  ])
-  await activity.start({ projectId, sessionId: agent.id, callId: 'fourth', checkpointId: second.value.id,
-    tools: ['script'], verified: false, parameters: '' })
-  await expect(send({ kind: 'checkpoint', id: second.value.id, phase: 'surface', title: 'Different question',
-    reason: '', summary: '', next: '', evidenceIds: [], findingIds: [] })).rejects.toThrow('Create a new checkpoint')
-  expect(activity.progress(projectId, agent.id, second.value).pending).toBe(2)
-  const childId = SessionId('progress-child')
-  await bindDelegatedChild(controller, agent.id, childId, asset.value.id, 'reverse-analyst')
-  const { agent: child } = await ctx.agents.create({ sessionId: childId, parentAgent: agent,
-    meta: { parentSession: agent.id, origin: 'subagent', delegationDepth: 1 } })
-  expect((await execute(ctx, child, 'security_static', { provider: 'binary', operation: 'hex',
-    assetId: asset.value.id, environmentId: 'local', parameters: '{"offset":0,"length":1}' }, 'child-observation')).isError).toBe(false)
-  const update = { kind: 'checkpoint', id: second.value.id, phase: 'surface', title: 'Inspect resources',
-    reason: 'Same question', summary: 'Resource investigation continues', next: 'Compare entries', evidenceIds: [], findingIds: [] }
-  await send(update)
-  const current = controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').at(-1)!
-  expect(current.value.id).toBe(second.value.id)
-  expect(activity.progress(projectId, agent.id, current.value).pending).toBe(0)
-  await activity.start({ projectId, sessionId: agent.id, callId: 'fifth', checkpointId: current.value.id,
-    tools: ['script'], verified: false, parameters: '' })
-  await send(update)
-  expect(activity.progress(projectId, agent.id,
-    controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').at(-1)!.value).pending).toBe(1)
-  await activity.start({ projectId, sessionId: agent.id, callId: 'sixth', checkpointId: current.value.id,
-    tools: ['script'], verified: false, parameters: '' })
+  for (let index = 0; index < 30; index++) await controller.activity!.start({ projectId, sessionId: agent.id,
+    callId: 'progress-' + String(index), checkpointId: '', tools: ['script'], verified: false, parameters: '' })
   const search = vi.fn(async () => true)
   independentTool(ctx, 'web_search', search)
-  expect((await execute(ctx, agent, 'web_search')).isError).toBe(true)
-  expect(search).not.toHaveBeenCalled()
-  await [...ctx.registry.get(Security)!.fibers][0]!.dispose()
   expect((await execute(ctx, agent, 'web_search')).isError).toBe(false)
   expect(search).toHaveBeenCalledOnce()
-})
-
-it.each([500, 1200])('summarizes once when another comparable step would reach the budget (usage=%s)', async (usage) => {
-  const { agent, controller, model } = await load(false, 0, { analysisTurnTokens: 1000 })
-  const send = operator(controller, agent)
-  await send({ kind: 'create', title: 'Bounded analysis', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
-  model.usageTokens = usage
-  agent.followup(webPrompt('Inspect the project.'))
-  await agent.whenIdle()
-  expect(model.requests).toHaveLength(2)
-  expect(model.requests[1]!.tools ?? []).toEqual([])
-  const events = agent.session.snapshotEvents()
-  const checkpoint = events.filter(event => event.type === 'user/message' && event.data.source.kind === 'plugin:security-analysis-budget')
-  expect(checkpoint).toHaveLength(1)
-  expect(JSON.stringify(checkpoint)).toContain(String(usage) + ' / 1000 tokens (excluding cache reads)')
-  expect(JSON.stringify(model.requests[1]!.messages)).toContain('saved evidence or file locations')
-  const end = events.findLast(event => event.type === 'turn/end')
-  expect(end?.type === 'turn/end' && end.data.reason.kind).toBe('completed')
-  const projectId = controller.binding(agent.id)!.engagementId
-  const subscription = new AbortController()
-  const stream = controller.activity!.follow(projectId, () => controller.view(agent.id), () => () => {}, subscription.signal)
-  try {
-    await vi.waitFor(async () => {
-      const frame = (await stream.next()).value
-      expect(frame?.type === 'snapshot' || frame?.type === 'activity' ? frame.briefs : []).toMatchObject([{ checkpointId: '' }])
-    })
-  } finally { subscription.abort(); await stream.return?.() }
-  expect(controller.view(agent.id).records.some(item => item.kind === 'checkpoint')).toBe(false)
-  model.usageTokens = 0
-  agent.followup(webPrompt('Continue from the saved results.'))
-  await agent.whenIdle()
-  expect(model.requests).toHaveLength(3)
-  expect(model.requests[2]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
-})
-
-it.each([undefined, false, true])('keeps full logged usage while optionally counting cache reads (include=%s)', async (include) => {
-  const { agent, controller, model } = await load(false, 0, {
-    analysisTurnTokens: 1000, ...(include === undefined ? {} : { analysisCountCacheReads: include }),
-  })
-  await operator(controller, agent)({ kind: 'create', title: 'Cached context', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
-  model.usageTokens = 100
-  model.cacheReadTokens = 1200
-  model.exactUsageTotal = include !== false
-  model.scopeCalls = 2
-  agent.followup(webPrompt('Inspect the project.'))
-  await agent.whenIdle()
-  const expectedCalls = include ? 2 : 3
-  expect(model.requests).toHaveLength(expectedCalls)
-  const usage = agent.session.snapshotEvents().find(event => event.type === 'assistant/message')
-  expect(usage?.type === 'assistant/message' && usage.data.usage).toMatchObject({ inputTokens: 100, cacheReadTokens: 1200, ...(include === false ? {} : { totalTokens: 1300 }) })
-  if (include) expect(model.requests[1]!.tools ?? []).toEqual([])
-  else expect(model.requests[1]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
 })
 
 it('blocks repeated wrap-up exploration and preserves new user steering for the next turn', async () => {
@@ -3225,10 +3091,6 @@ it('delivers coordinator outcomes through the logged tool and reuses the operato
   const evidence = await controller.observe(agent.id, { provider: 'source', operation: 'read', assetId: asset.value.id,
     environmentId: 'local', parameters: { path: 'solution.txt', startLine: 1, limit: 10 }, impact: 'observe' }, 'solution-read', new AbortController().signal)
   if (evidence.kind !== 'evidence') throw new Error('Missing evidence')
-  model.reportOutput = (prompt) => {
-    expect(prompt).toContain('offline only')
-    return JSON.stringify({ assessment: '离线复现结果。', scope: [], attackPath: [], objectives: [], findings: [], excludedIndices: [], lessons: [], uncovered: [] })
-  }
   const receipt = await execute(ctx, agent, 'security_command', { command: JSON.stringify({ operationId: 'completion',
     expectedRevision: controller.view(agent.id).revision, action: { kind: 'complete-task', results: [
       { title: 'Inputs', result: 'first / second / third / fourth', evidenceIds: [evidence.value.id] },
@@ -3237,10 +3099,95 @@ it('delivers coordinator outcomes through the logged tool and reuses the operato
   expect(JSON.stringify(receipt)).toContain('/api/security.report?')
   expect(controller.projects()[0]?.completion?.status).toBe('completed')
   await send({ kind: 'report' })
-  expect(model.requests).toHaveLength(1)
+  expect(model.requests).toHaveLength(0)
   const report = controller.view(agent.id).records.find(item => item.kind === 'report')!
   if (report.kind !== 'report') throw new Error('Missing report')
   const markdown = await controller.readReport(report.value.engagementId, report.value.id, 'markdown', new AbortController().signal)
   expect(markdown).toContain('owned-fixture@example.test')
   expect(markdown).toContain('未运行原始应用')
+})
+
+it.each([20000, 100000])('starts a workspace containing %i source files without importing its tree', async (count) => {
+  const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
+  const workspace = agent.session.header.cwd!
+  const source = join(workspace, 'synthetic-source')
+  await mkdir(source)
+  for (let batch = 0; batch < count; batch += 100) {
+    await Promise.all(Array.from({ length: Math.min(100, count - batch) }, (_, index) =>
+      writeFile(join(source, String(batch + index) + '.ts'), 'export const sample = 1\n')))
+  }
+  const scan = vi.mocked(fileOperations.readdir).mockClear()
+  const watch = vi.mocked(chokidar.watch).mockClear()
+  const imported = vi.spyOn(controller.artifacts, 'import')
+  const put = vi.spyOn(controller.artifacts, 'put')
+  const verify = () => {
+    expect(scan).not.toHaveBeenCalled()
+    expect(watch).not.toHaveBeenCalled()
+    expect(imported).not.toHaveBeenCalled()
+    expect(put).not.toHaveBeenCalled()
+  }
+  try {
+    ctx.effect(() => ctx.sessionProjections.register(agentPresetProjectionDefinition))
+    agent.session.append('agent-preset/selected', { agentPreset: 'security' })
+    const started = performance.now()
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    const prepared = performance.now()
+    expect((await execute(ctx, agent, 'security_scope')).isError).toBe(false)
+    const scoped = performance.now()
+    const send = operator(controller, agent)
+    await send({ kind: 'stop' })
+    await send({ kind: 'resume' })
+    await ctx.securityWorkbench.prepareAnalysis(agent)
+    expect((await execute(ctx, agent, 'security_scope')).isError).toBe(false)
+    verify()
+    expect(model.requests).toHaveLength(0)
+    console.log(JSON.stringify({ sourceFiles: count, prepareMs: prepared - started, firstScopeMs: scoped - prepared,
+      lifecycleMs: performance.now() - started, sourceScans: scan.mock.calls.length, watchers: watch.mock.calls.length,
+      artifactImports: imported.mock.calls.length, artifactWrites: put.mock.calls.length }))
+  } finally {
+    scan.mockClear(); watch.mockClear(); imported.mockRestore(); put.mockRestore()
+    await rm(source, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+}, 300000)
+
+
+it.each(['normal', 'proactive', 'off'] as const)('retains task settings and Advisor %s when restarting a round', async (mode) => {
+  const installations = [{ id: 'radare2', command: process.execPath,
+    prefixArgs: ['-e', 'console.log("fixture 1.0")', '--'], versionArgs: ['--version'], source: 'Fixture' }]
+  const { ctx, agent, controller, model } = await load(false, 0, { advisor: true, adapters: true,
+    installations, bindings: { radare2: 'mining' } })
+  const root = agent.session.header.cwd!
+  await ctx.plugin(WorkspaceRegistry)
+  const sessions = createSessionTestController(ctx, { cwd: root,
+    defaultModelSelection: () => ({ provider: 'fixture', model: 'fixture' }) })
+  model.reasoning = { efforts: [{ id: ReasoningEffortId('high'), name: 'High' }] }
+  vi.spyOn(model, 'listModels').mockResolvedValue([{ provider: 'fixture', id: 'selected', name: 'Selected model' }])
+  await sessions.selectModel({ sessionId: agent.id, provider: 'fixture', model: 'selected', reasoningEffort: 'high' })
+  const taskContext = { background: 'Keep this task background' }
+  const moduleSelection = { mode: 'manual' as const, modules: ['reverse.native' as const], reason: 'Operator selection' }
+  await operator(controller, agent)({ kind: 'create', title: 'Retained settings', objective: 'Inspect source',
+    environmentIds: ['mining'], maxAttempts: 4, taskContext, moduleSelection, unsealed: true })
+  const preferences = { toolIds: ['radare2'], tags: [], collectionIds: [] }
+  await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify(preferences))
+  await ctx.commands.execute(agent, '/advisor ' + mode, [], new AbortController().signal)
+  if (mode === 'normal') {
+    const fail = vi.spyOn(ctx.commands, 'execute').mockResolvedValueOnce(undefined)
+    await expect(ctx.securityWorkbench.restartTask(agent, '{}')).rejects.toThrow('Could not restore')
+    fail.mockRestore()
+    expect(controller.projects()[0]!.archived).not.toBe(true)
+    expect(controller.projects()[0]!.stopped).toBe(false)
+  }
+  const restarted = await ctx.securityWorkbench.restartTask(agent, '{}')
+  const destination = ctx.agents.get(restarted.sessionId)!
+  expect(ctx.sessionProjections.stateOf(destination.session, 'helper')).toMatchObject({
+    enabled: mode !== 'off', mode: mode === 'proactive' ? 'proactive' : 'normal', calls: [],
+  })
+  expect(ctx.tools.schemas(destination).some(tool => tool.name === 'advisor')).toBe(mode !== 'off')
+  expect(ctx.sessionProjections.stateOf(destination.session, 'modelSelection')?.pending).toMatchObject({ model: 'selected', reasoningEffort: 'high' })
+  expect(await ctx.securityWorkbench.toolPreferences(destination)).toEqual(preferences)
+  expect(controller.projects().find(project => project.id === restarted.projectId)).toMatchObject({
+    environmentIds: ['mining'], maxAttempts: 4, taskContext, moduleSelection, unsealed: true,
+  })
+  expect(await ctx.securityWorkbench.restartTask(agent, '{}')).toEqual(restarted)
+  expect(model.requests).toHaveLength(0)
 })

@@ -111,7 +111,7 @@ export function deriveProjectCoverage(records: readonly SecurityRecord[], revisi
     return { assetId: asset.id, label: asset.label,
       hasChecks: checks.some(item => item.assetId === asset.id && item.engagementId === asset.engagementId),
       unlinkedEvidenceIds: evidence.filter(item => !linked.has(item.id)).map(item => item.id),
-      sourceFilesRead: new Set(evidence.flatMap(item => item.provider === 'source' && item.operation === 'read'
+      sourceFilesRead: new Set(evidence.flatMap(item => (item.provider === 'source' || item.provider === 'source-citation') && item.operation === 'read'
         && typeof item.request.path === 'string' ? [item.request.path] : [])).size,
       auxiliaryAnalysisLogs: evidence.filter(item => item.provider === 'session-tool').length,
       completeImplementationObservations: evidence.filter(item => item.observationKind === 'implementation' && complete(item)).length,

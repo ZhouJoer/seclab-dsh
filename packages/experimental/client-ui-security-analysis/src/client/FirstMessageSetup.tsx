@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { WorkbenchConfiguration, SecurityProjectSummary } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { Button, IconShieldOutlineRegular, IconChevronDownOutlineRegular, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { WorkspaceResources } from './WorkspaceResources.tsx'
 import { ToolPreferences, type ToolPreferenceActions } from './ToolPreferences.tsx'
@@ -133,16 +133,28 @@ function SetupDetails(props: Props) {
   </section>
 }
 
-/** Show first-send setup only for an unassociated security preset.
+function AssociatedSetup(props: Props & { project: SecurityProjectSummary['project'] }) {
+  const { t, sessionId, project } = props
+  return <section className={css.setup} aria-label={t('startupTitle')}>
+    <strong>{t('startupTaskSettings')}</strong>
+    <p>{t('environment')}: {project.environmentIds.join('、')}</p>
+    <ToolPreferences {...props} compact eager
+      onDirtyChange={(dirty) => { props.editTools(sessionId, dirty) }}
+      onReadyChange={(ready) => { props.toolsReady(sessionId, ready) }} />
+  </section>
+}
+
+/** Show first-send settings, including retained selections for an associated restart draft.
  * @param props - framework session facts, directory and workspace setup actions.
  * @returns selected mode and compact settings before association.
  */
 export function FirstMessageSetup(props: Props) {
   const preset = props.useSessions(value => value.byId[props.sessionId]?.projectionValues?.agentPreset)
   const blank = props.useSessions(value => value.byId[props.sessionId]?.blank)
-  const associated = props.useDirectory(value => value.projects.some(project =>
-    project.sessions.some(session => session.sessionId === props.sessionId)))
-  if (associated || !blank) return null
+  const associated = props.useDirectory(value => value.projects.find(project =>
+    project.sessions.some(session => session.sessionId === props.sessionId))?.project)
+  if (!blank) return null
   if (preset !== 'security') return <div className={css.ordinary} role="status">{props.t('startupOrdinary')}</div>
+  if (associated) return <AssociatedSetup {...props} project={associated} />
   return <SetupDetails {...props} />
 }

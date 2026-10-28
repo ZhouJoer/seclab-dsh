@@ -339,11 +339,6 @@ Optional security profile service; default application compositions remain indep
  */
 @Remote('configureStartup') async configureStartup(agent: Agent, input: string): Promise<WorkbenchConfiguration>
 
-/** Retry automatic directory collection while preserving the last successful snapshot.
- * @param projectId - task whose configured source should be rescanned.
- * @returns completion after a fresh snapshot is published. */
-@Remote('refreshWorkspaceMaterials') async refreshWorkspaceMaterials(projectId: string): Promise<void>
-
 /**
  * List operator-configured environments before project creation.
  * @param agent - authenticated Web session.

@@ -80,7 +80,7 @@ function FilePreview(props: ReadProps) {
   </section>
 }
 
-/** Browse the current snapshot while keeping directory expansion and selection across synchronization.
+/** Browse saved material while keeping directory expansion and selection across material revisions.
  * @param props - project-owned snapshot identity, label and framework resource hook.
  * @returns expandable folders and an adjacent file preview.
  */

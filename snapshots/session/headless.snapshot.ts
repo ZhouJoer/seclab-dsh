@@ -911,6 +911,16 @@ function headerForChildSchemaComparison(header: unknown, schemas: readonly unkno
   return { ...header as JsonObject, tools: [] }
 }
 
+/** Retired tools may stop creating Sessions; writer roles still form one complete contiguous inventory. */
+function expectedWriterFiles(files: readonly string[], inputCount: number, retiredTools: boolean): string[] {
+  const writers = files.filter(name => /^writer(?:\.[1-9]\d*)?\.expected\.jsonl$/u.test(name)).sort()
+  const count = retiredTools ? writers.length : inputCount
+  if (count === 0 || JSON.stringify(writers) !== JSON.stringify(Array.from({ length: count }, (_, index) => writerSnapshotName(index)).sort())) {
+    throw new Error('native writer oracle inventory must contain one primary and contiguous child roles')
+  }
+  return Array.from({ length: count }, (_, index) => writerSnapshotName(index))
+}
+
 async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly SessionLog[], ctx: NormalizeContext): Promise<void> {
   const pin = pinOf(scenario)
   const fixture = await readFile(join(pin.dir, await primaryFixtureFile(pin.dir)), 'utf8')
@@ -972,6 +982,12 @@ async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly Se
 }
 
 describe('headless recorded-session snapshots', () => {
+  it('keeps retired input roles separate from the complete current writer inventory', () => {
+    expect(expectedWriterFiles(['writer.expected.jsonl'], 3, true)).toEqual(['writer.expected.jsonl'])
+    expect(() => expectedWriterFiles(['writer.expected.jsonl'], 3, false)).toThrow('contiguous child roles')
+    expect(() => expectedWriterFiles([], 3, true)).toThrow('one primary')
+    expect(() => expectedWriterFiles(['writer.expected.jsonl', 'writer.2.expected.jsonl'], 3, true)).toThrow('contiguous child roles')
+  })
   it('gives every composition and header class exactly one current-writer pin', () => {
     for (const scenario of scenarios) {
       expect(ownerOf(scenario), `${scenario.name}: composition owner`).toBeDefined()
@@ -1403,6 +1419,18 @@ describe('headless recorded-session snapshots', () => {
               expect(results.every(result => result.isError === false)).toBe(true)
               expect(log).toContain('# Office task routing')
             }
+            if (scenario.name === 'security-native-citations' || scenario.name === 'security-observation-failure') {
+              const results = parseSessionLog(actualLogs[0]!.content)
+                .flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
+              const failed = results.filter(result => result.isError).map(result => result.toolCallId)
+              expect(failed, 'security fixture assertions must not become accepted error snapshots').toEqual(
+                scenario.name === 'security-observation-failure' ? ['observe-outside-sample', 'identity-invalid-path'] : [],
+              )
+              if (scenario.name === 'security-native-citations') {
+                expect(actualLogs, 'publishing a report creates no model Session').toHaveLength(1)
+                expect(results.map(result => result.toolCallId)).toEqual(['native-source-read', 'complete-native-investigation'])
+              }
+            }
             if (scenario.name === 'advanced-toolchain') verifyAdvancedToolchain(actualLogs)
             if (scenario.name === 'session-query-spill') {
               await verifySessionQuerySpill(actualLogs[0]!.content, spillRoot, locatorRoot)
@@ -1462,11 +1490,11 @@ describe('headless recorded-session snapshots', () => {
 
       expect(result.stdout).toBe(`${finalTextFromSession(fixtures[0] as string)}\n`)
       expect(result.stderr).toBe(expectedStderr)
-      expect(actualLogs, `${scenario.name}: persisted session count`).toHaveLength(fixtures.length)
+      if (scenario.manifest.sessionFormat === undefined)
+        expect(actualLogs, `${scenario.name}: persisted session count`).toHaveLength(fixtures.length)
       const writerFiles = (await readdir(scenario.dir)).filter(name => /^writer(?:\.[1-9]\d*)?\.expected\.jsonl$/u.test(name)).sort()
       if (mode === 'replay') {
-        expect(writerFiles, 'native writer oracle inventory').toEqual(scenario.manifest.sessionFormat === undefined
-          ? [] : fixtures.map((_, index) => writerSnapshotName(index)).sort())
+        if (scenario.manifest.sessionFormat === undefined) expect(writerFiles, 'native writer oracle inventory').toEqual([])
       }
       let expected = retainedToolInput === undefined ? fixtures : await fixtureSessions(scenario)
       if (retainedToolInput !== undefined) {
@@ -1474,7 +1502,10 @@ describe('headless recorded-session snapshots', () => {
       }
       if (scenario.manifest.sessionFormat !== undefined) {
         if (mode === 'refresh') await writeSessionFixtures(scenario, actualLogs, fixtures, actualContext)
-        expected = await Promise.all(fixtures.map((_, index) => readFile(join(scenario.dir, writerSnapshotName(index)), 'utf8')))
+        const currentWriters = expectedWriterFiles(await readdir(scenario.dir), fixtures.length,
+          scenario.manifest.sessionFormat.coverage.includes('retired-tools'))
+        expected = await Promise.all(currentWriters.map(file => readFile(join(scenario.dir, file), 'utf8')))
+        expect(actualLogs, `${scenario.name}: persisted writer session count`).toHaveLength(expected.length)
         for (const [index, content] of expected.entries()) {
           expect(sessionHeaderVersion(content, writerSnapshotName(index))).toBeLessThanOrEqual(SESSION_FORMAT_VERSION)
         }

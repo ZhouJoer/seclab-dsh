@@ -35,6 +35,8 @@ function harness(extra: object = {}) {
   const unavailable = () => { throw new Error('This endpoint is outside the dashboard fixture') }
   const api = {
     ...deviceActions,
+    toolPreferenceOptions: vi.fn(async () => ({ tools: [], collections: [] })),
+    toolPreferences: vi.fn(async () => ({ toolIds: [], tags: [], collectionIds: [] })),
     scriptCatalog: unavailable, toolboxDirectory: unavailable, toolboxInventory: unavailable,
     toolboxConfiguration: unavailable, configureTool: unavailable, toolboxFiles: unavailable,
     toolCatalog: unavailable, previewToolPack: unavailable, importToolPack: unavailable, exportToolPack: unavailable,
@@ -43,7 +45,7 @@ function harness(extra: object = {}) {
     httpIdentities: unavailable, configureHttpIdentity: unavailable, removeHttpIdentity: unavailable,
     command: unavailable, execute: unavailable,
     useResource: () => ({ status: 'none', value: undefined, failure: undefined }),
-    generateReport: unavailable, beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(), refreshWorkspaceMaterials: vi.fn(),
+    generateReport: unavailable, beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(),
     configuration: vi.fn(async () => workbenchConfiguration()),
     configureWorkspace: vi.fn(async (_id: string, input: string) => workbenchConfiguration({
       workspace: { ...workbenchConfiguration().workspace!, revision: 1,
@@ -149,6 +151,9 @@ it('confirms a restart and opens its fresh draft without sending or creating ano
   expect(trigger.parentElement?.contains(screen.getByRole('button', { name: en.openAssociatedChat }))).toBe(true)
   fireEvent.click(trigger)
   expect(api.restartTask).not.toHaveBeenCalled()
+  await waitFor(() => { expect(screen.getByRole('button', { name: en.restartTaskConfirm }).hasAttribute('disabled')).toBe(false) })
+  expect(screen.getByText('Environment: local')).toBeTruthy()
+  expect(screen.getByText(en.toolPreferenceAutomatic, { exact: false })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
   await waitFor(() => { expect(api.openRestartDraft).toHaveBeenCalledWith('fresh', 'Review owned code') })
   expect(api.restartTask).toHaveBeenCalledWith('s1', {})
@@ -162,7 +167,7 @@ it('cancels restart with Escape and returns focus to its visible entry', async (
   fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
   const trigger = await screen.findByRole('button', { name: en.restartTask })
   fireEvent.click(trigger)
-  fireEvent.keyDown(screen.getByRole('group', { name: en.restartTaskConfirm }), { key: 'Escape' })
+  fireEvent.keyDown(await screen.findByRole('group', { name: en.restartTaskConfirm }), { key: 'Escape' })
   expect(screen.queryByRole('group', { name: en.restartTaskConfirm })).toBeNull()
   expect(document.activeElement).toBe(trigger)
   expect(api.restartTask).not.toHaveBeenCalled()
@@ -173,6 +178,9 @@ it('keeps failed restart available and separates actionable copy from technical 
   render(<Dashboard {...props} />)
   fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
   fireEvent.click(await screen.findByRole('button', { name: en.restartTask }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: en.restartTaskConfirm }).hasAttribute('disabled')).toBe(false) })
+  expect(screen.getByText('Environment: local')).toBeTruthy()
+  expect(screen.getByText(en.toolPreferenceAutomatic, { exact: false })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
   expect((await screen.findByRole('alert')).textContent).toBe(en.restartTaskFailed)
   expect(screen.getByText('HTTP 404', { exact: false }).closest('details')?.open).toBe(false)
@@ -514,4 +522,28 @@ it('analyzes imported captures from materials and opens the resulting evidence',
     assetId: 'capture', environmentId: 'local', parameters: { protocol: 'ble' }, impact: 'observe' })
   expect((await screen.findByRole('button', { name: /^Authorization check/ })).textContent).toContain('A recorded observation')
   expect(api.createSession).not.toHaveBeenCalled()
+})
+
+it('opens the native workspace chat without requesting imported materials', async () => {
+  const task = { ...alpha, value: { ...alpha.value, workspaceMaterials: { root: '/owned/source' } } }
+  const workspaceAsset = recordSchema.parse({ kind: 'asset', value: { kind: 'workspace',
+    id: 'workspace-target', engagementId: 'Alpha', root: '/owned/source', label: 'Source' } })
+  const snapshot: WorkbenchView = { revision: 2, records: [task, workspaceAsset] }
+  const { api, props } = harness({
+    project: vi.fn(async () => snapshot),
+    followActivity: async function* (_id: string, signal: AbortSignal) {
+      yield { type: 'snapshot' as const, briefs: [], cursor: 0, view: snapshot, usage: [] }
+      if (!signal.aborted) await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
+    },
+  })
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  expect(await screen.findByText('/owned/source')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: en.dashboardMaterials }))
+  expect(screen.getByRole('heading', { name: en.workspaceMaterials })).toBeTruthy()
+  expect(screen.queryByText(en.dashboardNoMaterials)).toBeNull()
+  expect(screen.getByText(en.workspaceBrowseHint)).toBeTruthy()
+  fireEvent.click(await screen.findByRole('button', { name: en.workspaceOpenChat }))
+  await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s1') })
+  expect(api.projectArtifact).not.toHaveBeenCalled()
 })

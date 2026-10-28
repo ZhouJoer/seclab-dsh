@@ -74,14 +74,22 @@ export class FirstMessagePreparation {
     this.presentations.set(new Map(ids.map(id => [id, { composerPlaceholder: placeholder }])))
   }
 
+  /** Reject a send while task or checked-tool edits are unsaved or being checked.
+   * @param id - composer whose current editor state controls admission. */
+  requireReady(id: SessionId): void {
+    const state = this.state.getSnapshot()[id]
+    if (state?.needsSave || state?.toolsDirty) throw new Error(this.failure('unsaved'))
+    if (state?.toolsBusy) throw new Error(this.failure('tools-busy'))
+  }
+
   /** Prepare once, surfacing a recoverable failure without starting a model request.
    * @param id - authenticated destination conversation.
    * @returns completion after its task association exists.
    */
   run(id: SessionId): Promise<void> {
-    const state = this.state.getSnapshot()[id]
-    if (state?.needsSave || state?.toolsDirty) return Promise.reject(new Error(this.failure('unsaved')))
-    if (state?.toolsBusy) return Promise.reject(new Error(this.failure('tools-busy')))
+    try { this.requireReady(id) } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
     const existing = this.pending.get(id)
     if (existing) return existing
     const revision = this.state.getSnapshot()[id]?.revision ?? 0

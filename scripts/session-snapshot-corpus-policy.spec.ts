@@ -131,14 +131,18 @@ describe('recorded-session corpus policy', () => {
       selectedVersions: [SESSION_FORMAT_VERSION],
       retained: { version: SESSION_FORMAT_VERSION, coverage: ['retired-tools'] as const },
     }))
+    const retiredSecurity = { key: 'session/security-workbench',
+      selectedVersions: Array<number>(3).fill(SESSION_FORMAT_VERSION),
+      retained: { version: SESSION_FORMAT_VERSION, coverage: ['retired-tools'] as const } }
+    const currentMajority = { ...current, selectedVersions: Array<number>(9).fill(SESSION_FORMAT_VERSION) }
     expect(assertSnapshotCorpusPolicy([
-      baseline, current,
-      { ...completeV0, selectedVersions: Array<number>(9).fill(0) }, ...adjacent, ...retiredOffice,
-    ]).retainedRoles).toBe(13)
+      baseline, currentMajority,
+      { ...completeV0, selectedVersions: Array<number>(9).fill(0) }, ...adjacent, ...retiredOffice, retiredSecurity,
+    ]).retainedRoles).toBe(16)
     expect(() => assertSnapshotCorpusPolicy([
-      baseline, current,
-      { ...completeV0, selectedVersions: Array<number>(10).fill(0) }, ...adjacent, ...retiredOffice,
-    ])).toThrow('Session corpus retains 14 historical roles; maximum is 13')
+      baseline, currentMajority,
+      { ...completeV0, selectedVersions: Array<number>(10).fill(0) }, ...adjacent, ...retiredOffice, retiredSecurity,
+    ])).toThrow('Session corpus retains 17 historical roles; maximum is 16')
     expect(() => assertSnapshotCorpusPolicy([
       { ...baseline, selectedVersions: [3] }, completeV0, ...adjacent,
     ])).toThrow(`Session corpus requires a baseline/current majority; baseline=1, current=0, retained=${1 + adjacent.length}`)

@@ -3,8 +3,6 @@ import type { Engagement, WorkbenchView, CheckId, ValidationPlanId } from './wor
 
 /** Orthogonal runtime and operator-action facts for one task. */
 export interface SecurityProjectSummary {
-  /** Live workspace collection state; absent while no task view or Agent observes it. */
-  materials?: { state: 'syncing' | 'ready' | 'failed'; detail?: string }
   project: Engagement
   /** Current associations, including inactive historical conversations. */
   sessions: { sessionId: string; role: string; active: boolean }[]

@@ -2448,12 +2448,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'configuration after the durable save.',
       },
       {
-        signature: '@Remote(\'refreshWorkspaceMaterials\') async refreshWorkspaceMaterials(projectId: string): Promise<void>',
-        description: 'Retry automatic directory collection while preserving the last successful snapshot.',
-        parameters: [{ name: 'projectId', description: 'task whose configured source should be rescanned.' }],
-        returns: 'completion after a fresh snapshot is published.',
-      },
-      {
         signature: '@Remote(\'configuration\') async configuration(agent: Agent): Promise<WorkbenchConfiguration>',
         description: 'List operator-configured environments before project creation.',
         parameters: [{ name: 'agent', description: 'authenticated Web session.' }],
@@ -5522,6 +5516,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CheckId = Branded<\'SecurityCheck\'>;',
   },
   {
+    name: 'Citation',
+    declaration: 'export type Citation = z.infer<typeof citationSchema>;',
+  },
+  {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly ctimeMs: number;\n    readonly size: number;\n}',
   },
@@ -7415,7 +7413,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReportLimits',
-    declaration: 'export interface ReportLimits {\n    inputBytes: number;\n    maxChars: number;\n    maxFindings: number;\n    maxLessons: number;\n    outputBytes: number;\n}',
+    declaration: 'export interface ReportLimits {\n    maxFindings: number;\n    outputBytes: number;\n}',
   },
   {
     name: 'RequestContext',
@@ -7464,6 +7462,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResolvedAlwaysRetryPolicy',
     declaration: 'export interface ResolvedAlwaysRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'always\';\n}',
+  },
+  {
+    name: 'ResolvedCitation',
+    declaration: 'export interface ResolvedCitation {\n    callId: string;\n    resultSeq: number;\n    title: string;\n    bytes: Buffer;\n    incomplete: boolean;\n    workspaceRoot?: string;\n    citation?: {\n        path: string;\n        startLine: number;\n        endLine: number;\n        text: string;\n        resultSeq: number;\n    };\n}',
   },
   {
     name: 'ResolvedCredential',
@@ -7655,7 +7657,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityController',
-    declaration: 'export class SecurityController {\n    readonly providers: ProviderRegistry<AnalysisProvider>;\n    readonly environments: ProviderRegistry<{\n        id: string;\n        manager: EnvironmentManager;\n    }>;\n    readonly laboratories: ProviderRegistry<{\n        id: string;\n        action(projectId: string, action: string, laboratoryId?: string): Promise<WorkbenchView>;\n    }>;\n    laboratoriesView(): Laboratory[];\n    async saveLaboratory(input: Laboratory): Promise<Laboratory>;\n    constructor(private readonly journal: SecurityJournal, readonly artifacts: ArtifactStore, readonly options: WorkbenchOptions, private readonly generateReport?: (prompt: string, signal: AbortSignal, sessionId: string) => Promise<string>, readonly activity?: SecurityActivityStore, private readonly removeImprovements?: (project: string) => Promise<void>, private readonly cancelImprovements?: (project: string) => Promise<void>);\n    checkpointId(sessionId: string): string;\n    trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void;\n    async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = \'\'): Promise<T>;\n    async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void>;\n    binding(sessionId: string): SessionBinding | undefined;\n    analysisProject(sessionId: string): string | undefined;\n    analysisAsset(sessionId: string, assetId: string): string;\n    async cap /* …truncated — full shape in source */',
+    declaration: 'export class SecurityController {\n    readonly providers: ProviderRegistry<AnalysisProvider>;\n    readonly environments: ProviderRegistry<{\n        id: string;\n        manager: EnvironmentManager;\n    }>;\n    readonly laboratories: ProviderRegistry<{\n        id: string;\n        action(projectId: string, action: string, laboratoryId?: string): Promise<WorkbenchView>;\n    }>;\n    laboratoriesView(): Laboratory[];\n    async saveLaboratory(input: Laboratory): Promise<Laboratory>;\n    constructor(private readonly journal: SecurityJournal, readonly artifacts: ArtifactStore, readonly options: WorkbenchOptions, readonly activity?: SecurityActivityStore, private readonly removeImprovements?: (project: string) => Promise<void>, private readonly cancelImprovements?: (project: string) => Promise<void>, private readonly readCitation?: (sessionId: string, reference: Citation, signal: AbortSignal) => Promise<ResolvedCitation>);\n    checkpointId(sessionId: string): string;\n    trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void;\n    async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = \'\'): Promise<T>;\n    async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void>;\n    binding(sessionId: string): SessionBinding | undefined;\n    analysisProject(sessionId: string): string | undefined;\n    analysisAsset(sessionId: string, assetId: string): string;\n /* …truncated — full shape in source */',
   },
   {
     name: 'SecurityEnvironment',
@@ -7667,7 +7669,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityProjectSummary',
-    declaration: 'export interface SecurityProjectSummary {\n    materials?: {\n        state: \'syncing\' | \'ready\' | \'failed\';\n        detail?: string;\n    };\n    project: Engagement;\n    sessions: {\n        sessionId: string;\n        role: string;\n        active: boolean;\n    }[];\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
+    declaration: 'export interface SecurityProjectSummary {\n    project: Engagement;\n    sessions: {\n        sessionId: string;\n        role: string;\n        active: boolean;\n    }[];\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
   },
   {
     name: 'SecurityRecord',

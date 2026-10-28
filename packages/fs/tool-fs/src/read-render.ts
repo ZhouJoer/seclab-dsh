@@ -35,6 +35,8 @@ export interface FileTextLine {
 
 /** The windowed result {@link buildWindow} produces from a file's decoded text. */
 export interface WindowResult {
+  /** Returned line numbers whose text was shortened by the character cap. */
+  truncatedLines: number[]
   /** Returned lines, already numbered. */
   lines: FileTextLine[]
   /** Exact total line count in the file. */
@@ -56,6 +58,7 @@ export interface FileReadOutcome {
 }
 
 interface WindowAccumulator {
+  truncatedLines: number[]
   lines: FileTextLine[]
   totalLines: number
   outputBytes: number
@@ -63,7 +66,7 @@ interface WindowAccumulator {
 }
 
 function newAccumulator(): WindowAccumulator {
-  return { lines: [], totalLines: 0, outputBytes: 0, truncatedByBytes: false }
+  return { lines: [], truncatedLines: [], totalLines: 0, outputBytes: 0, truncatedByBytes: false }
 }
 
 function truncateLine(line: string, maxLineLength: number): string {
@@ -86,6 +89,7 @@ function consumeLine(acc: WindowAccumulator, rawLine: string, request: ReadWindo
   }
   acc.outputBytes += bytes
   acc.lines.push({ number: acc.totalLines, text })
+  if (rawLine.length > request.maxLineLength) acc.truncatedLines.push(acc.totalLines)
 }
 
 function stripCarriageReturn(line: string): string {
@@ -96,7 +100,7 @@ function finish(acc: WindowAccumulator, request: ReadWindow, displayPath: string
   if (!acc.truncatedByBytes && request.offset > acc.totalLines && !(acc.totalLines === 0 && request.offset === 1)) {
     throw new FsError(`offset ${request.offset} is out of range for "${displayPath}" (${acc.totalLines} lines)`, 'FS_NOT_FOUND')
   }
-  return { lines: acc.lines, totalLines: acc.totalLines, truncatedByBytes: acc.truncatedByBytes }
+  return { lines: acc.lines, truncatedLines: acc.truncatedLines, totalLines: acc.totalLines, truncatedByBytes: acc.truncatedByBytes }
 }
 
 /**

@@ -82,7 +82,8 @@
 .reportCard { margin-top: 32px; padding: 24px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-module-platform); }
 .reportCard > :first-child { margin-top: 0; }
 .notice { background: var(--dsw-alias-bg-module-platform); padding: 16px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; margin-bottom: 16px; }
-.materialStatus { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; margin-bottom: 12px; }
+.workspaceSource > span, .workspaceSource > p { min-width: 0; overflow-wrap: anywhere; }
+.workspaceSource { display: grid; justify-items: start; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; margin-bottom: 12px; }
 .error { color: var(--dsw-alias-state-error-primary); border: 1px solid currentColor; padding: 16px; border-radius: 8px; margin-bottom: 16px; overflow-wrap: anywhere; }
 .error button { margin-left: 16px; }
 .workspacePicker { display: grid; gap: 16px; margin: 16px 0; }

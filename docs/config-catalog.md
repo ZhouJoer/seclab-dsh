@@ -1249,13 +1249,11 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:112`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:111`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
-  /** Automatic workspace snapshots; omission uses the documented scan defaults. */
-  workspaceMaterials?: WorkspaceMaterialOptions
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -1298,22 +1296,12 @@ export interface WorkbenchConfig {
   modelResultBytes: number
   /** Maximum invocation details returned in one activity page. */
   activityPageSize: number
-  /** Target Unicode characters for the reader-facing report body. */
-  reportMaxChars: number
-  /** Maximum bytes supplied to the report model. */
-  reportInputBytes: number
-  /** Maximum model tokens allowed for one report response. */
-  reportOutputTokens: number
   /** Exploration token allowance per analysis turn, followed by one summary step under existing model limits. */
   analysisTurnTokens: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
-  /** Recorded coordinator calls between required research-progress updates. */
-  analysisProgressCalls: number
   /** Maximum target findings in the main report body. */
   reportMaxFindings: number
-  /** Maximum reusable lessons in the main report body. */
-  reportMaxLessons: number
   /** Maximum approved operation duration in milliseconds. */
   maxDurationMs: number
   /** Deadline for one container target-reachability probe command in milliseconds. */
@@ -1334,18 +1322,6 @@ export interface WorkbenchConfig {
   knowledgeProvider?: string
   /** Optional dedicated refinement model; on-demand calls inherit the initiating Agent model when omitted. */
   knowledgeModel?: string
-}
-
-/** Deployment budgets for automatic workspace material collection. */
-export interface WorkspaceMaterialOptions {
-  /** Maximum entries visited by one scan and retained in its index. */
-  maxEntries: number
-  /** Maximum aggregate size of current workspace file bytes. */
-  maxBytes: number
-  /** Event coalescing delay and write-stability observation interval. */
-  debounceMs: number
-  /** Directory names excluded at every depth, independent of .gitignore. */
-  excludedDirectories: string[]
 }
 
 /** Deployment-owned collection and teardown bounds. */

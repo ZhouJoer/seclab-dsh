@@ -102,6 +102,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
             },
           },
           totalLines: { type: 'integer', required: true },
+          truncatedLines: { type: 'array', required: true, items: { type: 'integer' } },
         },
       },
       render: (args, value) => {
@@ -128,6 +129,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
           offset: value.offset,
           lines: value.lines.map(({ number, text }) => ({ number, text })),
           totalLines: value.totalLines,
+          truncatedLines: value.truncatedLines,
           ...lang === undefined ? {} : { lang },
         }
       },
@@ -156,6 +158,7 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
         offset: input.offset,
         lines: window.lines,
         totalLines: window.totalLines,
+        truncatedLines: window.truncatedLines,
       }
       // Record the present observation (a no-op when no policy plugin listens). The
       // read already succeeded; an fs/observed listener is contractually a

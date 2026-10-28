@@ -1,9 +1,8 @@
-/** Filesystem changes publish immutable, task-scoped materials. @module */
+/** Workspace tasks register targets without importing source files. @module */
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { FSWatcher } from 'chokidar'
 import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
@@ -11,27 +10,11 @@ import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { openSecurityJournal } from '../src/workbench/journal.ts'
+import { recordSchema } from '../src/workbench/model.ts'
 import { ArtifactStore } from '../src/workbench/artifacts.ts'
 import { SecurityController } from '../src/workbench/controller.ts'
-import { sourceManifest } from '../src/workbench/source.ts'
-import { modelPage } from '../src/workbench/model-view.ts'
-import { WorkspaceMaterialSync } from '../src/workspace-materials.ts'
 
-/** Watchers created by the mocked module, so tests can inject watcher errors. */
-const watched = vi.hoisted(() => [] as FSWatcher[])
-vi.mock('chokidar', async (importActual) => {
-  const actual = await importActual<typeof import('chokidar')>()
-  return {
-    ...actual,
-    watch: (...args: Parameters<typeof actual.watch>) => {
-      const watcher = actual.watch(...args)
-      watched.push(watcher)
-      return watcher
-    },
-  }
-})
-
-async function harness(maxBytes = 65536) {
+async function harness() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-workbench-'))
   const ctx = new Context()
   const backend = new JsonStorageBackend(root)
@@ -54,11 +37,8 @@ async function harness(maxBytes = 65536) {
     approvalTtlMs: 60000,
     maxArtifactBytes: 65536,
     maxDerivedAssets: 10,
-    reportLimits: { inputBytes: 32768, maxChars: 1200, maxFindings: 5, maxLessons: 3, outputBytes: 16384 },
-  }, async () => '')
-  const observers: WorkspaceMaterialSync[] = []
+  })
   onTestFinished(async () => {
-    for (const sync of observers) await sync.close()
     await controller.dispose()
     await facility.closeAll()
     await backend.close()
@@ -68,10 +48,6 @@ async function harness(maxBytes = 65536) {
 
   const workspace = join(root, 'workspace')
   await mkdir(workspace)
-  const sync = new WorkspaceMaterialSync(controller, artifacts, join(root, 'output'), {
-    maxEntries: 100, maxBytes, debounceMs: 10, excludedDirectories: ['node_modules', '.git'],
-  })
-  observers.push(sync)
   const sessionId = SessionId(randomUUID())
   const request = { kind: 'create' as const, title: 'New analysis', objective: '', environmentIds: ['local'], maxAttempts: 3 }
   const operationId = randomUUID()
@@ -79,12 +55,7 @@ async function harness(maxBytes = 65536) {
     { title: request.title, environmentIds: request.environmentIds }, async () => request)
   await create()
   const project = () => controller.projects()[0]!
-  const manifest = async () => {
-    const asset = controller.projectView(project().id).records.find(item => item.kind === 'asset' && item.value.id === project().workspaceMaterials?.assetId)
-    if (!asset || asset.kind !== 'asset') throw new Error('No workspace material snapshot')
-    return sourceManifest(artifacts, asset.value)
-  }
-  return { root, workspace, sync, controller, journal, artifacts, sessionId, operationId, request, create, project, manifest }
+  return { root, workspace, controller, journal, artifacts, sessionId, operationId, request, create, project }
 }
 
 it('creates once without an objective, keeps an operator rename, and learns only the first real message', async () => {
@@ -103,95 +74,37 @@ it('creates once without an objective, keeps an operator rename, and learns only
   expect(h.project()).toMatchObject({ title: 'Owned task', objective: 'Review this directory' })
 })
 
-it('follows add/change/delete and retains original bytes after releasing one of two shared leases', async () => {
+
+it('registers only the selected root and preserves its target on repeated preparation', async () => {
   const h = await harness()
-  await mkdir(join(h.workspace, 'build'))
-  await mkdir(join(h.workspace, 'node_modules'))
-  await writeFile(join(h.workspace, '.gitignore'), 'build/')
-  await writeFile(join(h.workspace, 'build', 'sample.exe'), 'MZ original')
-  await writeFile(join(h.workspace, 'node_modules', 'ignored.js'), 'dependency')
-  const release = await h.sync.retain(h.project().id)
-  const second = await h.sync.retain(h.project().id)
-  await h.sync.flush(h.project().id)
-  const original = await h.manifest()
-  expect(original.files.map(item => item.path)).toEqual(['.gitignore', 'build/sample.exe'])
-  const sample = original.files.find(item => item.path === 'build/sample.exe')!
-  await release()
-  await writeFile(join(h.workspace, 'build', 'sample.exe'), 'MZ changed')
-  await vi.waitFor(async () => {
-    expect((await h.manifest()).files.find(item => item.path === sample.path)?.artifact.sha256).not.toBe(sample.artifact.sha256)
-  })
-  expect((await h.artifacts.read(sample.artifact)).toString()).toBe('MZ original')
-  await writeFile(join(h.workspace, 'new.txt'), 'new file')
-  await vi.waitFor(async () => { expect((await h.manifest()).files.some(item => item.path === 'new.txt')).toBe(true) })
-  await rm(join(h.workspace, 'new.txt'))
-  await vi.waitFor(async () => { expect((await h.manifest()).files.some(item => item.path === 'new.txt')).toBe(false) })
-  const visible = modelPage(h.controller.projectView(h.project().id), { kind: 'asset', offset: 0 }, 65536)
-  expect(visible.records).toHaveLength(1)
-  expect(h.controller.projectView(h.project().id).records.filter(item => item.kind === 'asset').length).toBeGreaterThan(1)
-  await second()
-  expect(h.sync.state(h.project().id)).toBeUndefined()
+  const put = vi.spyOn(h.artifacts, 'put')
+  const read = vi.spyOn(h.artifacts, 'read')
+  const imported = vi.spyOn(h.artifacts, 'import')
+  await h.controller.ensureWorkspaceTarget(h.sessionId)
+  await h.controller.ensureWorkspaceTarget(h.sessionId)
+  const assets = h.controller.view(h.sessionId).records.filter(item => item.kind === 'asset')
+  expect(assets).toHaveLength(1)
+  expect(assets[0]?.value).toMatchObject({ kind: 'workspace', root: h.workspace })
+  expect(put).not.toHaveBeenCalled()
+  expect(read).not.toHaveBeenCalled()
+  expect(imported).not.toHaveBeenCalled()
 })
 
-it('keeps the last successful snapshot on a budget failure and recovers with a full scan', async () => {
-  const h = await harness(32)
-  await writeFile(join(h.workspace, 'small.txt'), 'small')
-  await h.sync.retain(h.project().id)
-  await h.sync.flush(h.project().id)
-  const before = h.project().workspaceMaterials?.assetId
-  await writeFile(join(h.workspace, 'large.txt'), 'x'.repeat(33))
-  await expect(h.sync.refresh(h.project().id)).rejects.toThrow('byte limit')
-  expect(h.project().workspaceMaterials?.assetId).toBe(before)
-  await rm(join(h.workspace, 'large.txt'))
-  await writeFile(join(h.workspace, 'small.txt'), 'fixed')
-  await h.sync.refresh(h.project().id)
-  expect(h.sync.state(h.project().id)?.state).toBe('ready')
-  const member = (await h.manifest()).files[0]!
-  expect((await h.artifacts.read(member.artifact)).toString()).toBe('fixed')
-})
-
-it('shares one scan across tasks and rescans when a missing directory returns', async () => {
+it('adds a workspace target to a historical task without replacing its source snapshot', async () => {
   const h = await harness()
-  await rm(h.workspace, { recursive: true })
-  const secondSession = SessionId(randomUUID())
-  await h.controller.createWorkspaceTask(secondSession, randomUUID(), h.workspace, {
-    title: 'Second task', environmentIds: ['local'],
-  }, async () => ({ maxAttempts: 3 }))
-  const secondProject = h.controller.projects().find(item => item.mainSessionId === secondSession)!
-  await h.sync.retain(h.project().id)
-  await h.sync.retain(secondProject.id)
-  await expect(h.sync.flush(h.project().id)).rejects.toThrow()
-  await mkdir(h.workspace)
-  await writeFile(join(h.workspace, 'restored.txt'), 'restored')
-  await h.sync.refresh(h.project().id)
-  expect(h.controller.projects().every(item => item.workspaceMaterials?.assetId)).toBe(true)
-  const manifest = await h.manifest()
-  expect(manifest.files.map(item => item.path)).toEqual(['restored.txt'])
-})
-
-it('rescans after a transient file-watch error instead of failing collection', async () => {
-  const h = await harness()
-  await writeFile(join(h.workspace, 'sample.bin'), 'MZ payload')
-  await h.sync.retain(h.project().id)
-  await h.sync.flush(h.project().id)
-  const watcher = watched.at(-1)!
-  watcher.emit('error', Object.assign(new Error("EBUSY: resource busy or locked, watch 'sample.bin'"), { code: 'EBUSY' }))
-  watcher.emit('error', Object.assign(new Error("EPERM: operation not permitted, watch 'sample.bin'"), { code: 'EPERM' }))
-  expect(h.sync.state(h.project().id)?.state).toBe('ready')
-  await writeFile(join(h.workspace, 'later.txt'), 'written while notification was suspended')
-  await h.sync.flush(h.project().id)
-  expect(h.sync.state(h.project().id)?.state).toBe('ready')
-  expect((await h.manifest()).files.map(item => item.path)).toEqual(['later.txt', 'sample.bin'])
-})
-
-it('still fails collection on an unrecoverable watcher error until the operator retries', async () => {
-  const h = await harness()
-  await writeFile(join(h.workspace, 'sample.txt'), 'text')
-  await h.sync.retain(h.project().id)
-  await h.sync.flush(h.project().id)
-  watched.at(-1)!.emit('error', Object.assign(new Error('inotify watch limit reached'), { code: 'ENOSPC' }))
-  expect(h.sync.state(h.project().id)?.state).toBe('failed')
-  await expect(h.sync.flush(h.project().id)).rejects.toThrow('inotify watch limit reached')
-  await h.sync.refresh(h.project().id)
-  expect(h.sync.state(h.project().id)?.state).toBe('ready')
+  const previous = h.project().workspaceMaterials!.assetId!
+  const historical = recordSchema.parse({ kind: 'asset', value: { kind: 'source', id: previous,
+    engagementId: h.project().id, label: 'Historical source', identity: 'measured',
+    artifact: { sha256: 'a'.repeat(64), size: 4, mediaType: 'application/vnd.dsh.source-tree+json' },
+    inputSource: { kind: 'path', path: h.workspace } } })
+  await h.journal.commit(randomUUID(), undefined, {}, () => [historical])
+  const imported = vi.spyOn(h.artifacts, 'import')
+  const put = vi.spyOn(h.artifacts, 'put')
+  await Promise.all([h.controller.ensureWorkspaceTarget(h.sessionId), h.controller.ensureWorkspaceTarget(h.sessionId)])
+  const assets = h.controller.view(h.sessionId).records.filter(item => item.kind === 'asset')
+  expect(assets).toHaveLength(2)
+  expect(assets.find(item => item.value.id === previous)).toEqual(historical)
+  expect(h.project().workspaceMaterials!.assetId).not.toBe(previous)
+  expect(imported).not.toHaveBeenCalled()
+  expect(put).not.toHaveBeenCalled()
 })

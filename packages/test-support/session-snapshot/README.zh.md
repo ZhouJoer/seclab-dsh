@@ -74,7 +74,7 @@ defineAcpSnapshotSuite({
 
 spill 场景通过真实本地提供方保存到私有临时根目录。fixture 适配器提供固定长度的逻辑定位符，并仅将本次运行已保存的定位符映射回实际文件以供检索，在不写入共享逻辑路径的情况下保留预览预算。已知的快照 spill 路径会规范化为稳定的定位符 token，包括 JSON 省略通知中带引号、使用 JSON 转义 Windows 分隔符的路径。刷新提取会保留匹配路径的序列化写法，以便进行字面替换。规范化只改变定位符：保存字节数与省略计数仍作为比较证据。
 
-保留历史输入的场景保持规范 Session 文件不变，并继续选择它们进行回放；固定历史版本的目录中没有更新的规范同角色文件。其精确的规范化原生 writer 输出单独记录在父会话的 `writer.expected.jsonl` 和子会话的 `writer.<ordinal>.expected.jsonl` 中；这些是输出比较基准，而非 replay 代际。输出比较基准可以保留较旧的受支持代际：比较通过严格 catalog 恢复它们，而收集的日志必须使用当前检出版本的 writer。新 writer 输出的 golden 比较选择 `nativeWriterOutput`，仅在严格恢复后，将版本限定为各输入原始 writer 代际的 delivery 标记转换为 token。其他 delivery 代际与 captured-source 字段保持数值；源文件与已迁移产物的比较默认保留精确代际。record 与 refresh 从不存储这些比较 token。保留历史输入的 SDK 场景使用 `notifications.current.expected.jsonl` 记录当前协议输出。比较既不将当前事件反向投影为历史格式，也不剥除结构差异。独立迁移测试验证正式转换，而不把原生 writer 布局当作其预期事件序列。
+保留历史输入的场景保持规范 Session 文件不变，并继续选择它们进行回放；固定历史版本的目录中没有更新的规范同角色文件。其精确的规范化原生 writer 输出单独记录在父会话的 `writer.expected.jsonl` 和子会话的 `writer.<ordinal>.expected.jsonl` 中；这些是输出比较基准，而非 replay 代际。保留已退役工具的 headless 场景可以产生比历史输入更少的当前 writer 角色；writer 清单仍必须包含一个父角色和连续的子角色。输出比较基准可以保留较旧的受支持代际：比较通过严格 catalog 恢复它们，而收集的日志必须使用当前检出版本的 writer。新 writer 输出的 golden 比较选择 `nativeWriterOutput`，仅在严格恢复后，将版本限定为各输入原始 writer 代际的 delivery 标记转换为 token。其他 delivery 代际与 captured-source 字段保持数值；源文件与已迁移产物的比较默认保留精确代际。record 与 refresh 从不存储这些比较 token。保留历史输入的 SDK 场景使用 `notifications.current.expected.jsonl` 记录当前协议输出。比较既不将当前事件反向投影为历史格式，也不剥除结构差异。独立迁移测试验证正式转换，而不把原生 writer 布局当作其预期事件序列。
 
 Headless/ACP 与 SDK 适配器在规范化之前，将原始目录中的子创建时间与采集到的子 header 比较。刷新会在每条匹配的目录记录中保留选定的子 header 时间，包括继承副本，防止保留的 header 时钟与新写入的目录时钟分歧。已提交的历史不一致数据保持不变，作为迁移拒绝证据；将其时钟规范化不能证明迁移成功。
 

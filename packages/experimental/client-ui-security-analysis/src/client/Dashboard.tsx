@@ -10,6 +10,7 @@ import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@de
 import { CaptureControls } from './CaptureControls.tsx'
 import { IconRefreshOutlineRegular, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ProjectManagement } from './ProjectManagement.tsx'
+import type { ToolPreferenceActions } from './ToolPreferences.tsx'
 import { RestartTask } from './RestartTask.tsx'
 import { ProjectModules, ProjectUnseal } from './ModuleSelection.tsx'
 import { ProjectTaskContext } from './ProjectTaskContext.tsx'
@@ -37,11 +38,10 @@ import type { ReactNode } from 'react'
 type Project = Extract<WorkbenchView['records'][number], { kind: 'engagement' }>['value']
 type Tab = 'graphTitle' | 'overview' | 'activityEntry' | 'assets' | 'findings' | 'evidence' | 'reports' | 'laboratories' | 'improvements' | 'httpTitle'
 /** Native Session ownership and project-scoped reads injected by the plugin. */
-export interface DashboardActions extends ProjectActions, ActivityActions, ImprovementActions, HttpActions {
+export interface DashboardActions extends ProjectActions, ActivityActions, ImprovementActions, HttpActions, ToolPreferenceActions {
   beginAnalysis(): void
   openChat(id: SessionId): void
   selectDestination(projectId: string): void
-  refreshWorkspaceMaterials(projectId: string): Promise<void>
   generateReport(sessionId: SessionId, revision: number): Promise<WorkbenchView>
   /** Omission displays the task overview; supplying a destination opens that exact task. */
   destination?: { projectId: string; sessionId?: SessionId } | undefined
@@ -146,11 +146,15 @@ export function Dashboard(props: Props) {
   } })
   const findings = view.records.filter(item => item.kind === 'finding')
   const evidence = view.records.filter(item => item.kind === 'evidence')
+  const workspaceTarget = view.records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'workspace')
   const assets = view.records.filter(item => item.kind === 'asset').filter((item) => {
     const source = project?.workspaceMaterials
-    return !source || !('kind' in item.value) || item.value.kind !== 'source'
+    return workspaceTarget !== undefined || !source || !('kind' in item.value) || item.value.kind !== 'source'
       || item.value.inputSource?.kind !== 'path' || item.value.inputSource.path !== source.root || item.value.id === source.assetId
   })
+  const materialAssets = assets.filter(item => !('kind' in item.value) || item.value.kind !== 'workspace')
+  const workspaceRoot = workspaceTarget?.kind === 'asset' && 'root' in workspaceTarget.value
+    ? workspaceTarget.value.root : project?.workspaceMaterials?.root
   const reports = view.records.filter(item => item.kind === 'report')
   const blocked = view.records.filter(item => item.kind === 'check').filter(item => ['blocked', 'interrupted'].includes(item.value.status))
   const pendingPlans = view.records.filter(item => item.kind === 'plan' && item.value.status === 'draft')
@@ -364,19 +368,22 @@ export function Dashboard(props: Props) {
             {!project.archived && project.objective && <><button ref={restartTrigger} className={css.restartAction}
               disabled={busy || stopping}
               aria-expanded={restartOpen} aria-controls={restartOpen ? 'security-restart-confirmation' : undefined}
-              onClick={() => { setRestartOpen(value => !value) }}><IconRefreshOutlineRegular size={16} />{t('restartTask')}</button>
+              onClick={() => { if (restartOpen) setRestartOpen(false); else void perform(async () => {
+                const id = sessionId ?? await props.findSession(project.id)
+                if (!id) throw new Error(t('dashboardMissingSession'))
+                setSessionId(id); setRestartOpen(true)
+              }) }}><IconRefreshOutlineRegular size={16} />{t('restartTask')}</button>
             <button disabled={busy} onClick={() => void perform(() => connect(false, false, true, true))}>{t('planApprovals')}</button></>}
           </div>
-          {!project.archived && restartOpen && <RestartTask key={project.id} t={t} view={view} disabled={busy || stopping}
+          {!project.archived && restartOpen && sessionId && <RestartTask key={project.id} t={t} view={view}
+            disabled={busy || stopping} sessionId={sessionId}
+            toolPreferences={props.toolPreferences} toolPreferenceOptions={props.toolPreferenceOptions}
             close={() => { setRestartOpen(false); restartTrigger.current?.focus() }}
             restart={async (paths) => {
               const current = generation.current
               setBusy(true)
               try {
-                const id = sessionId ?? await props.findSession(project.id)
-                if (current !== generation.current) return
-                if (!id) throw new Error(t('dashboardMissingSession'))
-                const next = await props.restartTask(id, paths)
+                const next = await props.restartTask(sessionId, paths)
                 if (current !== generation.current) return
                 navigate(next.projectId); setSessionId(next.sessionId)
                 await props.openRestartDraft(next.sessionId, next.objective)
@@ -448,7 +455,7 @@ export function Dashboard(props: Props) {
             openEvidence={(id) => { setEvidenceId(id); setTab('evidence') }} openFinding={() =>{  setTab('findings') }} openPlans={() => void perform(() => connect(false, false, true, true))}
             changed={(next) =>{  setView(previous => next.revision >= previous.revision ? next : previous) }} />}
           {tab === 'improvements' && <Improvements key={project.id} {...props} projectId={project.id} disabled={project.stopped || !!project.archived} />}
-          {project.workspaceMaterials && (tab === 'overview' || tab === 'assets') && <div className={css.materialStatus} role="status" title={project.workspaceMaterials.root}><span>{t(directory.find(item => item.project.id === project.id)?.materials?.state === 'failed' ? 'materialsFailed' : directory.find(item => item.project.id === project.id)?.materials?.state === 'ready' ? 'materialsReady' : directory.find(item => item.project.id === project.id)?.materials?.state === 'syncing' ? 'materialsSyncing' : 'materialsWaiting')}</span>{directory.find(item => item.project.id === project.id)?.materials?.state === 'failed' && <button disabled={busy} onClick={() => void perform(() => props.refreshWorkspaceMaterials(project.id))}>{t('dashboardRetry')}</button>}</div>}
+          {workspaceRoot && (tab === 'overview' || tab === 'assets') && <section className={css.workspaceSource}><h3>{t('workspaceMaterials')}</h3><span>{workspaceRoot}</span><p>{t('workspaceBrowseHint')}</p>{!project.archived && <button disabled={busy} onClick={() => void perform(() => connect(false))}>{t('workspaceOpenChat')}</button>}</section>}
           {tab === 'overview' && !project.objective && <p className={css.empty}>{t('analysisEmptyHint')}</p>}
           {tab === 'overview' && <>
             {(!!project.objective || findings.length > 0 || evidence.length > 0) && <><div className={css.stats}>{([['confirmedFindings', findings.filter(item => item.value.status === 'confirmed').length], ['pendingFindings', findings.filter(item => ['suspected', 'inconclusive'].includes(item.value.status)).length], ['evidence', evidence.length], ['blockedChecks', blocked.length]] as const).map(([label, count]) => <article key={label}><span>{t(label)}</span><strong>{count}</strong></article>)}</div>
@@ -469,7 +476,7 @@ export function Dashboard(props: Props) {
                 else await refresh()
               })} /></div>
           </>}
-          {tab === 'assets' && <section className={css.panel}>{assets.length ? assets.map(item => <article className={css.record} key={project.workspaceMaterials?.assetId === item.value.id ? 'workspace-materials' : item.value.id}>
+          {tab === 'assets' && <section className={css.panel}>{materialAssets.length ? materialAssets.map(item => <article className={css.record} key={project.workspaceMaterials?.assetId === item.value.id ? 'workspace-materials' : item.value.id}>
             {'artifact' in item.value ? <MaterialBrowser sourceRoot={project.workspaceMaterials?.assetId === item.value.id ? project.workspaceMaterials.root : undefined} renderFactorySlot={props.renderFactorySlot} sessionId={sessionId} t={t} useResource={props.useResource} project={project.id} asset={item.value.id} label={item.value.label} directory={'kind' in item.value} /> : <><h3>{item.value.label}</h3><span className={css.muted}>{item.value.kind}</span></>}
             {!('kind' in item.value) && <CaptureControls t={t} disabled={busy || project.stopped || Boolean(project.archived)}
               environments={captureEnvironments.filter(environment => project.environmentIds.includes(environment.id))}
@@ -482,7 +489,7 @@ export function Dashboard(props: Props) {
                   assetId: item.value.id, environmentId, parameters: { protocol }, impact: 'observe' }))
                 if (current === generation.current) { setView(previous => next.revision >= previous.revision ? next : previous); setTab('evidence'); setEvidenceId('') }
               }) }} />}
-          </article>) : <p className={css.empty}>{t('dashboardNoMaterials')}</p>}</section>}
+          </article>) : !workspaceRoot && <p className={css.empty}>{t('dashboardNoMaterials')}</p>}</section>}
           {tab === 'findings' && <section className={css.panel}>{findings.length ? findings.map(item => <article className={css.record} key={item.value.id}><span className={css.badge}>{t(item.value.status)}</span><h3>{item.value.title}</h3><p>{item.value.explanation}</p><details><summary>{t('advancedDetails')}</summary><p>{item.value.conditions}</p><p>{item.value.review}</p><div className={css.actions}>{item.value.evidenceIds.map(id => <button key={id} onClick={() => { setTab('evidence'); setEvidenceId(id) }}>{evidence.find(entry => entry.value.id === id)?.value.title ?? t('unavailableReference')}</button>)}</div></details></article>) : <p className={css.empty}>{t('dashboardNoFindings')}</p>}</section>}
           {tab === 'evidence' && <section className={css.panel}>{chosenEvidence ? <>
             <button className={css.back} onClick={() =>{  setEvidenceId('') }}>{t('dashboardBackEvidence')}</button><h2>{chosenEvidence.title}</h2><p>{chosenEvidence.summary}</p>{props.renderFactorySlot('security.resource.actions', { projectId: project.id, sessionId, resource: { kind: 'evidence', evidenceId: chosenEvidence.id, sha256: chosenEvidence.artifact.sha256, label: chosenEvidence.title } })}<dl className={css.metadata}><dt>{t('dashboardSource')}</dt><dd>{chosenEvidence.provider} · {chosenEvidence.operation}</dd><dt>{t('dashboardMethod')}</dt><dd>{chosenEvidence.method ?? t('incomplete')}</dd><dt>{t('dashboardToolVersion')}</dt><dd>{chosenEvidence.toolVersion}</dd></dl>

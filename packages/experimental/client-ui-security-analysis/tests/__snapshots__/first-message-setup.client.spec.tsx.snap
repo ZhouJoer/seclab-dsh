@@ -197,7 +197,9 @@ exports[`uses one expandable summary, marks edits and saves before starting 1`] 
           class="_card_394143"
         >
           <summary>
-            Active session tool preferences
+            <span>
+              Active session tool preferences
+            </span>
           </summary>
         </details>
       </div>
