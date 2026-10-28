@@ -2192,8 +2192,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'updateImprovement\') async updateImprovement(input: string): Promise<EvolutionView>',
-        description: 'Save operator progress or a coding AI\'s implementation receipt.',
-        parameters: [{ name: 'input', description: 'revision-checked status or receipt command.' }],
+        description: 'Update or delete a shared suggestion, or save a coding AI\'s implementation receipt.',
+        parameters: [{ name: 'input', description: 'revision-checked status, delete or receipt command.' }],
         returns: 'current improvement records.',
       },
       {

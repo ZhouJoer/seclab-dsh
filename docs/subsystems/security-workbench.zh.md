@@ -65,8 +65,8 @@ Optional security profile service; default application compositions remain indep
  * @returns the saved request and current suggestions. */
 @Remote('analyzeImprovements') async analyzeImprovements(input: string): Promise<EvolutionView>
 
-/** Save operator progress or a coding AI's implementation receipt.
- * @param input - revision-checked status or receipt command.
+/** Update or delete a shared suggestion, or save a coding AI's implementation receipt.
+ * @param input - revision-checked status, delete or receipt command.
  * @returns current improvement records. */
 @Remote('updateImprovement') async updateImprovement(input: string): Promise<EvolutionView>
 
