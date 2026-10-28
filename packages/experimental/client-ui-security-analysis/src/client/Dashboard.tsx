@@ -271,6 +271,16 @@ export function Dashboard(props: Props) {
     setProjects(deletedProjects.current); setDeleting(''); setDeletedProject(item.archived ? undefined : item)
     setPurgedTitle(item.archived ? item.title : ''); listHeading.current?.focus()
   }
+  const restoreProject = (item: Project) => perform(async () => {
+    const current = generation.current
+    const snapshot = await props.project(item.id)
+    if (current !== generation.current) return
+    const items = await props.manageProject(item.id, JSON.stringify({ operationId: randomUUID(),
+      expectedRevision: snapshot.revision, action: { kind: 'restore' } }))
+    if (current !== generation.current) return
+    setProjects(JSON.parse(items) as Project[]); setDeletedProject(undefined)
+    props.notifyImprovement(t('restoreProjectDone')); listHeading.current?.focus()
+  })
   const connect = async (create: boolean, resume = false, showAdvanced = false, showReviews = false,
     checkId?: string, showAssistant = true) => {
     const current = generation.current
@@ -319,12 +329,7 @@ export function Dashboard(props: Props) {
       {directoryError && <p role="status">{t('taskDirectoryUnavailable')}<button onClick={() =>{  setDirectoryEpoch(value => value + 1) }}>{t('dashboardRetry')}</button></p>}
       {error && <div className={css.error} role="alert">{error}<button disabled={busy} onClick={() => void perform(refresh)}>{t('dashboardRetry')}</button></div>}
       {deletedProject && <div className={css.deletionNotice} role="status"><span>{t('deleteProjectDone')} · {deletedProject.title}</span>
-        <button disabled={busy} onClick={() => void perform(async () => {
-          const snapshot = await props.project(deletedProject.id)
-          const items = await props.manageProject(deletedProject.id, JSON.stringify({ operationId: randomUUID(),
-            expectedRevision: snapshot.revision, action: { kind: 'restore' } }))
-          setProjects(JSON.parse(items) as Project[]); setDeletedProject(undefined)
-        })}>{t('deleteProjectUndo')}</button><button onClick={() => { setDeletedProject(undefined) }}>{t('close')}</button></div>}
+        <button disabled={busy} onClick={() => void restoreProject(deletedProject)}>{t('deleteProjectUndo')}</button><button onClick={() => { setDeletedProject(undefined) }}>{t('close')}</button></div>}
       {purgedTitle && <div className={css.deletionNotice} role="status"><span>{t('purgeProjectDone')} · {purgedTitle}</span><button onClick={() => { setPurgedTitle('') }}>{t('close')}</button></div>}
       {section === 'improvements' ? <Improvements {...props} tasks={projects} /> : section === 'toolbox' ? <Toolbox {...props} /> : !selected ? <>
         <div className={css.stats}>{([['dashboardTotal', projects.length], ['dashboardStopped', projects.filter(item => !item.archived && item.stopped).length], ['dashboardRemoved', projects.filter(item => item.archived).length]] as const).map(([label, count]) => <article key={label}><span>{t(label)}</span><strong>{count}</strong></article>)}</div>
@@ -333,8 +338,9 @@ export function Dashboard(props: Props) {
             <div className={css.taskList}>{visible.map(item => <article className={css.taskExit}
               data-deleting={deleting === item.id} key={item.id}
               onAnimationEnd={(event) => { if (event.target === event.currentTarget && deleting === item.id) finishRemoval(item) }}>
-              <div className={css.taskClip}><div className={css.taskCard}>
+              <div className={css.taskClip}><div className={css.taskCard} data-archived={!!item.archived}>
                 <button className={css.taskRow} disabled={deleting === item.id} onClick={() => { navigate(item.id); props.selectDestination(item.id) }}><span className={css.taskIcon} aria-hidden="true">◇</span><span className={css.taskText}><strong>{item.title}</strong><span>{item.objective}</span></span><span className={item.stopped ? css.stopped : css.badge}>{directoryError ? t('taskDirectoryUnavailable') : t(states[directory.find(entry => entry.project.id === item.id)?.state ?? (item.stopped ? 'stopped' : 'idle')])}{!!directory.find(entry => entry.project.id === item.id)?.pendingPlanIds.length && <> · {t('taskApproval')}</>}</span><span aria-hidden="true">→</span></button>
+                {item.archived && <button disabled={busy || !!deleting} onClick={() => void restoreProject(item)}>{t('restoreProject')}</button>}
                 <ProjectDeletion t={t} title={item.title} disabled={busy || !!deleting} permanent={!!item.archived}
                   remove={() => removeFromList(item)} deleted={() => { setDeleting(item.id) }} />
               </div></div>

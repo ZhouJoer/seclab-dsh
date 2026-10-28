@@ -73,6 +73,38 @@ describe('web e2e: Security workbench', () => {
     await browser?.close()
     await scaffold?.close()
   })
+  it('restores archived tasks directly from the deleted list without leaving it', async () => {
+    const agent = scaffold.ctx.agents.list()[0]!
+    const controller = await scaffold.ctx.securityWorkbench.ready
+    const created = await controller.importMaterials(agent.id, {
+      operationId: 'restore-material', expectedRevision: controller.view(agent.id).revision,
+      task: { title: 'Restore fixture with a deliberately long name for narrow screens',
+        objective: 'Review owned fixture', environmentIds: ['local'], maxAttempts: 3 },
+      material: { kind: 'text', name: 'restore.txt', text: 'Owned restore fixture' },
+    })
+    const task = created.records.find(item => item.kind === 'engagement')!.value
+    await controller.manageProject(task.id, { operationId: 'restore-archive', expectedRevision: created.revision,
+      action: { kind: 'archive' } })
+    const agentsBefore = scaffold.ctx.agents.list().length
+    await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
+    const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+    await dashboard.getByRole('button', { name: 'Deleted tasks', exact: true }).click()
+    const row = dashboard.locator('article').filter({ has: page.getByRole('button', { name: /Restore fixture/ }) })
+    await row.getByRole('button', { name: 'Restore task', exact: true }).waitFor()
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await row.screenshot({ path: '.dsh/task-restore-actions.png' })
+    await row.getByRole('button', { name: 'Restore task', exact: true }).click()
+    await dashboard.getByRole('heading', { name: 'Deleted tasks 0', exact: true }).waitFor()
+    expect(await dashboard.getByRole('button', { name: 'Deleted tasks', exact: true }).getAttribute('aria-current')).toBe('page')
+    expect(controller.projects().find(item => item.id === task.id)).toMatchObject({ archived: false, stopped: true })
+    expect(controller.binding(agent.id)).toBeUndefined()
+    expect(scaffold.ctx.agents.list()).toHaveLength(agentsBefore)
+    expect(scaffold.ctx.agents.list().every(item => item.status !== 'running')).toBe(true)
+    await dashboard.getByRole('button', { name: 'Tasks', exact: true }).click()
+    await row.getByRole('button', { name: 'Delete task', exact: true }).waitFor()
+    expect(tripwire.pageErrors).toEqual([])
+  })
   it('uses one save-or-cancel action for first-message settings without creating a task', async () => {
     const setup = page.getByRole('region', { name: 'Security analysis', exact: true })
     await setup.getByText('Configure', { exact: true }).click()
@@ -450,7 +482,6 @@ describe('web e2e: Security workbench', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-security-dashboard'))
     const agent = scaffold.ctx.agents.list()[0]!
     const controller = await scaffold.ctx.securityWorkbench.ready
-    await page.getByTitle('Tools & progress', { exact: true }).click()
     const created = await controller.importMaterials(agent.id, {
       operationId: 'dashboard-material', expectedRevision: controller.view(agent.id).revision,
       task: { title: 'Demo task with a deliberately long name to check wrapping on narrow screens',
@@ -459,6 +490,7 @@ describe('web e2e: Security workbench', () => {
     })
     const task = created.records.find(item => item.kind === 'engagement')!.value
     const asset = created.records.find(item => item.kind === 'asset')!.value
+    await page.getByTitle('Tools & progress', { exact: true }).click()
     const chatProgress = page.getByRole('region', { name: 'Tools & progress', exact: true })
     await chatProgress.getByText(task.title, { exact: true }).waitFor()
     await controller.command(agent.id, { operationId: 'main-page-checkpoint', expectedRevision: controller.view(agent.id).revision,

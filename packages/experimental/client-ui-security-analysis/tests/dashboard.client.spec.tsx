@@ -407,6 +407,45 @@ it('keeps failed deletions visible for retry instead of animating them away', as
   expect(row.getAttribute('data-deleting')).toBe('false')
   expect(within(row).getByRole<HTMLButtonElement>('button', { name: 'Confirm deletion' }).disabled).toBe(false)
 })
+it('restores a deleted task from its row without navigating or resuming analysis', async () => {
+  const archived = { ...alpha.value, archived: true, stopped: true }
+  const restored = { ...archived, archived: false }
+  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
+    manageProject: vi.fn(async () => JSON.stringify([restored, beta.value])) })
+  render(<Dashboard {...props} />)
+  await screen.findByRole('button', { name: /Beta/ })
+  fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
+  const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
+  fireEvent.click(within(row).getByRole('button', { name: en.restoreProject }))
+  await waitFor(() => { expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull() })
+  expect(api.manageProject).toHaveBeenCalledWith('Alpha', expect.any(String))
+  expect(JSON.parse(api.manageProject.mock.calls[0]![1])).toMatchObject({ expectedRevision: 1, action: { kind: 'restore' } })
+  expect(api.selectDestination).not.toHaveBeenCalled()
+  expect(api.openChat).not.toHaveBeenCalled()
+  expect(api.createSession).not.toHaveBeenCalled()
+  expect(api.resumeProject).not.toHaveBeenCalled()
+  expect(screen.getByRole('heading', { name: 'Deleted tasks 0' })).toBe(document.activeElement)
+  fireEvent.click(screen.getByRole('button', { name: en.dashboardTasks }))
+  expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
+})
+it('keeps a deleted task available for restore after a failed request', async () => {
+  const archived = { ...alpha.value, archived: true, stopped: true }
+  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
+    manageProject: vi.fn().mockRejectedValueOnce(new Error('Restore failed'))
+      .mockResolvedValueOnce(JSON.stringify([{ ...archived, archived: false }, beta.value])) })
+  render(<Dashboard {...props} />)
+  await screen.findByRole('button', { name: /Beta/ })
+  fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
+  const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
+  fireEvent.click(within(row).getByRole('button', { name: en.restoreProject }))
+  await screen.findByRole('alert')
+  const restore = within(row).getByRole<HTMLButtonElement>('button', { name: en.restoreProject })
+  expect(restore.disabled).toBe(false)
+  fireEvent.click(restore)
+  await waitFor(() => { expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull() })
+  expect(api.manageProject).toHaveBeenCalledTimes(2)
+  expect(api.selectDestination).not.toHaveBeenCalled()
+})
 it('requires a second confirmation for long project names and offers no undo afterward', async () => {
   const archived = { ...alpha.value, title: 'Alpha ' + 'Long project name '.repeat(12), archived: true, stopped: true }
   const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
