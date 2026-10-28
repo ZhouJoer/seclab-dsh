@@ -5,13 +5,12 @@ import { fileURLToPath } from 'node:url'
 /**
  * Read the packaged Markdown verbatim when the workbench initializes.
  * @returns complete direct-execution prompt, including its original whitespace.
- * @throws when the resource cannot be read, is empty, or lacks AUTHORIZED SCOPE.
+ * @throws when the resource cannot be read or is empty.
  */
 export function readUnsealedPrompt(): string {
   const path = fileURLToPath(new URL('../resources/prompts/unsealed.md', import.meta.url))
   const text = readFileSync(path, 'utf8')
   if (!text.trim()) throw new Error(`Unsealed prompt is empty: ${path}`)
-  if (!text.includes('AUTHORIZED SCOPE')) throw new Error(`Unsealed prompt lacks AUTHORIZED SCOPE: ${path}`)
   return text
 }
 

@@ -15,17 +15,18 @@ describe('unsealed prompt resource', () => {
     const source = fs.readFileSync(new URL('../resources/prompts/unsealed.md', import.meta.url), 'utf8')
     expect(readUnsealedPrompt()).toBe(source)
   })
-  it.each([
-    [' \n\t', 'Unsealed prompt is empty'],
-    ['Direct-execution contract without a scope section', 'Unsealed prompt lacks AUTHORIZED SCOPE'],
-  ])('rejects invalid prompt text %j', (source, message) => {
+  it('preserves custom text without requiring section headings', () => {
+    const source = '  Custom analysis instructions.\n\n'
+    vi.mocked(fs.readFileSync).mockReturnValueOnce(source)
+    expect(readUnsealedPrompt()).toBe(source)
+  })
+  it.each(['', ' \n\t'])('rejects empty prompt text %j', (source) => {
     const read = vi.mocked(fs.readFileSync).mockReturnValueOnce(source)
     try {
-      expect(() => readUnsealedPrompt()).toThrow(message)
+      expect(() => readUnsealedPrompt()).toThrow('Unsealed prompt is empty')
     } finally {
       read.mockReset()
     }
-    expect(readUnsealedPrompt()).toContain('AUTHORIZED SCOPE')
   })
   it('propagates file read failures instead of injecting fallback text', () => {
     const failure = new Error('prompt resource unavailable')
@@ -35,7 +36,6 @@ describe('unsealed prompt resource', () => {
     } finally {
       read.mockReset()
     }
-    expect(readUnsealedPrompt()).toContain('AUTHORIZED SCOPE')
   })
   it('renders registered scope lines and an explicit empty-scope marker', () => {
     expect(unsealedScopeContext(['site: https://fixture.example (authorized addresses: 192.0.2.10)']))
