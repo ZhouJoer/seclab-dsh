@@ -20,6 +20,9 @@
     - button "Evidence"
     - button "Reports"
   - group: More features
-  - status "{{workspace}}": Workspace synchronized
-  - paragraph: Describe your task in chat. Workspace files are added to materials automatically.
+  - heading "Workspace" [level=3]
+  - text: {{workspace}}
+  - paragraph: Open the chat, then select Files in the sidebar to browse this directory.
+  - button "Open workspace chat"
+  - paragraph: Describe your task in chat to investigate workspace files directly.
   - group: Manage task

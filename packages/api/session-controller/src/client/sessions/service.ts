@@ -27,6 +27,8 @@ import type { SessionListEntry } from './lineage.ts'
 export interface SessionSummary {
   /** A durable business identity; an empty Session with this flag is not a provisional placeholder. */
   reserved?: boolean
+  /** Localized composer placeholder projected by a feature's presentation source. */
+  composerPlaceholder?: string
   id: SessionId
   /** Latest durable log-backed title, absent until the host projects one. */
   title?: string
@@ -717,6 +719,7 @@ export class ClientSessions implements ISessions {
       const summary = byId[id]
       if (summary) byId[id] = { ...summary,
         ...(presentation.title === undefined ? {} : { displayTitle: presentation.title }),
+        ...(presentation.composerPlaceholder === undefined ? {} : { composerPlaceholder: presentation.composerPlaceholder }),
         ...(presentation.reserved ? { reserved: true } : {}),
       }
     }

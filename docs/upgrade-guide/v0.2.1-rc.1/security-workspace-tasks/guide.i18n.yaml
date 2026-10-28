@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.1/security-workspace-tasks/guide.md
 /:
-  en: 58d9b4f7c8418ba7
-  zh: 5f0f8f41b2e21b23
+  en: a411fe36bcd8c91f
+  zh: 8b542ad668f8e670
 /security-workspace-tasks:
   en: 2201fef18aead5a2
   zh: 6569b13d4c874805
 /security-workspace-tasks/change:
-  en: c174828e9646e6db
-  zh: 951509eb9d93ffa5
+  en: 2779310995833d5f
+  zh: 0b03f9c7db732ad7
 /security-workspace-tasks/migration:
-  en: 0518c4cdfc84d75e
-  zh: c70055bf8259adad
+  en: 65cb3ad0c03b7bd7
+  zh: fb96d4f3e9c78cb9

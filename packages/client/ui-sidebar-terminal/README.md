@@ -49,6 +49,8 @@ The terminal controller saves each globally unique content identity's Host assoc
 
 At plugin startup, terminal-kind entries in the sidebar's complete open-tab inventory retain matching saved Host identities, including dormant Sessions. This window hold remains independent of React mounts and screen subscriptions. Removing the last matching occurrence releases it; collapsing or switching views does not. The [terminal controller](../../api/terminal-controller/README.md#use-this-package) owns unattended idle reclamation and long-command protection.
 
+Other session surfaces can render the `terminal.viewport` Factory with a stable `contentId`, visibility and an explicit new-terminal action. It reuses the same lazy terminal screen and controller without opening a right-sidebar tab.
+
 </details>
 
 <a id="further-exploration"></a>

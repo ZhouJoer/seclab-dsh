@@ -349,6 +349,7 @@ export class SessionCommandController {
         )
         const content = await this.ctx.attachments.admitPromptContent(admission.content)
         const message: UserMessage = createUserMessage({ content, source })
+        await this.ctx.serial('api-session/before-prompt', agent, message)
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(
             'session/not-found',

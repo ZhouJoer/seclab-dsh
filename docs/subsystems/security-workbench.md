@@ -10,6 +10,8 @@ Task-owned module selections resolve to Agent skill scopes and tool admission in
 
 `MaterialBrowserView` is the read-only `projectMaterial` result: a directory page with a next offset, text with a truncation flag, a raster image URL, or a binary hexadecimal prefix. [Material browser types](../../packages/experimental/security-analysis/src/material-browser-types.ts) define the variants; the [package reference](../../packages/experimental/security-analysis/README.md) owns snapshot scope and read limits.
 
+`MaterialDocument` is the `projectMaterialDocument` result: artifact name, digest and size with bounded text, complete PDF or raster bytes, or a binary prefix. The project and exact manifest member authorize the read. Optional Office conversion reads the immutable artifact through the converter byte limit and cancellation signal; no live filesystem path is accepted.
+
 `WorkbenchConfiguration` is the object returned by `configuration` and `configureWorkspace`. It includes material limits, projects, providers, environments and the knowledge interval. Its workspace value is null without a workspace; the attempt limit is absent until configured. The [configuration types](../../packages/experimental/security-analysis/src/workbench-configuration-types.ts) define the browser-safe fields.
 
 `ToolboxDirectory` contains configured environment choices and one measured or explicitly unchecked `ToolboxInventory`. Its `ToolboxTool` entries separate availability, invocation method and optional provider integration. Available Docker tools expose the Host `command` and `prefixArgs`, with the original container executable and arguments in `installation` for configuration persistence. These read-only observations are not project evidence or execution authority; fields are defined in [toolbox types](../../packages/experimental/security-analysis/src/toolbox-types.ts).
@@ -63,8 +65,8 @@ Optional security profile service; default application compositions remain indep
  * @returns the saved request and current suggestions. */
 @Remote('analyzeImprovements') async analyzeImprovements(input: string): Promise<EvolutionView>
 
-/** Save operator progress or a coding AI's implementation receipt.
- * @param input - revision-checked status or receipt command.
+/** Update or delete a shared suggestion, or save a coding AI's implementation receipt.
+ * @param input - revision-checked status, delete or receipt command.
  * @returns current improvement records. */
 @Remote('updateImprovement') async updateImprovement(input: string): Promise<EvolutionView>
 
@@ -324,10 +326,18 @@ Optional security profile service; default application compositions remain indep
  * @returns durable identities; repeating the same request recovers the existing task. */
 @Remote('startAnalysis') async startAnalysis(workspaceId: string, input: string): Promise<{ sessionId: SessionId; projectId: string }>
 
-/** Retry automatic directory collection while preserving the last successful snapshot.
- * @param projectId - task whose configured source should be rescanned.
- * @returns completion after a fresh snapshot is published. */
-@Remote('refreshWorkspaceMaterials') async refreshWorkspaceMaterials(projectId: string): Promise<void>
+/** Associate a security-preset conversation before its first operator prompt.
+ * @param agent - authenticated conversation; other presets and existing associations are unchanged.
+ * @returns completion after the task and fixed workspace defaults are committed; retries reuse the association.
+ */
+@Remote('prepareAnalysis') async prepareAnalysis(agent: Agent): Promise<void>
+
+/** Save or clear this conversation's startup settings without creating a project or changing its preset.
+ * @param agent - authenticated conversation, still awaiting its first association.
+ * @param input - JSON revision and complete settings; null settings restores workspace defaults.
+ * @returns configuration after the durable save.
+ */
+@Remote('configureStartup') async configureStartup(agent: Agent, input: string): Promise<WorkbenchConfiguration>
 
 /**
  * List operator-configured environments before project creation.
@@ -396,6 +406,13 @@ Optional security profile service; default application compositions remain indep
  * @returns a directory page or bounded file preview.
  */
 @Remote('projectMaterial') async projectMaterial(projectId: string, input: string): Promise<MaterialBrowserView>
+
+/** Preview an exact saved material without resolving a live workspace file.
+ * @param projectId - Project authorizing the asset read.
+ * @param input - Serialized asset identity and exact snapshot member path.
+ * @param signal - Operator request lifetime.
+ * @returns Read-only text, image or PDF with the original artifact digest. */
+@Remote('projectMaterialDocument') async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument>
 ```
 
 Types: [Agent](core.md) · [SessionId](core.md)

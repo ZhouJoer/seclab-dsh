@@ -249,7 +249,7 @@ describe('read tool', () => {
       path: '/abs/a.txt',
       offset: 1,
       lines: [{ number: 1, text: 'hello' }, { number: 2, text: 'world' }],
-      totalLines: 2,
+      totalLines: 2, truncatedLines: [],
     })
     expect(text(result)).toBe(`<path>/abs/a.txt</path>
 <type>file</type>
@@ -266,7 +266,7 @@ describe('read tool', () => {
     fs.files.set('key:empty.txt', '')
     const result = await call(ctx, 'read', { file_path: 'empty.txt' })
     if (result.isError) throw new Error('expected empty read success')
-    expect(result.value).toEqual({ path: '/abs/empty.txt', offset: 1, lines: [], totalLines: 0 })
+    expect(result.value).toEqual({ path: '/abs/empty.txt', offset: 1, lines: [], totalLines: 0, truncatedLines: [] })
     expect(text(result)).toContain('(End of file - total 0 lines)')
   })
 
@@ -380,7 +380,7 @@ describe('read tool', () => {
       path: '/abs/a.ts',
       offset: 1,
       lines: [{ number: 1, text: 'const x = 1' }, { number: 2, text: 'const y = 2' }],
-      totalLines: 2,
+      totalLines: 2, truncatedLines: [],
       lang: 'ts',
     })
     const view = ctx.tools.get('read')?.presentResult?.({ file_path: 'a.ts' }, result)
@@ -400,7 +400,7 @@ describe('read tool', () => {
     fs.files.set('key:notes', 'plain')
     const result = await call(ctx, 'read', { file_path: 'notes' })
     if (result.isError) throw new Error('expected read success')
-    expect(result.meta).toEqual({ path: '/abs/notes', offset: 1, lines: [{ number: 1, text: 'plain' }], totalLines: 1 })
+    expect(result.meta).toEqual({ path: '/abs/notes', offset: 1, lines: [{ number: 1, text: 'plain' }], totalLines: 1, truncatedLines: [] })
   })
 })
 

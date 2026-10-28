@@ -36,16 +36,17 @@ it('reserves bottom content height without remounting it on main-panel navigatio
       await page.goto(scaffold.authenticatedUrl)
       await page.locator('[data-shell-bottom]').waitFor({ state: 'attached' })
       const expected: string[] = []
-      const check = async (height: number, caption = 0) => {
+      const check = async (height: number, caption = 0, center = false) => {
         await expect.poll(async () => (await geometry(page)).bottom.height).toBe(height)
         const result = await geometry(page)
         const viewportHeight = page.viewportSize()!.height
         expect(result.bottom).toEqual({ top: viewportHeight - height, height, bottom: viewportHeight })
         expect(result.main).toEqual({ top: caption, height: viewportHeight - caption - height, bottom: viewportHeight - height })
-        expect(result.sidebar).toEqual(result.main)
-        expect(result.rightbar).toEqual(result.main)
+        const sides = center ? { top: caption, height: viewportHeight - caption, bottom: viewportHeight } : result.main
+        expect(result.sidebar).toEqual(sides)
+        expect(result.rightbar).toEqual(sides)
         expect(result.overlay).toEqual({ top: 0, height: viewportHeight, bottom: viewportHeight })
-        for (const handle of result.handles) expect(handle).toEqual(result.main)
+        for (const handle of result.handles) expect(handle).toEqual(sides)
         expect(result.pageHeight).toBe(viewportHeight)
         return result
       }
@@ -72,6 +73,14 @@ it('reserves bottom content height without remounting it on main-panel navigatio
         }, platform)
         expected.push(`${platform}: ${JSON.stringify(await check(360, platform === 'windows' ? 40 : 0))}`)
       }
+      await page.getByRole('button', { name: 'Center bottom', exact: true }).click()
+      expected.push(`center: ${JSON.stringify(await check(360, 0, true))}`)
+      expect(await page.evaluate(() => {
+        const bottom = document.querySelector('[data-shell-bottom]')!.getBoundingClientRect()
+        const main = document.querySelector('[data-slot="main"]')!.parentElement!.getBoundingClientRect()
+        return bottom.left === main.left && bottom.right === main.right
+      })).toBe(true)
+      await page.getByRole('button', { name: 'Frame bottom', exact: true }).click()
       await page.setViewportSize({ width: 520, height: 600 })
       await expect.poll(() => page.locator('[data-shell-bottom]').locator('..').getAttribute('data-sidebar-collapsed')).toBe('true')
       expected.push(`narrow: ${JSON.stringify(await check(360))}`)

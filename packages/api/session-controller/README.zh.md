@@ -27,7 +27,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-Client 插件可通过 `registerPresentation` 注册可观察的 Session 展示信息：业务标题、空白会话保留标记与可选改名操作。释放注册会恢复原生展示。Host 插件通过 `registerReuseGuard` 防止关联的空白 Session 被普通新建流程复用；获取已存储 Session 的写入者时会重新检查。
+Client 插件可通过 `registerPresentation` 注册可观察的 Session 展示信息：业务标题、空白会话保留标记、可选改名操作和输入框占位提示。释放注册会恢复原生展示。Host 插件通过 `registerReuseGuard` 防止关联的空白 Session 被普通新建流程复用；获取已存储 Session 的写入者时会重新检查。
+
+提示词接入在校验附件后、消息入队前等待 `api-session/before-prompt`。插件可准备任务关联，或用带类型的 Remote 错误拒绝请求。拒绝不会消耗上传凭证或启动模型请求；重试可复用已经准备的关联。
 
 历史页与 follow opening 快照为每个持久 Session 事件携带一条 `{ type: 'event', event: SessionWireEvent }` record。Client 把每条已接受 record 保留为一个持久 `SessionEventLikeEntry`；Assistant token 边界保留在 `assistant/message` 或 `assistant/attempt` 的紧凑流内。工具参数、结果内容、失败信息和 `tool/result.data.meta` 原样通过；控制器不解析工具定义、不运行展示转换器，也不附加 UI 数据。
 

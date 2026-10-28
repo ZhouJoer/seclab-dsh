@@ -22,7 +22,7 @@ function props(asset = 'first'): Props {
     return { status: 'live' as const, value, failure: undefined }
   }
   // This component requests only its own protocol from the generic framework hook.
-  return { project: 'task', asset, label: '/owned/workspace', directory: true,
+  return { renderFactorySlot: () => null, project: 'task', asset, label: '/owned/workspace', directory: true,
     t: makeTranslate(en, common), useResource: useResource as Props['useResource'] }
 }
 

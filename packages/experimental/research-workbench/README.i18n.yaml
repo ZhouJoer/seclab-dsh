@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/research-workbench/README.md
+/:
+  en: b68f1600a8022a14
+  zh: 5177211216f99c9e
+/deepseek-ai-dsh-experimental-research-workbench:
+  en: af856a98edb65b5d
+  zh: 85dc20be07b66b8f
+/deepseek-ai-dsh-experimental-research-workbench/summary:
+  en: 2299db3e1cb67f22
+  zh: fca0b0b74ddbaea7
+/deepseek-ai-dsh-experimental-research-workbench/table-of-contents:
+  en: 5142d11197b07b7d
+  zh: efdef5588a527697
+/deepseek-ai-dsh-experimental-research-workbench/use-this-package:
+  en: 9c4af5e5a9454313
+  zh: 1201a21277ba129b
+/deepseek-ai-dsh-experimental-research-workbench/understand-the-implementation:
+  en: 2b65372c3d592d8b
+  zh: f556bfa29a3906b8
+/deepseek-ai-dsh-experimental-research-workbench/further-exploration:
+  en: f8159a2083530647
+  zh: dcfd9b487bd1ea5e
+/deepseek-ai-dsh-experimental-research-workbench/dev-note:
+  en: 57bc572027bf4939
+  zh: 2a8de25b82cb7512
+/deepseek-ai-dsh-experimental-research-workbench/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-research-workbench/model-experience/operator-research:
+  en: ff6ea988b81d9388
+  zh: a0f254aebeba826a
+/deepseek-ai-dsh-experimental-research-workbench/model-experience/operator-research/what-the-model-sees:
+  en: ce6ec9abfebae949
+  zh: e21b53ccfaa6602f
+/deepseek-ai-dsh-experimental-research-workbench/model-experience/operator-research/token-effect:
+  en: ae0f3fe726a65f0d
+  zh: 3e99a456f56c6e07
+/deepseek-ai-dsh-experimental-research-workbench/model-experience/operator-research/kv-cache-effect:
+  en: 57837917bafe192d
+  zh: 172bf502051167c2
+/deepseek-ai-dsh-experimental-research-workbench/known-limitations-and-deferred-work:
+  en: 12de75a2b2e650c7
+  zh: 4190c09d2fe9dd18

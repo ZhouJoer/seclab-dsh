@@ -74,6 +74,14 @@ export { SessionFileReferences } from './file-references.ts'
 export { SessionSkillCatalog } from './skill-catalog.ts'
 
 declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.
+     * @mode serial
+     * @param agent - authenticated destination Agent.
+     * @param message - validated operator content, before enqueueing.
+     */
+    'api-session/before-prompt'(agent: Agent, message: import('@deepseek-ai/dsh-llm').UserMessage): Promise<void>
+  }
   interface Context {
     /** Host Session business API and Remote namespace owner. */
     sessionController: SessionController

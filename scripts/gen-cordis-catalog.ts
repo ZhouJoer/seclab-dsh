@@ -150,6 +150,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   workspaceRegistry: 'workspace.md',
   workspaceController: 'workspace.md',
   workspaceFiles: 'workspace.md',
+  researchFiles: 'workspace.md',
   workspaceChanges: 'deliverables.md',
   terminalController: 'workspace.md',
   directoryPickerController: 'workspace.md',
@@ -174,6 +175,7 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
+  researchWorkbench: 'client-side resource and panel registry — packages/experimental/research-workbench/README.md owns the API',
   invocation: 'not a service: per-call accessor (RemoteInvocation | undefined) the Gateway derives for each Remote call — packages/api/gateway/README.md owns the contract',
   webTerminals: 'client-side terminal view models — packages/api/terminal-controller/README.md owns the API',
   appReady: 'not a service: launcher-provided successful-startup signal — packages/boot/cmdline/README.md owns the launcher contract',
@@ -270,6 +272,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
  * exemption cannot mask another declaration in that scope.
  */
 export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
+  'conversation/before-send': 'client-face composer preparation — packages/client/ui-conversation/README.md owns the API',
   'command/executed': 'client-face local command acknowledgment — packages/client/ui-commands/README.md owns the API',
   'connection/reset': 'client-face transport signal — packages/api/session-controller/README.md owns the API',
   'locale/change': 'client-face locale switch signal — packages/client/locale/README.md owns the API',
@@ -715,6 +718,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TeamId: 'agent-team.md',
   WorkbenchView: 'security-workbench.md',
   MaterialBrowserView: 'security-workbench.md',
+  MaterialDocument: 'security-workbench.md',
   SecurityProjectSummary: 'security-workbench.md',
   HttpIdentityDescription: 'security-workbench.md',
   HttpIdentityId: 'security-workbench.md',
@@ -900,6 +904,15 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  ResearchScope: 'Effective file scope is owned by packages/experimental/research-workbench/README.md',
+  ResearchDirectory: 'Bounded file listing is owned by packages/experimental/research-workbench/README.md',
+  ResearchFile: 'Versioned text reads are owned by packages/experimental/research-workbench/README.md',
+  ResearchSave: 'Version-protected writes are owned by packages/experimental/research-workbench/README.md',
+  ResearchResource: 'Adapter resource identity is owned by packages/experimental/research-workbench/README.md',
+  ResearchSource: 'Resource adapter lifetime is owned by packages/experimental/research-workbench/README.md',
+  ResearchPanel: 'Optional panel contributions are owned by packages/experimental/research-workbench/README.md',
+  ResearchPreview: 'Optional preview readers are owned by packages/experimental/research-workbench/README.md',
+  BottomPlacement: 'Bottom slot geometry is owned by packages/client/ui-layout/README.md',
   ProductEvent: 'Desktop event fields are owned by packages/client/product-analytics/README.md and src/events.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',
   ConnectionRequestRejection: 'transport rejection status is owned by packages/client/connection/src/rpc.ts',

@@ -278,6 +278,26 @@
   background: var(--dsw-alias-bg-base);
 }
 
+.frame[data-bottom-placement='center'] .sidebarCol {
+  grid-area: 1 / 1 / -1 / 2;
+}
+
+.frame[data-bottom-placement='center'] .centerCol {
+  grid-area: 1 / 2 / 2 / 3;
+}
+
+.frame[data-bottom-placement='center'] .rightbarCol {
+  grid-area: 1 / 3 / -1 / 4;
+}
+
+.frame[data-bottom-placement='center'] .bottomRow {
+  grid-area: 2 / 2 / 3 / 3;
+}
+
+.frame[data-bottom-placement='center'] .handle {
+  grid-row: 1 / -1;
+}
+
 .overlayLayer {
   position: absolute;
   inset: 0;

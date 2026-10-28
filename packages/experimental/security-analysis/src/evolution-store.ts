@@ -4,6 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { z } from 'zod'
+import { parseModelJson } from './model-json.ts'
 import { evolutionStateSchema, evolutionStatusSchema, evolutionReceiptSchema, evolutionOutputSchema,
   type EvolutionState, type EvolutionView, type EvolutionInput, type EvolutionRunId,
   type EvolutionProposalId, type EvolutionBundle } from './evolution-model.ts'
@@ -91,7 +92,8 @@ export class EvolutionStore {
    * @returns completion once the current queue drains. */
   async flush(): Promise<void> { await this.chain }
 
-  /** Apply an operator edit once; receipts cannot assert verified status.
+  /** Apply an operator edit once; deletion removes the shared suggestion and receipts, retaining analysis inputs.
+   * Receipts cannot assert verified status.
    * @param input - revision-checked operator JSON.
    * @returns current pool after the edit. */
   async command(input: unknown): Promise<EvolutionView> {
@@ -99,6 +101,7 @@ export class EvolutionStore {
       action: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal('status'), proposalId: z.string().min(1), status: evolutionStatusSchema }).strict(),
         z.object({ kind: z.literal('receipt'), receipt: evolutionReceiptSchema }).strict(),
+        z.object({ kind: z.literal('delete'), proposalId: z.string().min(1) }).strict(),
       ]),
     }).strict().parse(input)
     const hash = evolutionHash(request)
@@ -107,10 +110,13 @@ export class EvolutionStore {
       if (previous) { if (previous !== hash) throw new Error('Operation ID was reused with different input'); return }
       if (draft.revision !== request.expectedRevision) throw new Error('Improvement suggestions changed; refresh and retry')
       const action = request.action
-      const id = action.kind === 'status' ? action.proposalId : action.receipt.proposalId
+      const id = action.kind === 'receipt' ? action.receipt.proposalId : action.proposalId
       const proposal = draft.proposals.find(item => item.id === id)
       if (!proposal) throw new Error('Unknown improvement suggestion')
-      if (action.kind === 'status') {
+      if (action.kind === 'delete') {
+        draft.proposals = draft.proposals.filter(item => item.id !== id)
+        for (const run of draft.runs) run.proposalIds = run.proposalIds.filter(proposalId => proposalId !== id)
+      } else if (action.kind === 'status') {
         proposal.status = action.status
         if (action.status === 'verified') proposal.needsReview = false
       } else {
@@ -118,7 +124,7 @@ export class EvolutionStore {
         proposal.receipts.push(action.receipt)
         if (proposal.status !== 'verified' && proposal.status !== 'ignored') proposal.status = 'modified'
       }
-      proposal.updatedAt = Date.now()
+      if (action.kind !== 'delete') proposal.updatedAt = Date.now()
       draft.operations[request.operationId] = hash
     })
     return this.view()
@@ -132,7 +138,7 @@ export class EvolutionStore {
    * @param signal - optional cancellation rechecked at serialized publication.
    * @returns completion after publication. */
   async complete(id: EvolutionRunId, input: EvolutionInput, output: string, maxSuggestions: number, signal?: AbortSignal): Promise<void> {
-    const result = evolutionOutputSchema.parse(JSON.parse(output))
+    const result = evolutionOutputSchema.parse(parseModelJson(output))
     if (result.suggestions.length > maxSuggestions) throw new Error('Too many improvement suggestions')
     for (const suggestion of result.suggestions) {
       if (suggestion.sourceIds.some(source => !input.sources.some(item => item.id === source))) throw new Error('Suggestion cites an observation outside this analysis')

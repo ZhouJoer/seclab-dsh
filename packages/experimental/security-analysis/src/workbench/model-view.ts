@@ -18,7 +18,7 @@ interface RecordSummary {
     status?: string
     findingHash?: string
     assetId?: string
-    assetKind?: 'file' | 'source' | 'web' | 'external-web'
+    assetKind?: 'file' | 'source' | 'workspace' | 'web' | 'external-web'
     format?: FileAsset['format']
     origin?: string
     pathPrefix?: string
@@ -200,6 +200,7 @@ export interface CommandReceipt {
   changed: { kind: SecurityRecord['kind']; id: string }[]
   totalChanged: number
   hasMore: boolean
+  report?: { id: string; path: string }
 }
 /** Return changed record identities after a committed mutation.
  * @param before - caller-scoped state before the command.
@@ -211,9 +212,20 @@ export function commandReceipt(before: WorkbenchView, after: WorkbenchView, maxB
   const previous = new Map(before.records.map(item => [item.kind + ':' + recordId(item), JSON.stringify(item)]))
   const changed = after.records.filter(item => previous.get(item.kind + ':' + recordId(item)) !== JSON.stringify(item))
     .map(item => ({ kind: item.kind, id: recordId(item) }))
-  const receipt = { revision: after.revision, committed: true, changed, totalChanged: changed.length, hasMore: false }
+  const completedId = after.records.find(item => item.kind === 'engagement')?.value.completion?.reportId
+  const reports = after.records.filter(item => item.kind === 'report')
+  const published = reports.find(item => item.value.id === completedId) ?? reports.at(-1)
+  const receipt: CommandReceipt = { revision: after.revision, committed: true, changed, totalChanged: changed.length, hasMore: false,
+    ...(published ? { report: { id: published.value.id, path: '/api/security.report?' + new URLSearchParams({
+      projectId: published.value.engagementId, reportId: published.value.id,
+    }).toString() } } : {}),
+  }
   while (Buffer.byteLength(JSON.stringify(receipt)) > maxBytes && receipt.changed.length) {
     receipt.changed.pop()
+    receipt.hasMore = true
+  }
+  if (Buffer.byteLength(JSON.stringify(receipt)) > maxBytes) {
+    delete receipt.report
     receipt.hasMore = true
   }
   return receipt

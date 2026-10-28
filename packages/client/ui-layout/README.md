@@ -31,7 +31,7 @@ The root slot composes the sidebar, main content, and right column. The sidebar 
 
 Global panels occupy the root-scoped `main` keyed slot; `conversation` is the reserved key for the Conversation. `ctx.layout.selectPanel(id)` selects a registered panel, and `null` selects the Conversation without changing the current Session. The Plugins page contributes one of the shipped global panels.
 
-The single root-scoped `shell.bottom` slot spans the full width below the three columns. Its occupant controls its own height and visibility; the columns shrink by that height, and empty content reserves no space. Main-panel navigation preserves the bottom component. Column resize handles stop above it, while `shell.overlay` covers the whole frame. The default composition leaves this slot empty.
+The single root-scoped `shell.bottom` slot spans the full width below the three columns by default. Its occupant can register `ctx.layout.registerBottomPlacement('center')` through an effect to place it below the center only, preserving full-height side columns and resize handles. The latest registration wins; disposing it restores the previous placement or the full-width default. The occupant controls height and visibility; empty content reserves no space. Main-panel navigation preserves the bottom component, and `shell.overlay` covers the whole frame. The default composition leaves this slot empty.
 
 <a id="window-chrome-seat"></a>
 ### Window-chrome seat

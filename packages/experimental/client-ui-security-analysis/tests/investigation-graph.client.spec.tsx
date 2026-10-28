@@ -23,7 +23,7 @@ it('opens a finding and its original observation in two selections without chang
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
   const read = vi.fn(async () => JSON.stringify({ text: 'invoice.owner is never compared', truncated: true }))
   const view = investigationFixture()
-  render(<InvestigationGraph view={view} project="project" t={makeTranslate(en, common)} projectArtifact={read}
+  render(<InvestigationGraph renderFactorySlot={() => null} view={view} project="project" t={makeTranslate(en, common)} projectArtifact={read}
     activity={{ usage: [], briefs: [], connected: true, error: '', retry: vi.fn() }} openChild={vi.fn()} openPlans={vi.fn()} />)
   expect(read).not.toHaveBeenCalled()
   const finding = screen.getAllByRole('button').find(button => button.textContent?.startsWith('Finding'))!
@@ -44,10 +44,10 @@ it('retains the selected record through updates and discards a late preview afte
   const pending = Promise.withResolvers<string>()
   const props = { view: investigationFixture(), project: 'project', t: makeTranslate(en, common), projectArtifact: vi.fn(() => pending.promise),
     activity: { usage: [], briefs: [], connected: true, error: '', retry: vi.fn() }, openChild: vi.fn(), openPlans: vi.fn() }
-  const mounted = render(<InvestigationGraph {...props} />)
+  const mounted = render(<InvestigationGraph renderFactorySlot={() => null} {...props} />)
   fireEvent.click(screen.getByRole('button', { name: /Partial response/ }))
   fireEvent.click(screen.getByRole('button', { name: /Check.*Check ownership/ }))
-  mounted.rerender(<InvestigationGraph {...props} view={{ ...props.view, revision: 6 }} />)
+  mounted.rerender(<InvestigationGraph renderFactorySlot={() => null} {...props} view={{ ...props.view, revision: 6 }} />)
   const detail = screen.getByRole('complementary')
   expect(within(detail).getByRole('heading', { name: 'Check ownership' })).toBeTruthy()
   pending.resolve(JSON.stringify({ text: 'Late old preview', truncated: false }))
@@ -57,7 +57,7 @@ it('retains the selected record through updates and discards a late preview afte
 
 it('keeps an explicitly focused observation visible and explains a binary preview', async () => {
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
-  render(<InvestigationGraph view={investigationFixture()} project="project" t={makeTranslate(en, common)}
+  render(<InvestigationGraph renderFactorySlot={() => null} view={investigationFixture()} project="project" t={makeTranslate(en, common)}
     projectArtifact={async () => JSON.stringify({ text: '', truncated: false, binary: true })}
     activity={{ usage: [], briefs: [], connected: true, error: '', retry: vi.fn() }} openChild={vi.fn()} openPlans={vi.fn()} />)
   fireEvent.click(screen.getByRole('button', { name: /Finding.*Missing ownership check/ }))

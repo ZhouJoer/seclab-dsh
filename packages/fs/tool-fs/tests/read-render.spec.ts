@@ -49,6 +49,14 @@ describe('buildWindow', () => {
   it('truncates an over-long line', async () => {
     const result = await buildWindow(whole('x'.repeat(3000)), READ_ALL, 'f')
     expect(result.lines[0]?.text).toContain(`... (line truncated to ${READ_MAX_LINE_LENGTH} chars)`)
+    expect(result.truncatedLines).toEqual([1])
+  })
+
+  it('identifies only shortened returned lines, independently of literal truncation text', async () => {
+    const text = 'outside'.repeat(30) + '\n... (line truncated to 99 chars)\n' + 'x'.repeat(150) + '\nshort'
+    const result = await buildWindow(chunked(text, 7), { offset: 2, limit: 3, maxLineLength: 99, maxBytes: 1000 }, 'f')
+    expect(result.truncatedLines).toEqual([3])
+    expect(result.lines.map(line => line.number)).toEqual([2, 3, 4])
   })
 
   it('caps output bytes and reports truncatedByBytes', async () => {

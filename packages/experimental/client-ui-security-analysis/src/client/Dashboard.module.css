@@ -5,11 +5,11 @@
 .topbar { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; margin: 0 0 24px; }
 .topbar h1 { font-size: 28px; line-height: 1.3; margin: 0; font-weight: 650; letter-spacing: -.03em; }
 .detailHeader p { color: var(--dsw-alias-label-secondary); margin: 8px 0 0; line-height: 1.7; }
-.main button, .main input, .main select, .main textarea { font: inherit; color: inherit; }
-.main button { cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 16px; background: var(--dsw-alias-bg-layer-1); transition: background .15s; }
-.main button:hover { background: var(--dsw-alias-bg-module-platform); }
-.main button:disabled { opacity: .5; cursor: not-allowed; }
-.main button:focus-visible, .main input:focus-visible, .main select:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
+:where(.main button), .main input, .main select, .main textarea { font: inherit; color: inherit; }
+:where(.main button) { cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 16px; background: var(--dsw-alias-bg-layer-1); transition: background .15s; }
+:where(.main button:hover) { background: var(--dsw-alias-bg-module-platform); }
+:where(.main button:disabled) { opacity: .5; cursor: not-allowed; }
+:where(.main button:focus-visible), .main input:focus-visible, .main select:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
 .main input, .main select, .main textarea { background: var(--dsw-alias-bg-layer-1); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 10px 12px; min-width: 0; }
 .root .primary { background: var(--dsw-alias-link); color: var(--dsw-alias-label-primary-inverted); border-color: transparent; }
 .root .primary:hover { filter: brightness(.95); background: var(--dsw-alias-link); }
@@ -34,13 +34,14 @@
 .taskExit[data-deleting="true"] { animation: taskRemoval .26s ease forwards; pointer-events: none; }
 .taskClip { min-height: 0; overflow: hidden; }
 .taskCard { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; column-gap: 12px; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.taskCard[data-archived="true"] { grid-template-columns: minmax(0,1fr) auto auto; }
 .root .taskRow { display: flex; align-items: center; gap: 16px; border-radius: 0; border: 0; padding: 20px 0; background: transparent; text-align: left; width: 100%; }
 .deletionNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 16px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 10px; animation: deletionNotice .2s ease; }
 .deletionNotice span { flex: 1; overflow-wrap: anywhere; }
 @keyframes taskRemoval { to { grid-template-rows: 0fr; opacity: 0; transform: translateX(12px); } }
 @keyframes deletionNotice { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .taskExit[data-deleting="true"] { animation-duration: .001s; transform: none; } .deletionNotice { animation: none; } }
-@container security-dashboard (max-width: 600px) { .taskCard { grid-template-columns: minmax(0,1fr); } .taskCard > button:not(.taskRow) { justify-self: end; margin-bottom: 12px; } .deletionNotice span { flex-basis: 100%; } }
+@container security-dashboard (max-width: 600px) { .taskCard, .taskCard[data-archived="true"] { grid-template-columns: minmax(0,1fr); } .taskCard > button:not(.taskRow) { justify-self: end; margin-bottom: 12px; } .deletionNotice span { flex-basis: 100%; } }
 .taskIcon,.emptyIcon { color: var(--dsw-alias-link); background: var(--dsw-alias-bg-module-platform); border-radius: 12px; padding: 12px; font-size: 24px; }
 .taskText { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 8px; }
 .taskText strong { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -81,7 +82,8 @@
 .reportCard { margin-top: 32px; padding: 24px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-module-platform); }
 .reportCard > :first-child { margin-top: 0; }
 .notice { background: var(--dsw-alias-bg-module-platform); padding: 16px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; margin-bottom: 16px; }
-.materialStatus { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; margin-bottom: 12px; }
+.workspaceSource > span, .workspaceSource > p { min-width: 0; overflow-wrap: anywhere; }
+.workspaceSource { display: grid; justify-items: start; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 13px; margin-bottom: 12px; }
 .error { color: var(--dsw-alias-state-error-primary); border: 1px solid currentColor; padding: 16px; border-radius: 8px; margin-bottom: 16px; overflow-wrap: anywhere; }
 .error button { margin-left: 16px; }
 .workspacePicker { display: grid; gap: 16px; margin: 16px 0; }

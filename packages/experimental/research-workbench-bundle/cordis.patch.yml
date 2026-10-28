@@ -1,0 +1,5 @@
+- insert:
+    - id: research-workbench
+      name: '@deepseek-ai/dsh-experimental-research-workbench'
+    - id: research-runtime
+      name: '@deepseek-ai/dsh-experimental-research-runtime'

@@ -60,6 +60,35 @@ export const artifactSchema = z
     mediaType: text,
   })
   .strict()
+/** References to observations already committed by native tools. */
+export const citationSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('source'), path: text, startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(), sessionId: id.optional(), callId: id.optional() }).strict(),
+  z.object({ kind: z.literal('tool'), callId: id, sessionId: id.optional() }).strict(),
+])
+/** Requested source window or committed native tool interaction. */
+export type Citation = z.infer<typeof citationSchema>
+/** Fixed source location and exact observed text retained for a report. */
+export const sourceCitationSchema = z.object({ path: text, startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(), text: z.string(), resultSeq: z.number().int().nonnegative(),
+}).strict()
+/** Coordinator-authored outcomes with explicit evidence and validation limitations. */
+export const taskOutcomeSchema = z.object({
+  summary: text.max(4000).optional(),
+  methods: z.array(text.max(2000)).max(30).optional(),
+  analysis: z.array(text.max(4000)).max(50).optional(),
+  recommendations: z.array(z.object({ findingId: id, text: text.max(3000) }).strict()).max(100).optional(),
+  results: z.array(z.object({ title: text.max(160), result: text.max(3000),
+    evidenceIds: z.array(id.transform(brandString<EvidenceId>)).min(1).max(20),
+  }).strict()).min(1).max(30),
+  limitations: z.string().max(3000),
+}).strict()
+/** Saved outcomes survive report failure; a report ID exists only after publication. */
+export const taskCompletionSchema = taskOutcomeSchema.extend({
+  operationId: text.optional(),
+  status: z.enum(['running', 'completed', 'failed', 'interrupted']),
+  detail: z.string(), reportId: id.optional(), updatedAt: z.number().int().nonnegative(),
+}).strict()
 /** An operator's project scope and limits. */
 export const engagementSchema = z
   .object({
@@ -74,6 +103,7 @@ export const engagementSchema = z
     archived: z.boolean().optional(),
     maxAttempts: z.number().int().positive(),
     taskContext: taskContextSchema.optional(),
+    completion: taskCompletionSchema.optional(),
     moduleSelection: moduleSelectionSchema.optional(),
     /** Operator-enabled direct-execution contract anchored to this project's registered scope. */
     unsealed: z.boolean().optional(),
@@ -110,8 +140,11 @@ export const sourceAssetSchema = z.object({
   artifact: artifactSchema, identity: z.literal('measured'),
   inputSource: materialSourceSchema.optional(),
 }).strict()
+/** Live workspace target; native tools own all file access. */
+export const workspaceAssetSchema = z.object({ kind: z.literal('workspace'), id: id.transform(brandString<AssetId>),
+  engagementId: id, label: text, root: text }).strict()
 /** Existing file records retain their original persisted representation. */
-export const assetSchema = z.union([fileAssetSchema, webAssetSchema, sourceAssetSchema, externalWebAssetSchema])
+export const assetSchema = z.union([fileAssetSchema, webAssetSchema, sourceAssetSchema, externalWebAssetSchema, workspaceAssetSchema])
 /** One check with its acceptance criterion, inputs and durable execution status. */
 export const checkSchema = z
   .object({
@@ -152,6 +185,7 @@ export const evidenceSchema = z
     method: z.enum(['static', 'simulation', 'device']).optional(),
     observationKind: z.enum(['inventory', 'implementation']).optional(),
     http: httpSummarySchema.optional(),
+    citation: sourceCitationSchema.optional(),
     createdAt: z.number().int().nonnegative(),
   })
   .strict()
@@ -183,6 +217,7 @@ export const reviewSchema = z.object({
 /** Immutable report exports for one observed project revision. */
 export const reportSchema = z.object({
   id, engagementId: id, revision: z.number().int().nonnegative(),
+  sourceHash: digest.optional(),
   markdown: artifactSchema, json: artifactSchema, findingsMarkdown: artifactSchema.optional(),
   recommendationsMarkdown: artifactSchema.optional(), createdAt: z.number().int().nonnegative(),
 }).strict()

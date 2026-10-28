@@ -42,6 +42,7 @@ describe('Security workbench overlay', () => {
       expect(interpolate({ ctx: { webStartup: { port } } }, row?.config)).toMatchObject({ port })
   })
   it('matches the shipped Host and Web profile layers', () => {
+    expect(profileEntries(WEB_PATCH)).toContainEqual({ id: 'harness-dev-context', disabled: true })
     expect(profileEntries(OVERLAY)).toEqual([
       ...profileEntries(HOST_PATCH),
       ...profileEntries(WEB_PATCH),
@@ -57,7 +58,9 @@ describe('web e2e: Security workbench', () => {
 
   beforeEach(async () => {
     scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: INSTALL_ANCHORS,
-      agentPresets: { default: 'security' } })
+      agentPresets: { default: 'security' }, profile: { hmr: false, packages: [{
+        dir: fileURLToPath(new URL('../../../packages/experimental/research-workbench-bundle', import.meta.url)), enabled: true,
+      }] } })
     const executablePath = process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH
     browser = await chromium.launch(executablePath === undefined ? {} : { executablePath })
     page = await newEnglishPage(browser)
@@ -65,14 +68,92 @@ describe('web e2e: Security workbench', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-security-workbench'))
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await expect.poll(async () => ({ frame: await page.locator('[class*="frame"]').first().isVisible(),
-      errors: tripwire.pageErrors }), { timeout: 30_000 }).toEqual({ frame: true, errors: [] })
+      errors: tripwire.pageErrors }), { timeout: 30_000 }).toEqual({ frame: true, errors: [] }).catch(async (error: unknown) => {
+      await page.screenshot({ path: '.artifacts/security-startup-failure.png' })
+      throw new Error(await page.locator('body').innerText(), { cause: error })
+    })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
-    await page.getByRole('button', { name: 'Security workspace', exact: false }).waitFor()
+    await page.getByRole('region', { name: 'Security analysis', exact: true }).waitFor()
   })
   afterEach(async () => {
     await browser?.close()
     await scaffold?.close()
   })
+  it('restores archived tasks directly from the deleted list without leaving it', async () => {
+    const agent = scaffold.ctx.agents.list()[0]!
+    const controller = await scaffold.ctx.securityWorkbench.ready
+    const created = await controller.importMaterials(agent.id, {
+      operationId: 'restore-material', expectedRevision: controller.view(agent.id).revision,
+      task: { title: 'Restore fixture with a deliberately long name for narrow screens',
+        objective: 'Review owned fixture', environmentIds: ['local'], maxAttempts: 3 },
+      material: { kind: 'text', name: 'restore.txt', text: 'Owned restore fixture' },
+    })
+    const task = created.records.find(item => item.kind === 'engagement')!.value
+    await controller.manageProject(task.id, { operationId: 'restore-archive', expectedRevision: created.revision,
+      action: { kind: 'archive' } })
+    const agentsBefore = scaffold.ctx.agents.list().length
+    await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
+    const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
+    await dashboard.getByRole('button', { name: 'Deleted tasks', exact: true }).click()
+    const row = dashboard.locator('article').filter({ has: page.getByRole('button', { name: /Restore fixture/ }) })
+    await row.getByRole('button', { name: 'Restore task', exact: true }).waitFor()
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await row.screenshot({ path: '.dsh/task-restore-actions.png' })
+    await row.getByRole('button', { name: 'Restore task', exact: true }).click()
+    await dashboard.getByRole('heading', { name: 'Deleted tasks 0', exact: true }).waitFor()
+    expect(await dashboard.getByRole('button', { name: 'Deleted tasks', exact: true }).getAttribute('aria-current')).toBe('page')
+    expect(controller.projects().find(item => item.id === task.id)).toMatchObject({ archived: false, stopped: true })
+    expect(controller.binding(agent.id)).toBeUndefined()
+    expect(scaffold.ctx.agents.list()).toHaveLength(agentsBefore)
+    expect(scaffold.ctx.agents.list().every(item => item.status !== 'running')).toBe(true)
+    await dashboard.getByRole('button', { name: 'Tasks', exact: true }).click()
+    await row.getByRole('button', { name: 'Delete task', exact: true }).waitFor()
+    expect(tripwire.pageErrors).toEqual([])
+  })
+  it('uses one save-or-cancel action for first-message settings without creating a task', async () => {
+    const setup = page.getByRole('region', { name: 'Security analysis', exact: true })
+    await setup.getByText('Configure', { exact: true }).click()
+    const mode = setup.getByRole('combobox', { name: 'Execution mode', exact: true })
+    await mode.selectOption('unsealed')
+    const save = setup.getByRole('button', { name: 'Save task settings', exact: true })
+    const cancel = setup.getByRole('button', { name: 'Cancel task settings', exact: true })
+    expect(await cancel.count()).toBe(0)
+    await save.click()
+    await cancel.waitFor()
+    expect(await save.count()).toBe(0)
+    const controller = await scaffold.ctx.securityWorkbench.ready
+    expect(controller.projects()).toHaveLength(0)
+    await page.reload({ waitUntil: 'load' })
+    await setup.getByText('Configure', { exact: true }).click()
+    await cancel.waitFor()
+    expect(await mode.inputValue()).toBe('unsealed')
+    const limits = setup.locator('summary').filter({ hasText: 'Execution limits' })
+    await limits.click()
+    expect(await setup.getByRole('spinbutton').isVisible()).toBe(true)
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await cancel.scrollIntoViewIfNeeded()
+    const bounds = await cancel.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
+    await page.screenshot({ path: '.artifacts/startup-settings-dark-narrow.png' })
+    await cancel.click()
+    await setup.getByText('Workspace defaults', { exact: true }).waitFor()
+    expect(await mode.inputValue()).toBe('sealed')
+    expect(await save.count()).toBe(0)
+    expect(await cancel.count()).toBe(0)
+    await mode.selectOption('unsealed')
+    await mode.press('Escape')
+    await setup.getByText('Workspace defaults', { exact: true }).waitFor()
+    expect(await setup.getByText('Security analysis · selected', { exact: true }).isVisible()).toBe(true)
+    expect(await mode.isVisible()).toBe(false)
+    expect(controller.projects()).toHaveLength(0)
+    expect(tripwire.pageErrors).toEqual([])
+  })
+
   it('creates an empty native security chat and follows workspace materials through its sidebar link', async () => {
     await mkdir(join(scaffold.workspaceCwd, 'workspace', 'src'), { recursive: true })
     await writeFile(join(scaffold.workspaceCwd, 'workspace', 'src', 'sample.txt'), 'Owned workspace material')
@@ -92,7 +173,9 @@ describe('web e2e: Security workbench', () => {
     const composerNode = await composer.elementHandle()
     await views.getByRole('button', { name: 'Security workspace', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
-    await dashboard.getByText('Workspace synchronized', { exact: true }).waitFor()
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
+    await dashboard.getByRole('heading', { name: 'Workspace', exact: true }).waitFor()
+    expect(controller.projectView(task!.id).records.filter(item => item.kind === 'asset')).toMatchObject([{ value: { kind: 'workspace', root: join(scaffold.workspaceCwd, 'workspace') } }])
     expect(await composer.isVisible()).toBe(true)
     expect(await composer.innerText()).toBe('Keep this investigation draft')
     expect(await composer.evaluate((node, original) => node === original, composerNode)).toBe(true)
@@ -132,25 +215,32 @@ describe('web e2e: Security workbench', () => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize({ width: 1440, height: 1000 })
     await compareOrRefreshGolden(fileURLToPath(new URL('./expected/security-workbench/chat-sidebar.expected.md', import.meta.url)),
-      `${await views.ariaSnapshot()}\n\n${await captureStableAria(page, 'section[aria-label="Security analysis"]', scaffold.workspaceCwd, {
-        replacements: [[JSON.stringify(join(scaffold.workspaceCwd, 'workspace')).slice(1, -1), '{{workspace}}']],
+      `${await views.ariaSnapshot()}\n\n${await captureStableAria(page, 'section[aria-label="Security analysis"]:has(h1)', scaffold.workspaceCwd, {
+        replacements: [[join(scaffold.workspaceCwd, 'workspace'), '{{workspace}}'],
+          [JSON.stringify(join(scaffold.workspaceCwd, 'workspace')).slice(1, -1), '{{workspace}}']],
       })}`,
       webSnapshotMode())
     await page.screenshot({ path: '.artifacts/security-workbench-chat.png' })
     await dashboard.getByRole('button', { name: 'Materials', exact: true }).click()
-    await dashboard.getByRole('heading', { name: 'workspace', exact: true }).waitFor()
-    expect(await dashboard.getByRole('button', { name: 'Rename analysis task', exact: true }).count()).toBe(0)
-    await dashboard.locator('summary').getByText('src', { exact: true }).click()
-    await dashboard.getByRole('button', { name: /sample.txt/ }).click()
-    await dashboard.getByText('Owned workspace material', { exact: true }).waitFor()
-    await writeFile(join(scaffold.workspaceCwd, 'workspace', 'src', 'sample.txt'), 'Updated workspace material')
-    await dashboard.getByText('Updated workspace material', { exact: true }).waitFor()
+    await dashboard.getByRole('heading', { name: 'Workspace', exact: true }).waitFor()
+    expect(await dashboard.getByText('No materials yet.', { exact: false }).count()).toBe(0)
+    await dashboard.getByRole('button', { name: 'Open workspace chat', exact: true }).click()
+    const expand = page.locator('[data-sidebar-right-expand]')
+    if (await expand.isVisible()) await expand.click()
+    await page.locator('[data-dockkit-add-tab]').click()
+    await page.locator('[data-sidebar-right-guide-entry="files"]').click()
+    await page.locator('[data-files-entry="directory"]').getByRole('button', { name: 'src', exact: true }).click()
+    await page.locator('[data-files-entry="file"]').getByRole('button', { name: 'sample.txt', exact: true }).click()
+    const preview = page.locator('[data-textpreview-url]')
+    await preview.getByText('Owned workspace material', { exact: true }).waitFor()
     await page.emulateMedia({ colorScheme: 'dark' })
     await page.setViewportSize({ width: 390, height: 844 })
-    await dashboard.getByRole('region', { name: 'File preview', exact: true }).scrollIntoViewIfNeeded()
-    await page.screenshot({ path: '.artifacts/material-browser-dark-narrow.png' })
+    await preview.scrollIntoViewIfNeeded()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: '.artifacts/workspace-files-dark-narrow.png' })
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize({ width: 1440, height: 1000 })
+    await views.getByRole('button', { name: 'Security workspace', exact: true }).click()
     const taskRow = page.getByRole('treeitem').filter({ has: page.getByRole('button', { name: 'Security workspace · New security analysis', exact: true }) })
     await taskRow.hover()
     await taskRow.getByRole('button', { name: 'Session actions for New security analysis', exact: true }).click()
@@ -186,6 +276,7 @@ describe('web e2e: Security workbench', () => {
     const task = created.records.find(item => item.kind === 'engagement')!.value
     await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
     await dashboard.getByRole('button', { name: /Context card fixture/ }).click()
     await dashboard.locator('summary').getByText('Task settings', { exact: true }).click()
     const summary = dashboard.locator('summary').filter({ hasText: 'Authorization and task background' })
@@ -230,6 +321,7 @@ describe('web e2e: Security workbench', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-analysis-toolbox'))
     await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
     await dashboard.getByRole('button', { name: 'Analysis toolbox', exact: true }).click()
     await dashboard.getByText('tshark · Not checked', { exact: true }).waitFor()
     await dashboard.getByRole('button', { name: 'IoT', exact: true }).click()
@@ -288,6 +380,7 @@ describe('web e2e: Security workbench', () => {
       title: 'Owned HTTP application', objective: 'Check an authorized response', resources: { environmentIds: ['local'], maxAttempts: 3 } }))
     await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
     await dashboard.getByRole('button', { name: /Owned HTTP application/ }).click()
     await dashboard.locator('summary').getByText('Task settings', { exact: true }).click()
     await dashboard.locator('summary').getByText('Analysis modules', { exact: true }).click()
@@ -369,6 +462,7 @@ describe('web e2e: Security workbench', () => {
     const asset = imported.records.find(item => item.kind === 'asset')!
     await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
     await dashboard.getByRole('button', { name: 'Analysis toolbox', exact: true }).click()
     await dashboard.getByRole('tab', { name: 'Devices', exact: true }).click()
     await dashboard.getByText('Physical capture validation · Not checked', { exact: true }).waitFor()
@@ -408,7 +502,6 @@ describe('web e2e: Security workbench', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-security-dashboard'))
     const agent = scaffold.ctx.agents.list()[0]!
     const controller = await scaffold.ctx.securityWorkbench.ready
-    await page.getByTitle('Tools & progress', { exact: true }).click()
     const created = await controller.importMaterials(agent.id, {
       operationId: 'dashboard-material', expectedRevision: controller.view(agent.id).revision,
       task: { title: 'Demo task with a deliberately long name to check wrapping on narrow screens',
@@ -417,6 +510,7 @@ describe('web e2e: Security workbench', () => {
     })
     const task = created.records.find(item => item.kind === 'engagement')!.value
     const asset = created.records.find(item => item.kind === 'asset')!.value
+    await page.getByTitle('Tools & progress', { exact: true }).click()
     const chatProgress = page.getByRole('region', { name: 'Tools & progress', exact: true })
     await chatProgress.getByText(task.title, { exact: true }).waitFor()
     await controller.command(agent.id, { operationId: 'main-page-checkpoint', expectedRevision: controller.view(agent.id).revision,
@@ -442,6 +536,7 @@ describe('web e2e: Security workbench', () => {
     const sessionsBefore = scaffold.ctx.agents.list().length
     await page.getByRole('button', { name: 'Security analysis', exact: true }).click()
     const dashboard = page.getByRole('region', { name: 'Security analysis', exact: true })
+      .filter({ has: page.getByRole('heading', { name: 'Security analysis', exact: true }) })
     await dashboard.getByLabel('Search tasks or objectives').fill('deliberately')
     await dashboard.getByRole('button', { name: /Demo task/ }).click()
     await dashboard.getByRole('heading', { name: task.title, exact: true }).waitFor()

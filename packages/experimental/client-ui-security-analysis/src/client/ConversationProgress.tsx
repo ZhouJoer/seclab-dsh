@@ -80,6 +80,7 @@ export function ConversationProgressEntry(props: EntryProps) {
     })()
     return () => { abort.abort() }
   }, [project, epoch])
+  if (!project && !error) return null
   return <div className={css.progressLauncher}>
     <button title={props.t('activityEntry')} onClick={() => { props.openProgress() }}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 12V8m5 4V3m5 9V6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>

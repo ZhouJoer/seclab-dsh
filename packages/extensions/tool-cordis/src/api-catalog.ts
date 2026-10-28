@@ -2040,6 +2040,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'researchFiles',
+    summary: 'File operations never activate an Agent or change immutable evidence.',
+    description: 'File operations never activate an Agent or change immutable evidence.',
+    methods: [
+      {
+        signature: 'async scope(sessionId: SessionId, signal: AbortSignal): Promise<ResearchScope>',
+        description: 'Resolve current directory without activating a historical Agent.',
+        parameters: [{ name: 'sessionId', description: 'authenticated Session resource.' }, { name: 'signal', description: 'operation lifetime.' }],
+        returns: 'canonical directory and the Session\'s standing file policy.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async list(sessionId: SessionId, path: string, signal: AbortSignal): Promise<ResearchDirectory>',
+        description: 'List only canonical descendants of the current directory.',
+        parameters: [{ name: 'sessionId', description: 'admitted Session.' }, { name: 'path', description: 'relative directory, or empty for its root.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'bounded children and the exact working directory.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async read(sessionId: SessionId, path: string, signal: AbortSignal): Promise<ResearchFile>',
+        description: 'Read complete UTF-8 with a stable before/after version.',
+        parameters: [{ name: 'sessionId', description: 'admitted Session.' }, { name: 'path', description: 'existing work file.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'original text and the replacement preconditions.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async save(sessionId: SessionId, request: ResearchSave, signal: AbortSignal): Promise<ResearchFile>',
+        description: 'Replace one unchanged existing text file; failures preserve caller drafts.',
+        parameters: [{ name: 'sessionId', description: 'admitted Session.' }, { name: 'request', description: 'exact read identity and replacement text.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'committed version and text; never retries an unknown write outcome.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -2161,8 +2192,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'updateImprovement\') async updateImprovement(input: string): Promise<EvolutionView>',
-        description: 'Save operator progress or a coding AI\'s implementation receipt.',
-        parameters: [{ name: 'input', description: 'revision-checked status or receipt command.' }],
+        description: 'Update or delete a shared suggestion, or save a coding AI\'s implementation receipt.',
+        parameters: [{ name: 'input', description: 'revision-checked status, delete or receipt command.' }],
         returns: 'current improvement records.',
       },
       {
@@ -2405,10 +2436,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'durable identities; repeating the same request recovers the existing task.',
       },
       {
-        signature: '@Remote(\'refreshWorkspaceMaterials\') async refreshWorkspaceMaterials(projectId: string): Promise<void>',
-        description: 'Retry automatic directory collection while preserving the last successful snapshot.',
-        parameters: [{ name: 'projectId', description: 'task whose configured source should be rescanned.' }],
-        returns: 'completion after a fresh snapshot is published.',
+        signature: '@Remote(\'prepareAnalysis\') async prepareAnalysis(agent: Agent): Promise<void>',
+        description: 'Associate a security-preset conversation before its first operator prompt.',
+        parameters: [{ name: 'agent', description: 'authenticated conversation; other presets and existing associations are unchanged.' }],
+        returns: 'completion after the task and fixed workspace defaults are committed; retries reuse the association.',
+      },
+      {
+        signature: '@Remote(\'configureStartup\') async configureStartup(agent: Agent, input: string): Promise<WorkbenchConfiguration>',
+        description: 'Save or clear this conversation\'s startup settings without creating a project or changing its preset.',
+        parameters: [{ name: 'agent', description: 'authenticated conversation, still awaiting its first association.' }, { name: 'input', description: 'JSON revision and complete settings; null settings restores workspace defaults.' }],
+        returns: 'configuration after the durable save.',
       },
       {
         signature: '@Remote(\'configuration\') async configuration(agent: Agent): Promise<WorkbenchConfiguration>',
@@ -2463,6 +2500,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Browse saved project materials without changing Session or evidence records.',
         parameters: [{ name: 'projectId', description: 'project authorizing the asset read.' }, { name: 'input', description: 'serialized asset identity, snapshot path, operation and offset.' }],
         returns: 'a directory page or bounded file preview.',
+      },
+      {
+        signature: '@Remote(\'projectMaterialDocument\') async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument>',
+        description: 'Preview an exact saved material without resolving a live workspace file.',
+        parameters: [{ name: 'projectId', description: 'Project authorizing the asset read.' }, { name: 'input', description: 'Serialized asset identity and exact snapshot member path.' }, { name: 'signal', description: 'Operator request lifetime.' }],
+        returns: 'Read-only text, image or PDF with the original artifact digest.',
       },
     ],
   },
@@ -4545,6 +4588,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'summary', description: 'current list row for the Session.' }],
   },
   {
+    name: 'api-session/before-prompt',
+    mode: 'serial',
+    signature: '\'api-session/before-prompt\'(agent: Agent, message: import(\'@deepseek-ai/dsh-llm\').UserMessage): Promise<void>',
+    summary: 'Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.',
+    description: 'Prepare plugin-owned state before admitting a validated operator prompt; rejection preserves the draft.',
+    parameters: [{ name: 'agent', description: 'authenticated destination Agent.' }, { name: 'message', description: 'validated operator content, before enqueueing.' }],
+  },
+  {
     name: 'api-session/error',
     mode: 'emit',
     signature: '\'api-session/error\'(sessionId: SessionId, message: string): void',
@@ -5465,6 +5516,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CheckId = Branded<\'SecurityCheck\'>;',
   },
   {
+    name: 'Citation',
+    declaration: 'export type Citation = z.infer<typeof citationSchema>;',
+  },
+  {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly ctimeMs: number;\n    readonly size: number;\n}',
   },
@@ -6031,6 +6086,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FinishReasonMap',
     declaration: 'export interface FinishReasonMap {\n    \'stop\': {\n        kind: \'stop\';\n    };\n    \'tool-calls\': {\n        kind: \'tool-calls\';\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    \'aborted\': {\n        kind: \'aborted\';\n        failure: LlmFailure;\n    };\n    \'error\': {\n        kind: \'error\';\n        failure: LlmFailure;\n    };\n}',
+  },
+  {
+    name: 'FirstMessageSettings',
+    declaration: 'export interface FirstMessageSettings {\n    environmentIds: string[];\n    maxAttempts: number;\n    taskContext?: TaskContext | undefined;\n    unsealed?: boolean | undefined;\n    moduleSelection?: ModuleSelection | undefined;\n}',
   },
   {
     name: 'FrequencyTooHighError',
@@ -6685,6 +6744,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MaterialBrowserView = {\n    kind: \'directory\';\n    entries: MaterialEntry[];\n    next: number | null;\n    total: number;\n} | {\n    kind: \'text\';\n    path: string;\n    size: number;\n    text: string;\n    truncated: boolean;\n} | {\n    kind: \'image\';\n    path: string;\n    size: number;\n    url: string;\n} | {\n    kind: \'binary\';\n    path: string;\n    size: number;\n    hex: string;\n};',
   },
   {
+    name: 'MaterialDocument',
+    declaration: 'export type MaterialDocument = {\n    name: string;\n    version: string;\n    size: number;\n} & ({\n    kind: \'text\';\n    text: string;\n    truncated: boolean;\n} | {\n    kind: \'pdf\';\n    data: Uint8Array;\n    missingFonts: string[];\n} | {\n    kind: \'image\';\n    data: Uint8Array;\n    mediaType: string;\n} | {\n    kind: \'binary\';\n    hex: string;\n});',
+  },
+  {
     name: 'MaterialEntry',
     declaration: 'export type MaterialEntry = {\n    kind: \'directory\';\n    path: string;\n    fileCount: number;\n} | {\n    kind: \'file\';\n    path: string;\n    size: number;\n};',
   },
@@ -6851,6 +6914,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModTier',
     declaration: 'export type ModTier = \'prepend\' | \'user\' | \'append\' | \'builtin\' | \'core\';',
+  },
+  {
+    name: 'ModuleSelection',
+    declaration: 'export type ModuleSelection = z.infer<typeof moduleSelectionSchema>;',
   },
   {
     name: 'NativeFileApplication',
@@ -7346,7 +7413,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReportLimits',
-    declaration: 'export interface ReportLimits {\n    inputBytes: number;\n    maxChars: number;\n    maxFindings: number;\n    maxLessons: number;\n    outputBytes: number;\n}',
+    declaration: 'export interface ReportLimits {\n    maxFindings: number;\n    outputBytes: number;\n}',
   },
   {
     name: 'RequestContext',
@@ -7377,8 +7444,28 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RequestUserInput {\n    readonly role: \'user\';\n    readonly content: UserMessage[\'content\'];\n    readonly id?: never;\n    readonly source?: never;\n}',
   },
   {
+    name: 'ResearchDirectory',
+    declaration: 'export interface ResearchDirectory {\n    root: string;\n    path: string;\n    entries: {\n        name: string;\n        path: string;\n        directory: boolean;\n    }[];\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'ResearchFile',
+    declaration: 'export interface ResearchFile {\n    path: string;\n    root: string;\n    rootKey: FsTargetKey;\n    targetKey: FsTargetKey;\n    version: FsVersion;\n    text: string;\n    bytes: number;\n    bom: boolean;\n    newline: \'lf\' | \'crlf\' | \'mixed\';\n    writable: boolean;\n    reason: \'binary\' | \'encoding\' | \'mixed\' | \'policy\' | null;\n}',
+  },
+  {
+    name: 'ResearchSave',
+    declaration: 'export interface ResearchSave {\n    path: string;\n    rootKey: FsTargetKey;\n    targetKey: FsTargetKey;\n    version: FsVersion;\n    text: string;\n}',
+  },
+  {
+    name: 'ResearchScope',
+    declaration: 'export interface ResearchScope {\n    root: FsTarget;\n    cwd: string;\n    policy: SandboxExecutionPolicy;\n}',
+  },
+  {
     name: 'ResolvedAlwaysRetryPolicy',
     declaration: 'export interface ResolvedAlwaysRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'always\';\n}',
+  },
+  {
+    name: 'ResolvedCitation',
+    declaration: 'export interface ResolvedCitation {\n    callId: string;\n    resultSeq: number;\n    title: string;\n    bytes: Buffer;\n    incomplete: boolean;\n    workspaceRoot?: string;\n    citation?: {\n        path: string;\n        startLine: number;\n        endLine: number;\n        text: string;\n        resultSeq: number;\n    };\n}',
   },
   {
     name: 'ResolvedCredential',
@@ -7570,7 +7657,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityController',
-    declaration: 'export class SecurityController {\n    readonly providers: ProviderRegistry<AnalysisProvider>;\n    readonly environments: ProviderRegistry<{\n        id: string;\n        manager: EnvironmentManager;\n    }>;\n    readonly laboratories: ProviderRegistry<{\n        id: string;\n        action(projectId: string, action: string, laboratoryId?: string): Promise<WorkbenchView>;\n    }>;\n    laboratoriesView(): Laboratory[];\n    async saveLaboratory(input: Laboratory): Promise<Laboratory>;\n    constructor(private readonly journal: SecurityJournal, readonly artifacts: ArtifactStore, readonly options: WorkbenchOptions, private readonly generateReport?: (prompt: string, signal: AbortSignal, sessionId: string) => Promise<string>, readonly activity?: SecurityActivityStore, private readonly removeImprovements?: (project: string) => Promise<void>, private readonly cancelImprovements?: (project: string) => Promise<void>);\n    checkpointId(sessionId: string): string;\n    trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void;\n    async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = \'\'): Promise<T>;\n    async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void>;\n    binding(sessionId: string): SessionBinding | undefined;\n    analysisProject(sessionId: string): string | undefined;\n    analysisAsset(sessionId: string, assetId: string): string;\n    async cap /* …truncated — full shape in source */',
+    declaration: 'export class SecurityController {\n    readonly providers: ProviderRegistry<AnalysisProvider>;\n    readonly environments: ProviderRegistry<{\n        id: string;\n        manager: EnvironmentManager;\n    }>;\n    readonly laboratories: ProviderRegistry<{\n        id: string;\n        action(projectId: string, action: string, laboratoryId?: string): Promise<WorkbenchView>;\n    }>;\n    laboratoriesView(): Laboratory[];\n    async saveLaboratory(input: Laboratory): Promise<Laboratory>;\n    constructor(private readonly journal: SecurityJournal, readonly artifacts: ArtifactStore, readonly options: WorkbenchOptions, readonly activity?: SecurityActivityStore, private readonly removeImprovements?: (project: string) => Promise<void>, private readonly cancelImprovements?: (project: string) => Promise<void>, private readonly readCitation?: (sessionId: string, reference: Citation, signal: AbortSignal) => Promise<ResolvedCitation>);\n    checkpointId(sessionId: string): string;\n    trackDelegation(project: string, controller: AbortController, done: Promise<unknown>): () => void;\n    async manageEnvironment<T>(environmentId: string, run: (signal: AbortSignal) => Promise<T>, project: string = \'\'): Promise<T>;\n    async releaseEnvironments(environmentIds: readonly string[], release: () => Promise<void>): Promise<void>;\n    binding(sessionId: string): SessionBinding | undefined;\n    analysisProject(sessionId: string): string | undefined;\n    analysisAsset(sessionId: string, assetId: string): string;\n /* …truncated — full shape in source */',
   },
   {
     name: 'SecurityEnvironment',
@@ -7582,7 +7669,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityProjectSummary',
-    declaration: 'export interface SecurityProjectSummary {\n    materials?: {\n        state: \'syncing\' | \'ready\' | \'failed\';\n        detail?: string;\n    };\n    project: Engagement;\n    sessions: {\n        sessionId: string;\n        role: string;\n        active: boolean;\n    }[];\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
+    declaration: 'export interface SecurityProjectSummary {\n    project: Engagement;\n    sessions: {\n        sessionId: string;\n        role: string;\n        active: boolean;\n    }[];\n    runningAgentCount: number;\n    runningInvocationCount: number;\n    pendingPlanIds: ValidationPlanId[];\n    blockedCheckIds: CheckId[];\n    interruptedCheckIds: CheckId[];\n    next: string;\n    state: \'removed\' | \'stopping\' | \'stopped\' | \'running\' | \'interrupted\' | \'approval\' | \'blocked\' | \'idle\';\n}',
   },
   {
     name: 'SecurityRecord',
@@ -9330,7 +9417,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkbenchConfiguration',
-    declaration: 'export interface WorkbenchConfiguration {\n    workspace: {\n        cwd: string;\n        revision: number;\n        configured: boolean;\n        environmentIds: string[];\n        maxAttempts?: number;\n        taskContext?: TaskContext;\n    } | null;\n    materialLimits: {\n        bytes: number;\n        entries: number;\n    };\n    taskContextMaxBytes: number;\n    selectedProject?: string;\n    projects: {\n        id: string;\n        title: string;\n    }[];\n    environments: {\n        id: string;\n        kind: \'local\' | \'docker\' | \'android\';\n        label: string;\n        tools: string[];\n    }[];\n    providers: {\n        id: string;\n        operations: readonly string[];\n    }[];\n    knowledgeIntervalMs: number;\n}',
+    declaration: 'export interface WorkbenchConfiguration {\n    workspace: {\n        cwd: string;\n        revision: number;\n        configured: boolean;\n        environmentIds: string[];\n        maxAttempts?: number;\n        taskContext?: TaskContext | undefined;\n        unsealed?: boolean | undefined;\n        moduleSelection?: ModuleSelection | undefined;\n    } | null;\n    startup?: {\n        revision: number;\n        settings?: FirstMessageSettings | undefined;\n    };\n    materialLimits: {\n        bytes: number;\n        entries: number;\n    };\n    taskContextMaxBytes: number;\n    selectedProject?: string;\n    projects: {\n        id: string;\n        title: string;\n    }[];\n    environments: {\n        id: string;\n        kind: \'local\' | \'docker\' | \'android\';\n        label: string;\n        tools: string[];\n    }[];\n    providers: {\n        id: string;\n        operations: readonly string[];\n    }[];\n    knowledgeIntervalMs: number;\n}',
   },
   {
     name: 'WorkbenchOptions',

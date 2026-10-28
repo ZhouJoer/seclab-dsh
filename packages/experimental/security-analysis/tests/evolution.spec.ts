@@ -49,6 +49,32 @@ it('accepts no suggestions without manufacturing work', async () => {
   expect(store.view().proposals).toEqual([])
 })
 
+it.each(['json', ''])('publishes suggestions wrapped in one %s fence', async (language) => {
+  const { store } = await harness()
+  const data = input()
+  await store.complete(await running(store, data), data,
+    ' \r\n```' + language + '\r\n' + JSON.stringify({ suggestions: [suggestion()] }) + '\r\n```\r\n', 5)
+  expect(store.view().runs[0]?.status).toBe('completed')
+  expect(store.view().proposals).toHaveLength(1)
+})
+
+it.each([
+  'Explanation\n```json\n{"suggestions":[]}\n```',
+  '```json\n{"suggestions":[]}\n```\nDone',
+  '```json\n{"suggestions":[]}\n```\n```json\n{}\n```',
+  '```json\n{"suggestions":[]}',
+  '```json\n{"suggestions":[],"extra":true}\n```',
+])('retains existing suggestions after invalid wrapped output: %s', async (output) => {
+  const { store } = await harness()
+  const data = input()
+  await store.complete(await running(store, data), data, JSON.stringify({ suggestions: [suggestion()] }), 5)
+  const before = store.view().proposals
+  const id = await running(store, data, 'invalid-run')
+  await expect(store.complete(id, data, output, 5)).rejects.toThrow()
+  expect(store.view().proposals).toEqual(before)
+  expect(store.view().runs.at(-1)?.status).toBe('running')
+})
+
 it('rejects invented source and merge identities without publishing partial results', async () => {
   const { store } = await harness()
   const id = await running(store)
@@ -175,4 +201,40 @@ it('reports insufficient instructions or observation budgets instead of an empty
   expect(() => selectEvolutionInput(data, { inputBytes: 1, maxSuggestions: 5 })).toThrow('instructions, objective and gap notices')
   data.sources[0]!.excerpt = '中文'.repeat(10000)
   expect(() => selectEvolutionInput(data, selectionBudget(data, 1000))).toThrow('cannot fit any observation')
+})
+
+
+it('deletes a shared suggestion and its receipts atomically while preserving analysis inputs', async () => {
+  const { store, reopen } = await harness()
+  const data = input()
+  await store.complete(await running(store), data, JSON.stringify({ suggestions: [suggestion()] }), 5)
+  const proposal = store.view().proposals[0]!
+  const beta = input('beta')
+  beta.candidates = [{ id: proposal.id, title: proposal.title, component: proposal.component,
+    conditions: proposal.conditions, problem: proposal.problem, change: proposal.change }]
+  await store.complete(await running(store, beta, 'run-beta'), beta,
+    JSON.stringify({ suggestions: [{ ...suggestion('beta'), existingId: proposal.id }] }), 5)
+  const beforeEdit = Date.now()
+  await store.command({ operationId: 'receipt', expectedRevision: store.view().revision, action: { kind: 'receipt', receipt: {
+    version: 1, proposalId: proposal.id, proposalRevision: proposal.revision,
+    summary: 'Implementation claim', references: [], tests: [], remaining: [],
+  } } })
+  expect(store.view().proposals[0]!.updatedAt).toBeGreaterThanOrEqual(beforeEdit)
+  const pending = await running(store, beta, 'pending-merge')
+  const request = { operationId: 'delete', expectedRevision: store.view().revision,
+    action: { kind: 'delete', proposalId: proposal.id } }
+  await expect(store.command({ ...request, expectedRevision: request.expectedRevision - 1 })).rejects.toThrow('changed')
+  expect(store.view().proposals).toHaveLength(1)
+  const deleted = await store.command(request)
+  expect(deleted.proposals).toEqual([])
+  expect(deleted.runs.flatMap(run => run.proposalIds)).toEqual([])
+  expect(store.view('beta').proposals).toEqual([])
+  expect(store.snapshot().runs[0]?.input).toEqual(data)
+  expect(await store.command(request)).toEqual(deleted)
+  await expect(store.command({ ...request, operationId: 'unknown', expectedRevision: deleted.revision })).rejects.toThrow('Unknown')
+  await expect(store.complete(pending, beta, JSON.stringify({ suggestions: [suggestion('beta'),
+    { ...suggestion('beta'), existingId: proposal.id }] }), 5)).rejects.toThrow('removed')
+  expect(store.view().proposals).toEqual([])
+  expect(() => store.export(proposal.id, 4096)).toThrow('Unknown')
+  expect((await reopen()).view().proposals).toEqual([])
 })

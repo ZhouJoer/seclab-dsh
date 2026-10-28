@@ -51,7 +51,12 @@ async function boot() {
   ctx.provide('configForms', { developerTools: { enabled: createSnapshotStore(true) } } as never)
   const tabs = new SidebarRightTabRegistry(ctx)
   const registered: Recorded[] = []
+  const factories = new Set<string>()
   const slots = {
+    registerFactory: (options: { name: string }) => {
+      factories.add(options.name)
+      return () => { factories.delete(options.name) }
+    },
     inject: vi.fn((_name: string, register: () => () => void) => register()),
     register: vi.fn((options: Omit<Recorded, 'component'>, component: unknown) => {
       const entry: Recorded = { ...options, component }
@@ -77,7 +82,7 @@ async function boot() {
   const fiber = ctx.plugin({ inject: [...inject], apply })
   onTestFinished(async () => { await fiber.dispose() })
   await fiber.await()
-  return { ctx, tabs, registered, dictionaries, fiber, read, readBytes }
+  return { ctx, tabs, registered, factories, dictionaries, fiber, read, readBytes }
 }
 
 describe('ui-sidebar-documentpreview apply', () => {
@@ -107,11 +112,13 @@ describe('ui-sidebar-documentpreview apply', () => {
   })
 
   it('takes every registration back when the plugin is disposed', async () => {
-    const { tabs, registered, dictionaries, fiber } = await boot()
+    const { tabs, registered, factories, dictionaries, fiber } = await boot()
+    expect(factories.has('document.pdf')).toBe(true)
     await fiber.dispose()
     expect(tabs.get(TEXTPREVIEW_KIND)).toBeUndefined()
     expect(registered).toEqual([])
     expect(dictionaries.size).toBe(0)
+    expect(factories.size).toBe(0)
   })
 
   it('keeps specialized previews first and offers Code for shared highlighting suffixes', async () => {

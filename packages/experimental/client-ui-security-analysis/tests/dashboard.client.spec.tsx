@@ -35,6 +35,8 @@ function harness(extra: object = {}) {
   const unavailable = () => { throw new Error('This endpoint is outside the dashboard fixture') }
   const api = {
     ...deviceActions,
+    toolPreferenceOptions: vi.fn(async () => ({ tools: [], collections: [] })),
+    toolPreferences: vi.fn(async () => ({ toolIds: [], tags: [], collectionIds: [] })),
     scriptCatalog: unavailable, toolboxDirectory: unavailable, toolboxInventory: unavailable,
     toolboxConfiguration: unavailable, configureTool: unavailable, toolboxFiles: unavailable,
     toolCatalog: unavailable, previewToolPack: unavailable, importToolPack: unavailable, exportToolPack: unavailable,
@@ -43,7 +45,7 @@ function harness(extra: object = {}) {
     httpIdentities: unavailable, configureHttpIdentity: unavailable, removeHttpIdentity: unavailable,
     command: unavailable, execute: unavailable,
     useResource: () => ({ status: 'none', value: undefined, failure: undefined }),
-    beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(), refreshWorkspaceMaterials: vi.fn(),
+    generateReport: unavailable, beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(),
     configuration: vi.fn(async () => workbenchConfiguration()),
     configureWorkspace: vi.fn(async (_id: string, input: string) => workbenchConfiguration({
       workspace: { ...workbenchConfiguration().workspace!, revision: 1,
@@ -79,6 +81,7 @@ function harness(extra: object = {}) {
     t: makeTranslate(en, common), useWorkspaces: (select: (state: object) => unknown) => select({ items: [{ workspaceId: 'workspace', path: '/owned', title: 'Owned' }] }),
     SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
     renderSettings: () => <textarea aria-label="Assistant draft" defaultValue="" />,
+    renderFactorySlot: () => null,
     ...extra,
   }
   // The fixture supplies only framework seats consumed by this component.
@@ -148,6 +151,9 @@ it('confirms a restart and opens its fresh draft without sending or creating ano
   expect(trigger.parentElement?.contains(screen.getByRole('button', { name: en.openAssociatedChat }))).toBe(true)
   fireEvent.click(trigger)
   expect(api.restartTask).not.toHaveBeenCalled()
+  await waitFor(() => { expect(screen.getByRole('button', { name: en.restartTaskConfirm }).hasAttribute('disabled')).toBe(false) })
+  expect(screen.getByText('Environment: local')).toBeTruthy()
+  expect(screen.getByText(en.toolPreferenceAutomatic, { exact: false })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
   await waitFor(() => { expect(api.openRestartDraft).toHaveBeenCalledWith('fresh', 'Review owned code') })
   expect(api.restartTask).toHaveBeenCalledWith('s1', {})
@@ -161,7 +167,7 @@ it('cancels restart with Escape and returns focus to its visible entry', async (
   fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
   const trigger = await screen.findByRole('button', { name: en.restartTask })
   fireEvent.click(trigger)
-  fireEvent.keyDown(screen.getByRole('group', { name: en.restartTaskConfirm }), { key: 'Escape' })
+  fireEvent.keyDown(await screen.findByRole('group', { name: en.restartTaskConfirm }), { key: 'Escape' })
   expect(screen.queryByRole('group', { name: en.restartTaskConfirm })).toBeNull()
   expect(document.activeElement).toBe(trigger)
   expect(api.restartTask).not.toHaveBeenCalled()
@@ -172,6 +178,9 @@ it('keeps failed restart available and separates actionable copy from technical 
   render(<Dashboard {...props} />)
   fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
   fireEvent.click(await screen.findByRole('button', { name: en.restartTask }))
+  await waitFor(() => { expect(screen.getByRole('button', { name: en.restartTaskConfirm }).hasAttribute('disabled')).toBe(false) })
+  expect(screen.getByText('Environment: local')).toBeTruthy()
+  expect(screen.getByText(en.toolPreferenceAutomatic, { exact: false })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: en.restartTaskConfirm }))
   expect((await screen.findByRole('alert')).textContent).toBe(en.restartTaskFailed)
   expect(screen.getByText('HTTP 404', { exact: false }).closest('details')?.open).toBe(false)
@@ -406,6 +415,45 @@ it('keeps failed deletions visible for retry instead of animating them away', as
   expect(row.getAttribute('data-deleting')).toBe('false')
   expect(within(row).getByRole<HTMLButtonElement>('button', { name: 'Confirm deletion' }).disabled).toBe(false)
 })
+it('restores a deleted task from its row without navigating or resuming analysis', async () => {
+  const archived = { ...alpha.value, archived: true, stopped: true }
+  const restored = { ...archived, archived: false }
+  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
+    manageProject: vi.fn(async () => JSON.stringify([restored, beta.value])) })
+  render(<Dashboard {...props} />)
+  await screen.findByRole('button', { name: /Beta/ })
+  fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
+  const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
+  fireEvent.click(within(row).getByRole('button', { name: en.restoreProject }))
+  await waitFor(() => { expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull() })
+  expect(api.manageProject).toHaveBeenCalledWith('Alpha', expect.any(String))
+  expect(JSON.parse(api.manageProject.mock.calls[0]![1])).toMatchObject({ expectedRevision: 1, action: { kind: 'restore' } })
+  expect(api.selectDestination).not.toHaveBeenCalled()
+  expect(api.openChat).not.toHaveBeenCalled()
+  expect(api.createSession).not.toHaveBeenCalled()
+  expect(api.resumeProject).not.toHaveBeenCalled()
+  expect(screen.getByRole('heading', { name: 'Deleted tasks 0' })).toBe(document.activeElement)
+  fireEvent.click(screen.getByRole('button', { name: en.dashboardTasks }))
+  expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
+})
+it('keeps a deleted task available for restore after a failed request', async () => {
+  const archived = { ...alpha.value, archived: true, stopped: true }
+  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
+    manageProject: vi.fn().mockRejectedValueOnce(new Error('Restore failed'))
+      .mockResolvedValueOnce(JSON.stringify([{ ...archived, archived: false }, beta.value])) })
+  render(<Dashboard {...props} />)
+  await screen.findByRole('button', { name: /Beta/ })
+  fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
+  const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
+  fireEvent.click(within(row).getByRole('button', { name: en.restoreProject }))
+  await screen.findByRole('alert')
+  const restore = within(row).getByRole<HTMLButtonElement>('button', { name: en.restoreProject })
+  expect(restore.disabled).toBe(false)
+  fireEvent.click(restore)
+  await waitFor(() => { expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull() })
+  expect(api.manageProject).toHaveBeenCalledTimes(2)
+  expect(api.selectDestination).not.toHaveBeenCalled()
+})
 it('requires a second confirmation for long project names and offers no undo afterward', async () => {
   const archived = { ...alpha.value, title: 'Alpha ' + 'Long project name '.repeat(12), archived: true, stopped: true }
   const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
@@ -474,4 +522,28 @@ it('analyzes imported captures from materials and opens the resulting evidence',
     assetId: 'capture', environmentId: 'local', parameters: { protocol: 'ble' }, impact: 'observe' })
   expect((await screen.findByRole('button', { name: /^Authorization check/ })).textContent).toContain('A recorded observation')
   expect(api.createSession).not.toHaveBeenCalled()
+})
+
+it('opens the native workspace chat without requesting imported materials', async () => {
+  const task = { ...alpha, value: { ...alpha.value, workspaceMaterials: { root: '/owned/source' } } }
+  const workspaceAsset = recordSchema.parse({ kind: 'asset', value: { kind: 'workspace',
+    id: 'workspace-target', engagementId: 'Alpha', root: '/owned/source', label: 'Source' } })
+  const snapshot: WorkbenchView = { revision: 2, records: [task, workspaceAsset] }
+  const { api, props } = harness({
+    project: vi.fn(async () => snapshot),
+    followActivity: async function* (_id: string, signal: AbortSignal) {
+      yield { type: 'snapshot' as const, briefs: [], cursor: 0, view: snapshot, usage: [] }
+      if (!signal.aborted) await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
+    },
+  })
+  render(<Dashboard {...props} />)
+  fireEvent.click((await screen.findByText('Alpha')).closest('button')!)
+  expect(await screen.findByText('/owned/source')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: en.dashboardMaterials }))
+  expect(screen.getByRole('heading', { name: en.workspaceMaterials })).toBeTruthy()
+  expect(screen.queryByText(en.dashboardNoMaterials)).toBeNull()
+  expect(screen.getByText(en.workspaceBrowseHint)).toBeTruthy()
+  fireEvent.click(await screen.findByRole('button', { name: en.workspaceOpenChat }))
+  await waitFor(() => { expect(api.openChat).toHaveBeenCalledWith('s1') })
+  expect(api.projectArtifact).not.toHaveBeenCalled()
 })

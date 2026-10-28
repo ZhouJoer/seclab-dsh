@@ -1,5 +1,15 @@
 /** Browser-safe configuration returned by the security workbench. @module */
 import type { TaskContext } from './task-context.ts'
+import type { ModuleSelection } from './analysis-modules.ts'
+
+/** Complete operator settings copied into a task at first send. */
+export interface FirstMessageSettings {
+  environmentIds: string[]
+  maxAttempts: number
+  taskContext?: TaskContext | undefined
+  unsealed?: boolean | undefined
+  moduleSelection?: ModuleSelection | undefined
+}
 
 /** Resolved workspace resources and available security capabilities. */
 export interface WorkbenchConfiguration {
@@ -9,8 +19,12 @@ export interface WorkbenchConfiguration {
     configured: boolean
     environmentIds: string[]
     maxAttempts?: number
-    taskContext?: TaskContext
+    taskContext?: TaskContext | undefined
+    unsealed?: boolean | undefined
+    moduleSelection?: ModuleSelection | undefined
   } | null
+  /** Saved configuration for this conversation before its first project association. */
+  startup?: { revision: number; settings?: FirstMessageSettings | undefined }
   materialLimits: { bytes: number; entries: number }
   taskContextMaxBytes: number
   selectedProject?: string

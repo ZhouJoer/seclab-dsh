@@ -9,6 +9,8 @@ import {
   knowledgeEntrySchema,
   operationSchema,
   phaseSchema,
+  taskOutcomeSchema,
+  citationSchema,
 } from './model.ts'
 
 const text = z.string().trim().min(1)
@@ -28,6 +30,8 @@ const checkInput = checkSchema.omit({
   rationale: true,
   ownerSessionId: true,
 })
+const references = { evidenceIds: z.array(text).max(20).default([]), citations: z.array(citationSchema).max(20).optional() }
+const resultInput = taskOutcomeSchema.shape.results.element.extend(references)
 const actions = z.discriminatedUnion('kind', [
   z
     .object({
@@ -59,16 +63,17 @@ const actions = z.discriminatedUnion('kind', [
     origin: text, pathPrefix: text, allowedAddresses: z.array(text).min(1) }).strict(),
   z.object({ kind: z.literal('finding-http-reference'), findingId: text, evidenceId: text, stepId: text,
     role: z.enum(['baseline', 'verification', 'supporting']) }).strict(),
-  z.object({ kind: z.literal('revise-finding'), findingId: text, title: text, explanation: text, conditions: text, evidenceIds: z.array(text).min(1) }).strict(),
+  z.object({ kind: z.literal('revise-finding'), findingId: text, title: text, explanation: text, conditions: text, ...references }).strict(),
   z.object({ kind: z.literal('conclude'), reviewId: text }).strict(),
   z.object({ kind: z.literal('delegation-disposition'), delegationId: text,
     decision: z.enum(['accepted', 'needs-more', 'rejected']), reason: text }).strict(),
   z.object({ kind: z.literal('report') }).strict(),
+  taskOutcomeSchema.extend({ kind: z.literal('complete-task'), results: z.array(resultInput).min(1).max(30) }).strict(),
   z.object({ kind: z.literal('template'), assetId: text }).strict(),
   z.object({ kind: z.literal('finish'), checkId: text, evidenceIds: z.array(text), rationale: text }).strict(),
   z.object({ kind: z.literal('reopen'), checkId: text, rationale: text }).strict(),
   z.object({ kind: z.literal('reconcile'), checkId: text, rationale: text }).strict(),
-  z.object({ kind: z.literal('finding'), finding: findingSchema.omit({ id: true, engagementId: true }) }).strict(),
+  z.object({ kind: z.literal('finding'), finding: findingSchema.omit({ id: true, engagementId: true }).extend(references) }).strict(),
   z
     .object({
       kind: z.literal('plan'),

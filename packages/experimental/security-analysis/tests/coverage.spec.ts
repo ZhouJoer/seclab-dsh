@@ -71,3 +71,14 @@ it('requires completed validation for runtime reviews and retains simulation ide
   records.push(recordSchema.parse({ kind: 'execution', value: { id: 'run', engagementId: 'project', assetId: 'asset', planId: 'plan', status: 'completed', detail: '' } }))
   expect(deriveProjectCoverage(records, 2).checks[0]).toMatchObject({ methods: ['simulation'], reviews: [{ basis: 'runtime', verdict: 'refuted' }] })
 })
+
+it('counts cited native source locations without implying whole-file coverage', () => {
+  const { records } = fixture()
+  const evidence = records.find(item => item.kind === 'evidence')!
+  records.push(recordSchema.parse({ kind: 'evidence', value: { ...evidence.value, id: 'native-citation',
+    provider: 'source-citation', request: { path: 'handler.ts', startLine: 7, endLine: 9 } } }))
+  const coverage = deriveProjectCoverage(records, 1)
+  expect(coverage.assets[0]?.sourceFilesRead).toBe(1)
+  expect(coverage.assets[0]?.unlinkedEvidenceIds).toContain('native-citation')
+  expect(coverage.checks[0]?.reviews).toEqual([])
+})

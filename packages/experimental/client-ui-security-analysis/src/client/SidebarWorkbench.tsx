@@ -1,13 +1,13 @@
 /** Task browsing in the native chat sidebar, with navigation owned by each tab. @module */
 import { useMemo, useState } from 'react'
-import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarRightTabParamsFor } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { IconShieldOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Dashboard, type DashboardActions } from './Dashboard.tsx'
 import type { NS } from './locales.ts'
 import css from './Dashboard.module.css'
 
-type Props = DashboardActions & PropsLocale<typeof NS>
+type Props = PropsRenderFactories & DashboardActions & PropsLocale<typeof NS>
   & Pick<PropsRuntime<'sidebar.right.pane.tab'>, 'sessionId' | 'useTabInfo' | 'useWorkspaces' | 'useResource'>
   & PropsRenderSlots<'security.workbench.sidebar.session'>
 

@@ -1,9 +1,12 @@
 /** Security command validation and durable project authority. @module */
+import { resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import assert from 'node:assert/strict'
 import { z } from 'zod'
+import type { ResolvedCitation } from '../citations.ts'
+import type { Citation } from './model.ts'
 import { commandSchema, externalTargetInput, type SecurityCommand } from './commands.ts'
 import { moduleSelectionSchema, moduleAllowsOperation } from '../analysis-modules.ts'
 import { taskContextSchema, resolveTaskContext, type TaskContext } from '../task-context.ts'
@@ -13,10 +16,12 @@ import {
   assetSchema,
   fileAssetSchema,
   sourceAssetSchema,
+  workspaceAssetSchema,
   webAssetSchema,
   externalWebAssetSchema,
   reviewSchema,
   reportSchema,
+  taskCompletionSchema,
   laboratorySchema,
   type Laboratory,
   checkSchema,
@@ -39,7 +44,7 @@ import type { SecurityJournal } from './journal.ts'
 import type { SecurityActivityStore } from './activity.ts'
 import { canObserve, toolsForRole, resolveTask } from './roles.ts'
 import { findingHash } from './assessment.ts'
-import { reportPrompt, renderReport, type ReportLimits } from './report.ts'
+import { renderReport, type ReportLimits } from './report.ts'
 import { importSource, sourceManifest } from './source.ts'
 import { materialInputSchema, prepareMaterials } from './materials.ts'
 import { apkMembers } from './apk.ts'
@@ -156,10 +161,10 @@ export class SecurityController {
     private readonly journal: SecurityJournal,
     readonly artifacts: ArtifactStore,
     readonly options: WorkbenchOptions,
-    private readonly generateReport?: (prompt: string, signal: AbortSignal, sessionId: string) => Promise<string>,
     readonly activity?: SecurityActivityStore,
     private readonly removeImprovements?: (project: string) => Promise<void>,
     private readonly cancelImprovements?: (project: string) => Promise<void>,
+    private readonly readCitation?: (sessionId: string, reference: Citation, signal: AbortSignal) => Promise<ResolvedCitation>,
   ) {}
   /** Resolve the direction captured at delegation, or the coordinator's current direction.
    * @param sessionId - bound analysis Session.
@@ -436,7 +441,8 @@ export class SecurityController {
         if (project.stopped || project.archived) throw new Error('Project is inactive or stopped')
         for (const evidenceId of outcome.report.evidenceIds) {
           if (!view.records.some(item => item.kind === 'evidence' && item.value.id === evidenceId
-            && item.value.engagementId === assignment.engagementId && item.value.assetId === assignment.assetId))
+            && item.value.engagementId === assignment.engagementId && item.value.assetId === assignment.assetId
+            && (item.value.source.sessionId === assignment.child?.childSessionId || assignment.inputEvidenceIds?.includes(item.value.id))))
             throw new Error('Child report cites unavailable or foreign evidence')
         }
       }
@@ -458,15 +464,23 @@ export class SecurityController {
    * @param resolve - resolve workspace defaults only for the first successful commit.
    * @returns committed task scope. */
   async createWorkspaceTask(sessionId: SessionId, operationId: string, root: string,
-    input: { title: string; environmentIds: string[] },
-    resolve: () => Promise<Pick<Extract<SecurityCommand['action'], { kind: 'create' }>, 'maxAttempts' | 'moduleSelection' | 'taskContext'>>): Promise<WorkbenchView> {
+    input: { title: string; environmentIds?: string[] },
+    resolve: () => Promise<Pick<Extract<SecurityCommand['action'], { kind: 'create' }>, 'maxAttempts' | 'moduleSelection' | 'taskContext' | 'unsealed'>
+      & { environmentIds?: string[] }>): Promise<WorkbenchView> {
     await this.journal.commit(operationId, undefined, { sessionId, root, input }, async (view) => {
       if (view.records.some(item => item.kind === 'binding' && item.value.sessionId === sessionId))
         throw new Error('Conversation already belongs to an analysis task')
-      const action = { ...await resolve(), ...input, kind: 'create' as const, objective: '' }
-      return this.createRecords(sessionId, action).map(record => record.kind === 'engagement'
-        ? { ...record, value: { ...record.value, mainSessionId: sessionId, automaticTitle: true, workspaceMaterials: { root } } }
-        : record)
+      const defaults = await resolve()
+      const environmentIds = input.environmentIds ?? defaults.environmentIds
+      if (!environmentIds?.length) throw new Error('Select an available analysis environment')
+      const action = { ...defaults, ...input, environmentIds, kind: 'create' as const, objective: '' }
+      const records = this.createRecords(sessionId, action)
+      const project = records.find(record => record.kind === 'engagement')
+      assert(project?.kind === 'engagement')
+      const asset = workspaceAssetSchema.parse({ kind: 'workspace', id: randomUUID(), engagementId: project.value.id, label: root, root })
+      project.value = { ...project.value, mainSessionId: sessionId, automaticTitle: true, workspaceMaterials: { root, assetId: asset.id } }
+      records.push({ kind: 'asset', value: asset })
+      return records
     })
     return this.view(sessionId)
   }
@@ -490,30 +504,23 @@ export class SecurityController {
     })
   }
 
-  /** Publish a workspace snapshot without changing any previously referenced asset.
-   * @param targets - tasks and their fixed workspace roots, checked again at commit.
-   * @param prepare - cancellable snapshot producer, held through artifact cleanup exclusion.
-   * @returns completion after the current material pointer is committed. */
-  async syncWorkspaceMaterials(targets: readonly { projectId: string; root: string }[], prepare: () => Promise<import('./model.ts').Artifact>): Promise<void> {
-    await this.withArtifactWrite(async () => {
-      const artifact = await prepare()
-      for (const { projectId, root } of targets) {
-        const project = this.projects().find(item => item.id === projectId)
-        if (!project || project.workspaceMaterials?.root !== root) continue
-        const records = this.projectView(projectId).records
-        const existing = records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'source'
-        && item.value.inputSource?.kind === 'path' && item.value.inputSource.path === root && item.value.artifact.sha256 === artifact.sha256)
-        if (existing?.kind === 'asset' && existing.value.id === project.workspaceMaterials.assetId) continue
-        const assetId = existing?.kind === 'asset' ? existing.value.id : randomUUID()
-        await this.journal.commit(randomUUID(), undefined, { projectId, root, artifact }, (view) => {
-          const current = this.project(view, projectId)
-          if (current.archived || current.workspaceMaterials?.root !== root) return [{ kind: 'engagement', value: current }]
-          return [ ...(existing ? [] : [{ kind: 'asset' as const, value: sourceAssetSchema.parse({
-            id: assetId, engagementId: projectId, kind: 'source', label: root, identity: 'measured', artifact,
-            inputSource: { kind: 'path', path: root },
-          }) }]), { kind: 'engagement', value: { ...current, workspaceMaterials: { root, assetId } } }]
-        })
-      }
+  /** Register a lightweight target for a historical workspace task without reading its files.
+   * @param sessionId - bound task Session.
+   * @returns completion after the target is available. */
+  async ensureWorkspaceTarget(sessionId: string): Promise<void> {
+    const binding = this.binding(sessionId)
+    if (!binding || binding.role !== 'coordinator') return
+    const project = this.project(this.journal.view(), binding.engagementId)
+    if (!project.workspaceMaterials || project.archived || project.stopped) return
+    const root = project.workspaceMaterials.root
+    if (this.projectView(project.id).records.some(item => item.kind === 'asset' && 'kind' in item.value
+      && item.value.kind === 'workspace' && item.value.root === root)) return
+    await this.journal.commit('workspace-target:' + project.id, undefined, { projectId: project.id, root }, (view) => {
+      const current = this.project(view, project.id)
+      const asset = workspaceAssetSchema.parse({ kind: 'workspace', id: randomUUID(), engagementId: project.id, label: root, root })
+      return [{ kind: 'asset', value: asset }, { kind: 'engagement', value: {
+        ...current, workspaceMaterials: { root, assetId: asset.id },
+      } }]
     })
   }
 
@@ -596,12 +603,15 @@ export class SecurityController {
       const view = this.view(sessionId)
       const project = view.records.find(item => item.kind === 'engagement')?.value
       if (!project || this.binding(sessionId)?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+      if (project.environmentIds.some(id => !this.options.environments.some(environment => environment.id === id)))
+        throw new Error('Restore the task analysis environments before restarting')
       const samples = view.records.filter(item => item.kind === 'asset')
         .map(item => item.value).filter(asset => !('parentId' in asset && asset.parentId))
         .filter(asset => !project.workspaceMaterials || !('kind' in asset) || asset.kind !== 'source'
           || asset.inputSource?.kind !== 'path' || asset.inputSource.path !== project.workspaceMaterials.root)
       const inputs: Asset[] = []
       for (const sample of samples) {
+        if ('kind' in sample && sample.kind === 'workspace') continue
         if ('kind' in sample && sample.kind === 'web')
           throw new Error('Managed laboratory inputs must be recreated before restarting this task')
         if ('kind' in sample && sample.kind === 'external-web') { inputs.push(sample); continue }
@@ -632,8 +642,11 @@ export class SecurityController {
         const next = records.find(item => item.kind === 'engagement')
         assert(next?.kind === 'engagement')
         if (retained.workspaceMaterials) {
+          const root = retained.workspaceMaterials.root
+          const target = workspaceAssetSchema.parse({ kind: 'workspace', id: randomUUID(), engagementId: next.value.id, label: root, root })
           next.value = { ...next.value, mainSessionId: brandString<SessionId>(destination), automaticTitle: false,
-            workspaceMaterials: { root: retained.workspaceMaterials.root } }
+            workspaceMaterials: { root, assetId: target.id } }
+          records.push({ kind: 'asset', value: target })
         }
         for (const input of inputs) records.push(...await this.importedRecords(assetSchema.parse({
           ...input, id: randomUUID(), engagementId: next.value.id,
@@ -848,7 +861,7 @@ export class SecurityController {
     const action = command.action
     const operatorActions = ['create', 'select', 'leave', 'approve', 'publish', 'resume', 'web-target', 'external-web-target']
     if (operatorActions.includes(action.kind) && !operator) throw new Error('This action requires an operator gesture')
-    if (action.kind === 'report') return this.createReport(sessionId, command, operator, signal)
+    if (action.kind === 'report' || action.kind === 'complete-task') return this.createReport(sessionId, command, operator, signal)
     await this.journal.commit(
       command.operationId,
       action.kind === 'stop' || action.kind === 'revoke' ? undefined : command.expectedRevision,
@@ -952,9 +965,9 @@ export class SecurityController {
           case 'revise-finding': {
             const item = scoped('finding', action.findingId)
             if (item.kind !== 'finding') throw new Error('Finding required')
-            evidence(action.evidenceIds, item.value.assetId)
-            return [{ kind: 'finding', value: { ...item.value, title: action.title, explanation: action.explanation,
-              conditions: action.conditions, evidenceIds: action.evidenceIds,
+            const cited = await this.citedEvidence(view, sessionId, item.value.assetId, action.evidenceIds, action.citations, signal)
+            return [...cited.records, { kind: 'finding', value: { ...item.value, title: action.title, explanation: action.explanation,
+              conditions: action.conditions, evidenceIds: cited.ids,
               ...(item.value.httpReferences ? { httpReferences: item.value.httpReferences.filter(reference =>
                 action.evidenceIds.includes(reference.evidenceId)) } : {}),
               status: 'suspected', review: '' } }]
@@ -1184,19 +1197,22 @@ export class SecurityController {
           }
           case 'finding': {
             asset(action.finding.assetId)
-            evidence(action.finding.evidenceIds, action.finding.assetId)
+            const cited = await this.citedEvidence(view, sessionId, action.finding.assetId,
+              action.finding.evidenceIds, action.finding.citations, signal)
+            const { citations: _citations, ...fields } = action.finding
             for (const reference of action.finding.httpReferences ?? []) {
               const observation = scoped('evidence', reference.evidenceId)
-              if (!action.finding.evidenceIds.includes(reference.evidenceId) || observation.kind !== 'evidence' ||
+              if (!cited.ids.includes(reference.evidenceId) || observation.kind !== 'evidence' ||
                 !observation.value.http?.exchanges.some(step => step.stepId === reference.stepId))
                 throw new Error('HTTP finding references must identify a step in the finding evidence')
             }
             if (action.finding.status === 'confirmed' || action.finding.status === 'refuted')
               throw new Error('Conclusions require an independent review and the conclude command')
             return [
+              ...cited.records,
               {
                 kind: 'finding',
-                value: findingSchema.parse({ ...action.finding, id: randomUUID(), engagementId: project.id }),
+                value: findingSchema.parse({ ...fields, evidenceIds: cited.ids, id: randomUUID(), engagementId: project.id }),
               },
             ]
           }
@@ -1311,6 +1327,50 @@ export class SecurityController {
     }
     return this.view(sessionId)
   }
+  private async citedEvidence(view: WorkbenchView, sessionId: string, assetId: string, ids: readonly string[],
+    citations: readonly Citation[] | undefined, signal: AbortSignal): Promise<{ ids: string[]; records: SecurityRecord[] }> {
+    const binding = this.requireBinding(view, sessionId)
+    const asset = view.records.find(item => item.kind === 'asset' && item.value.id === assetId)
+    if (asset?.kind !== 'asset' || asset.value.engagementId !== binding.engagementId ||
+      binding.role !== 'coordinator' && !binding.assetIds.includes(assetId)) throw new Error('Citation target is outside the Session scope')
+    const records: SecurityRecord[] = []
+    const selected = [...ids]
+    for (const reference of citations ?? []) {
+      signal.throwIfAborted()
+      if (reference.kind === 'source' && (!('kind' in asset.value) || asset.value.kind !== 'workspace'))
+        throw new Error('Native source citations require a workspace target')
+      const sourceId = reference.sessionId ?? sessionId
+      const source = this.requireBinding(view, sourceId)
+      if (source.engagementId !== binding.engagementId || sourceId !== sessionId && binding.role !== 'coordinator' ||
+        source.role !== 'coordinator' && !source.assetIds.includes(assetId)) throw new Error('Citation Session is outside the task scope')
+      if (!this.readCitation) throw new Error('Session citation reader is unavailable')
+      const observed = await this.readCitation(sourceId, reference, signal)
+      if (reference.kind === 'source' && 'kind' in asset.value && asset.value.kind === 'workspace' &&
+        (!observed.workspaceRoot || resolve(observed.workspaceRoot) !== resolve(asset.value.root)))
+        throw new Error('Source observation belongs to a different workspace')
+      const fingerprint = createHash('sha256').update(JSON.stringify({ assetId, sourceId, callId: observed.callId,
+        resultSeq: observed.resultSeq, bytes: observed.bytes.toString('base64') })).digest('hex')
+      const existing = [...view.records, ...records].find(item => item.kind === 'evidence' && item.value.requestHash === fingerprint)
+      if (existing?.kind === 'evidence') { selected.push(existing.value.id); continue }
+      const artifact = await this.artifacts.put(observed.bytes, 'application/json')
+      const record: SecurityRecord = { kind: 'evidence', value: evidenceSchema.parse({ id: randomUUID(),
+        engagementId: binding.engagementId, assetId, title: observed.title, summary: observed.title, artifact,
+        provider: reference.kind === 'source' ? 'source-citation' : 'session-tool', operation: reference.kind === 'source' ? 'read' : 'analysis-log',
+        toolVersion: 'recorded-session', request: reference, requestHash: fingerprint,
+        source: { sessionId: sourceId, callId: observed.callId, channel: 'tool' }, incomplete: observed.incomplete,
+        ...(observed.citation ? { citation: observed.citation, method: 'static', observationKind: 'implementation' } : {}), createdAt: Date.now() }) }
+      records.push(record); selected.push(record.value.id)
+    }
+    if (!selected.length) throw new Error('A result requires an observed citation or saved evidence')
+    const assigned = view.records.filter(item => item.kind === 'delegation' && item.value.engagementId === binding.engagementId &&
+      item.value.assetId === assetId && item.value.child?.childSessionId === sessionId)
+      .flatMap(item => item.kind === 'delegation' ? item.value.inputEvidenceIds ?? [] : [])
+    for (const id of selected) if (![...view.records, ...records].some(item => item.kind === 'evidence' && item.value.id === id &&
+      item.value.engagementId === binding.engagementId && item.value.assetId === assetId &&
+      (binding.role === 'coordinator' || item.value.source.sessionId === sessionId || assigned.includes(item.value.id))))
+      throw new Error('Evidence is outside the target scope or was not assigned to this Session')
+    return { ids: [...new Set(selected)], records }
+  }
   private async createReport(sessionId: string, command: SecurityCommand, operator: boolean, signal: AbortSignal): Promise<WorkbenchView> {
     const snapshot = this.journal.view()
     const binding = this.requireBinding(snapshot, sessionId)
@@ -1318,45 +1378,108 @@ export class SecurityController {
     const project = this.project(snapshot, binding.engagementId)
     const input = { sessionId, operator, action: command.action }
     if (this.journal.replay(command.operationId, input)) return this.view(sessionId)
-    const key = command.operationId
+    const key = project.id
     const fingerprint = JSON.stringify(input)
     const running = this.reports.get(key)
     if (running) {
-      if (running.fingerprint !== fingerprint) throw new Error('operationId was already used for different input')
+      if (running.fingerprint !== fingerprint) throw new Error('A different report request is already running for this task')
       return running.pending
     }
-    if (project.stopped) throw new Error('Project is stopped')
+    if (project.stopped || project.archived) throw new Error('Resume the task before generating its report')
     if (snapshot.revision !== command.expectedRevision) throw new Error('Security state changed; reload before retrying')
-    if (!this.generateReport || !this.options.reportLimits) throw new Error('Report model is unavailable')
-    const generate = this.generateReport
     const limits = this.options.reportLimits
     const recordsOf = (view: WorkbenchView) => view.records.filter(record => record.kind !== 'binding' && record.kind !== 'report' &&
       (record.kind === 'engagement' ? record.value.id : record.value.engagementId) === project.id)
-    const records = recordsOf(snapshot)
-    const source = JSON.stringify(records)
+    const sourceOf = (records: SecurityRecord[]) => JSON.stringify(records.map((record) => {
+      if (record.kind !== 'engagement' || !record.value.completion) return record
+      const { completion, ...value } = record.value
+      return { ...record, value: { ...value, completion: { ...completion, status: undefined, detail: undefined,
+        updatedAt: undefined, reportId: undefined, operationId: undefined } } }
+    }))
     const abort = new AbortController()
     const combined = AbortSignal.any([signal, abort.signal])
-    const pending = (async () => {
+    const pending = Promise.resolve().then(async () => {
       combined.throwIfAborted()
-      const prompt = reportPrompt(records, limits)
-      const response = await generate(prompt, combined, sessionId)
-      combined.throwIfAborted()
-      const rendered = renderReport(records, response, limits)
+      const action = command.action
+      if (action.kind === 'complete-task' || project.completion) {
+        const outcomeOperation = command.operationId + ':outcome'
+        const saved = this.journal.replay(outcomeOperation, input)
+        await this.journal.commit(saved ? randomUUID() : outcomeOperation, command.expectedRevision, input, async (view) => {
+          combined.throwIfAborted()
+          const current = this.project(view, project.id)
+          if (this.requireBinding(view, sessionId).engagementId !== project.id || current.stopped || current.archived)
+            throw new Error('Task selection changed before report generation')
+          if (saved && current.completion?.operationId !== command.operationId) throw new Error('Report submission was superseded; retry the current saved report')
+          const outcome = saved ? current.completion : action.kind === 'complete-task' ? action : current.completion
+          assert(outcome, 'Report retry retains its task outcomes')
+          const records: SecurityRecord[] = []
+          const results = []
+          for (const result of outcome.results) {
+            const target = view.records.find(record => record.kind === 'asset' && record.value.engagementId === project.id &&
+              'kind' in record.value && record.value.kind === 'workspace')
+            const existing = view.records.find(record => record.kind === 'evidence' && result.evidenceIds.includes(record.value.id))
+            const assetId = target?.kind === 'asset' ? target.value.id : existing?.kind === 'evidence' ? existing.value.assetId : undefined
+            const citations = 'citations' in result ? result.citations : undefined
+            for (const id of result.evidenceIds) if (!view.records.some(record => record.kind === 'evidence' &&
+              record.value.id === id && record.value.engagementId === project.id))
+              throw new Error('Task outcome cites evidence outside this project')
+            if (!assetId) throw new Error('Task result requires a workspace target or existing evidence')
+            const cited = citations?.length ? await this.citedEvidence({ ...view, records: [...view.records, ...records] },
+              sessionId, assetId, [], citations, combined) : { ids: [], records: [] }
+            cited.ids = [...new Set([...result.evidenceIds, ...cited.ids])]
+            if (!cited.ids.length) throw new Error('A result requires an observed citation or saved evidence')
+            records.push(...cited.records)
+            results.push({ title: result.title, result: result.result, evidenceIds: cited.ids })
+          }
+          for (const recommendation of outcome.recommendations ?? []) if (!view.records.some(record => record.kind === 'finding' &&
+            record.value.id === recommendation.findingId && record.value.engagementId === project.id && record.value.status !== 'refuted')) throw new Error('Recommendation cites a foreign finding')
+          return [...records, { kind: 'engagement', value: { ...current, completion: taskCompletionSchema.parse({
+            operationId: command.operationId,
+            summary: outcome.summary, methods: outcome.methods, analysis: outcome.analysis, recommendations: outcome.recommendations,
+            results, limitations: outcome.limitations, status: 'running', detail: '', updatedAt: Date.now(),
+          }) } }]
+        })
+      }
+      if (!project.completion && action.kind !== 'complete-task') throw new Error('Submit task results before publishing a report')
+      if (!limits) throw new Error('Report output limits are unavailable')
+      const observed = this.journal.view()
+      const records = recordsOf(observed)
+      const source = sourceOf(records)
+      const sourceHash = createHash('sha256').update(source).digest('hex')
+      const cached = observed.records.find(record => record.kind === 'report' && record.value.engagementId === project.id && record.value.sourceHash === sourceHash)
+      const settle = (report: Extract<SecurityRecord, { kind: 'report' }>) => this.journal.commit(command.operationId, undefined, input, (view) => {
+        combined.throwIfAborted()
+        const current = this.project(view, project.id)
+        if (this.requireBinding(view, sessionId).engagementId !== project.id || current.stopped || current.archived ||
+          sourceOf(recordsOf(view)) !== source) throw new Error('Project analysis changed; generate the report again')
+        return [report, ...(current.completion ? [{ kind: 'engagement' as const, value: { ...current, completion: {
+          ...current.completion, status: 'completed' as const, detail: '', reportId: report.value.id, updatedAt: Date.now(),
+        } } }] : [])]
+      })
+      if (cached?.kind === 'report') { await settle(cached); return this.view(sessionId) }
+      const rendered = renderReport(records, limits)
       const markdown = await this.artifacts.put(Buffer.from(rendered.markdown), 'text/markdown')
       const findingsMarkdown = rendered.findingsMarkdown === undefined ? undefined
         : await this.artifacts.put(Buffer.from(rendered.findingsMarkdown), 'text/markdown')
       const recommendationsMarkdown = rendered.recommendationsMarkdown === undefined ? undefined
         : await this.artifacts.put(Buffer.from(rendered.recommendationsMarkdown), 'text/markdown')
-      const json = await this.artifacts.put(Buffer.from(JSON.stringify({ revision: snapshot.revision, records })), 'application/json')
-      await this.journal.commit(command.operationId, undefined, input, (view) => {
-        combined.throwIfAborted()
-        if (this.requireBinding(view, sessionId).engagementId !== project.id || this.project(view, project.id).stopped ||
-          JSON.stringify(recordsOf(view)) !== source) throw new Error('Project analysis changed; generate the report again')
-        return [{ kind: 'report', value: reportSchema.parse({ id: randomUUID(), engagementId: project.id,
-          revision: snapshot.revision, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown }) }]
-      })
+      const json = await this.artifacts.put(Buffer.from(JSON.stringify({ revision: observed.revision, records })), 'application/json')
+      await settle({ kind: 'report', value: reportSchema.parse({ id: randomUUID(), engagementId: project.id,
+        revision: observed.revision, sourceHash, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown }) })
       return this.view(sessionId)
-    })()
+    }).catch(async (error: unknown) => {
+      const current = this.journal.view().records.find(record => record.kind === 'engagement' && record.value.id === project.id)
+      if (current?.kind === 'engagement' && current.value.completion?.status === 'running') {
+        await this.journal.commit(randomUUID(), undefined, { reportFailure: command.operationId }, (view) => {
+          const latest = this.project(view, project.id)
+          assert(latest.completion, 'Failed report retains saved outcomes')
+          return [{ kind: 'engagement', value: { ...latest, completion: { ...latest.completion,
+            status: combined.aborted ? 'interrupted' : 'failed', detail: String(error), updatedAt: Date.now(),
+          } } }]
+        })
+      }
+      throw error
+    })
     const release = this.trackDelegation(project.id, abort, pending)
     const settled = pending.finally(() => { release(); this.reports.delete(key) })
     this.reports.set(key, { fingerprint, pending: settled })
@@ -1396,6 +1519,31 @@ export class SecurityController {
     this.project(view, projectId)
     return { revision: view.revision, records: view.records.filter(item => item.kind !== 'binding' &&
       (item.kind === 'engagement' ? item.value.id : item.value.engagementId) === projectId) }
+  }
+  /** Read one immutable report while preventing deletion of its artifacts.
+   * @param projectId - owning project.
+   * @param reportId - report selected in that project.
+   * @param format - required report artifact.
+   * @param signal - caller cancellation.
+   * @returns verified report text, or rejects when unavailable or cancelled.
+   */
+  async readReport(projectId: string, reportId: string,
+    format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown', signal: AbortSignal): Promise<string> {
+    if (this.disposed || this.purging) throw new Error('Report reads are unavailable during cleanup')
+    const report = this.projectView(projectId).records.find(item => item.kind === 'report' && item.value.id === reportId)
+    if (report?.kind !== 'report') throw new Error('Report is outside the project scope')
+    const artifact = report.value[format]
+    if (!artifact) throw new Error('This report does not contain the requested artifact')
+    const abort = new AbortController()
+    const combined = AbortSignal.any([signal, abort.signal])
+    const done = Promise.withResolvers<void>()
+    this.exportReads.set(abort, { project: projectId, done: done.promise })
+    try {
+      combined.throwIfAborted()
+      const bytes = await this.artifacts.read(artifact)
+      combined.throwIfAborted()
+      return bytes.toString('utf8')
+    } finally { this.exportReads.delete(abort); done.resolve() }
   }
   /** Export the selected immutable report while retaining its artifact reads.
    * @param projectId - authenticated operator's selected project.
@@ -1474,6 +1622,10 @@ export class SecurityController {
           : item,
       )
     for (const item of view.records) {
+      if (item.kind === 'engagement' && item.value.completion?.status === 'running')
+        records.push({ kind: 'engagement', value: { ...item.value, completion: { ...item.value.completion,
+          status: 'interrupted', detail: 'Host restarted before report publication; retry the saved outcomes', updatedAt: Date.now(),
+        } } })
       if (item.kind === 'delegation' && (item.value.status === 'pending' || item.value.status === 'running'))
         records.push({ kind: 'delegation', value: { ...item.value, status: 'interrupted', settledAt: Date.now(),
           detail: 'Host restarted before the worker settled; review saved evidence before dispatching another assignment' } })

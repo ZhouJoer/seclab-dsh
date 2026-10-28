@@ -222,7 +222,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-session-controller`
 
 - `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/session-controller/src/index.ts:94`](../packages/api/session-controller/src/index.ts)
+- `source`: [`packages/api/session-controller/src/index.ts:102`](../packages/api/session-controller/src/index.ts)
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -1226,19 +1226,36 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-ptc-runtime-python -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-research-workbench -->
+<a id="deepseek-aidsh-experimental-research-workbench"></a>
+
+## `@deepseek-ai/dsh-experimental-research-workbench`
+
+- `inject`: `fs` · `sessionQuery` · `workingDirectory` · `sandboxPolicy` · `typert`
+- `source`: [`packages/experimental/research-workbench/src/index.ts:22`](../packages/experimental/research-workbench/src/index.ts)
+
+```ts config-catalog
+/** Bounds on a complete editor buffer and one directory listing. */
+export interface Config {
+  /** Maximum complete UTF-8 file size for editing and saves, in bytes. */
+  maxTextBytes: number
+  /** Maximum number of entries returned by a directory listing. */
+  maxEntries: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-research-workbench -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-security-analysis -->
 <a id="deepseek-aidsh-experimental-security-analysis"></a>
 
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:102`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:111`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
-  /** Automatic workspace snapshots; omission uses the documented scan defaults. */
-  workspaceMaterials?: WorkspaceMaterialOptions
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -1281,22 +1298,12 @@ export interface WorkbenchConfig {
   modelResultBytes: number
   /** Maximum invocation details returned in one activity page. */
   activityPageSize: number
-  /** Target Unicode characters for the reader-facing report body. */
-  reportMaxChars: number
-  /** Maximum bytes supplied to the report model. */
-  reportInputBytes: number
-  /** Maximum model tokens allowed for one report response. */
-  reportOutputTokens: number
   /** Exploration token allowance per analysis turn, followed by one summary step under existing model limits. */
   analysisTurnTokens: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
-  /** Recorded coordinator calls between required research-progress updates. */
-  analysisProgressCalls: number
   /** Maximum target findings in the main report body. */
   reportMaxFindings: number
-  /** Maximum reusable lessons in the main report body. */
-  reportMaxLessons: number
   /** Maximum approved operation duration in milliseconds. */
   maxDurationMs: number
   /** Deadline for one container target-reachability probe command in milliseconds. */
@@ -1317,18 +1324,6 @@ export interface WorkbenchConfig {
   knowledgeProvider?: string
   /** Optional dedicated refinement model; on-demand calls inherit the initiating Agent model when omitted. */
   knowledgeModel?: string
-}
-
-/** Deployment budgets for automatic workspace material collection. */
-export interface WorkspaceMaterialOptions {
-  /** Maximum entries visited by one scan and retained in its index. */
-  maxEntries: number
-  /** Maximum aggregate size of current workspace file bytes. */
-  maxBytes: number
-  /** Event coalescing delay and write-stability observation interval. */
-  debounceMs: number
-  /** Directory names excluded at every depth, independent of .gitignore. */
-  excludedDirectories: string[]
 }
 
 /** Deployment-owned collection and teardown bounds. */
@@ -4968,6 +4963,9 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-client-ui-security-analysis` | — | [`packages/experimental/client-ui-security-analysis/src/index.ts`](../packages/experimental/client-ui-security-analysis/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-research-runtime` | — | [`packages/experimental/research-runtime/src/index.ts`](../packages/experimental/research-runtime/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-research-security` | — | [`packages/experimental/research-security/src/index.ts`](../packages/experimental/research-security/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-research-workbench-bundle` | — | [`packages/experimental/research-workbench-bundle/src/index.ts`](../packages/experimental/research-workbench-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-security-profile` | `agentPresets` | [`packages/experimental/security-profile/src/index.ts`](../packages/experimental/security-profile/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-inspector` | — | [`packages/experimental/session-inspector/src/index.ts`](../packages/experimental/session-inspector/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `tools` · `worktrees` | [`packages/experimental/tool-worktree/src/index.ts`](../packages/experimental/tool-worktree/src/index.ts) |

@@ -19,6 +19,25 @@ interface ExportConnection {
 export function installReportExport(ctx: Context, ready: Promise<SecurityController>, maxBytes: number): void {
   ctx.inject(['connection'], (connected) => {
     const connection = Reflect.get(connected, 'connection') as ExportConnection
+    connected.effect(() => connection.fetch.register({ path: '/api/security.report', methods: ['GET', 'HEAD'], requestBody: 'buffered',
+      fetch: async (request) => {
+        const query = new URL(request.url).searchParams
+        const projectId = query.get('projectId')
+        const reportId = query.get('reportId')
+        if (!projectId || !reportId) return new Response(null, { status: 400 })
+        try {
+          const text = await (await ready).readReport(projectId, reportId, 'markdown', request.signal)
+          return new Response(request.method === 'HEAD' ? null : text, { headers: {
+            'content-type': 'text/plain; charset=utf-8', 'cache-control': 'private, no-store',
+            'x-content-type-options': 'nosniff',
+          } })
+        } catch (error) {
+          request.signal.throwIfAborted()
+          ctx.logger.warn('Security report read failed: %s', String(error))
+          return new Response(null, { status: 404 })
+        }
+      },
+    }))
     connected.effect(() => connection.fetch.register({ path: '/api/security.report.export', methods: ['GET', 'HEAD'], requestBody: 'buffered',
       fetch: async (request) => {
         const query = new URL(request.url).searchParams

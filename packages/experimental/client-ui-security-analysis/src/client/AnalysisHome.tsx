@@ -1,6 +1,6 @@
 /** Shared workbench destination and environment-only creation surface. @module */
 import { useState } from 'react'
-import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -21,7 +21,7 @@ export interface AnalysisHomeInjected {
  * @param props - native workspace facts, task actions and shared destination.
  * @returns the selected analysis surface. */
 export function AnalysisHome(props: DashboardActions & AnalysisCreationActions & InjectFace<AnalysisHomeInjected>
-  & PropsLocale<typeof NS> & PropsRuntime<'main'> & PropsRenderSlots<'security.workbench.session'>) {
+  & PropsRenderFactories & PropsLocale<typeof NS> & PropsRuntime<'main'> & PropsRenderSlots<'security.workbench.session'>) {
   const destination = props.useDestination(value => value)
   const workspaces = props.useWorkspaces(value => value.items)
   const [selected, setSelected] = useState<WorkspaceId>()

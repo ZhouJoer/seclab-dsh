@@ -13,6 +13,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import { PluginArtworkTerminal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TerminalGuide, type TerminalGuideInjected } from './TerminalGuide.tsx'
 import { LazyTerminalBody } from './LazyTerminalBody.tsx'
+import { Viewport } from './Viewport.tsx'
+export type {} from './Viewport.tsx'
 import { TerminalTitle } from './TerminalTitle.tsx'
 // import { TerminalRecovery, type TerminalRecoveryInjected } from './TerminalRecovery.tsx'
 // import { TerminalCleanup, type TerminalCleanupInjected } from './TerminalCleanup.tsx'
@@ -83,6 +85,13 @@ export function apply(ctx: Context): void {
     getSnapshot: () => ctx.theme.getTheme(),
     subscribe: listener => ctx.on('theme/change', listener),
   }
+  ctx.effect(() => ctx.slots.registerFactory({ name: 'terminal.viewport', scope: 'session', locale: namespace,
+    inject: (sessionId): TerminalBodyInjected => ({
+      view: key => ctx.webTerminals.view(sessionId, key, key),
+      keyedHooks: { terminal: key => ctx.webTerminals.view(sessionId, key, key).state },
+      hooks: { theme },
+    }),
+  }, Viewport), 'ui-sidebar-terminal.shared-viewport')
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.guide.entry', () => ctx.slots.register({
     name: 'sidebar.right.tab.guide.entry', key: id, locale: namespace,
     inject: (sessionId): TerminalGuideInjected => ({

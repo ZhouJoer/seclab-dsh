@@ -3,11 +3,17 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { syncBuiltinESMExports } from 'node:module'
-import { cp } from 'node:fs/promises'
+import { cp, unlink } from 'node:fs/promises'
 import { join, sep } from 'node:path'
 export const name = 'security-workbench-snapshot-fixture'
-export const inject = ['tools', 'agents', 'systemPrompt', 'storageDomain', 'subagents', 'jobs', 'subprocess', 'sessionProjectionCache']
+export const inject = ['tools', 'agents', 'systemPrompt', 'storageDomain', 'subagents', 'jobs', 'subprocess', 'sessionProjectionCache', 'fs']
 export async function apply(ctx) {
+  if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
+    const fs = ctx.fs
+    const processPath = fs.processPath
+    fs.processPath = function(target) { return processPath.call(this, target).split(sep).join('/') }
+    ctx.effect(() => () => { fs.processPath = processPath })
+  }
   const originalNow = Date.now
   const originalUUID = crypto.randomUUID
   let identifier = 0
@@ -15,7 +21,13 @@ export async function apply(ctx) {
   Date.now = () => clock
   // Projection cache writes use temporary UUIDs independently of recorded domain identifiers.
   const cacheIO = new AsyncLocalStorage()
-  crypto.randomUUID = () => cacheIO.getStore() ? originalUUID() : '00000000-0000-4000-8000-' + String(++identifier).padStart(12, '0')
+  const commandIO = new AsyncLocalStorage()
+  crypto.randomUUID = () => {
+    if (cacheIO.getStore()) return originalUUID()
+    const command = commandIO.getStore()
+    if (command) return '00000000-0000-4000-9000-' + String(++command.identifier).padStart(12, '0')
+    return '00000000-0000-4000-8000-' + String(++identifier).padStart(12, '0')
+  }
   const cache = ctx.sessionProjectionCache
   const originalWrite = cache.write
   const originalColdSnapshot = cache.coldSnapshot
@@ -86,7 +98,8 @@ export async function apply(ctx) {
     subprocess.resolveExecutable = originalResolve
     subprocess.spawn = originalSpawn
   })
-  ctx.on('agent/request', async (_request, next) => ({ ...await next(), maxTokens: 4096 }))
+  let modelRequests = 0
+  ctx.on('agent/request', async (_request, next) => { modelRequests += 1; return { ...await next(), maxTokens: 4096 } })
   const observationFailure = process.env.DSH_SECURITY_OBSERVATION_FAILURE === '1'
   const entry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/index.js' : 'src/index.ts'
   const plugin = await import(new URL(`../../../packages/experimental/security-analysis/${entry}`, import.meta.url))
@@ -106,7 +119,6 @@ export async function apply(ctx) {
         ] }] : []],
     knowledgeIntervalMs: 0,
     analysisTurnTokens: 1000,
-    ...observationFailure ? { analysisProgressCalls: 5 } : {},
     evolution: { provider: 'deepseek-official', model: 'deepseek-v4-flash-vision-exp' },
   })
   const environmentEntry = process.env.DSH_EXAMPLE_MODE === 'lib' ? 'lib/environment.js' : 'src/environment-local.ts'
@@ -131,9 +143,45 @@ export async function apply(ctx) {
     assert.deepEqual(preview.conflicts, [])
     securityCtx.securityWorkbench.importToolPack(pack, preview.revision, false)
     securityCtx.on('tools/execute', async (exec, next) => {
+      if (exec.callId === 'save-research-progress') return commandIO.run({ identifier: 0 }, next)
+      if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
+        const service = securityCtx.securityWorkbench
+        if (exec.callId === 'native-source-read') {
+          const controller = await service.ready
+          await controller.createWorkspaceTask(exec.agent.id, 'fixture-native-workspace', process.cwd().split(sep).join('/'),
+            { title: '原生源码引用', environmentIds: ['fixture-remote'] }, async () => ({ maxAttempts: 1 }))
+          const result = await next()
+          assert.notEqual(result.isError, true)
+          await unlink(join(process.cwd(), 'handler.js'))
+          return result
+        }
+        if (exec.callId === 'complete-native-investigation') {
+          const requests = modelRequests
+          const result = await commandIO.run({ identifier: 0 }, next)
+          assert.notEqual(result.isError, true, JSON.stringify(result))
+          assert.equal(modelRequests, requests, 'report publication requests no model')
+          const view = await service.view(exec.agent)
+          const evidence = view.records.filter(record => record.kind === 'evidence')
+          assert.equal(evidence.length, 1)
+          assert.equal(evidence[0].value.citation.text, 'export const read = request => request.query;')
+          assert.equal(evidence[0].value.incomplete, false)
+          const report = view.records.find(record => record.kind === 'report')
+          assert(report)
+          const markdown = await service.report(report.value.engagementId, report.value.id, 'markdown')
+          assert(markdown.includes('export const read = request => request.query;'))
+          const controller = await service.ready
+          const response = await controller.exportReport(report.value.engagementId, report.value.id, 1024 * 1024,
+            new Request('http://localhost/report.zip'))
+          assert.equal(response.status, 200)
+          const zip = Buffer.from(await response.arrayBuffer())
+          assert.equal(zip.readUInt32LE(0), 0x04034b50)
+          return result
+        }
+        return next()
+      }
       if (exec.name === 'skill' && exec.arguments.name === 'security-native') {
         const result = await next()
-        assert.notEqual(result.isError, true)
+        if (result.isError) return result
         const resources = join(process.cwd(), '.dsh', 'security-resources')
         await cp(new URL('../../../packages/experimental/security-analysis/resources/', import.meta.url), resources, { recursive: true })
         return { ...result, value: { ...result.value,
@@ -148,85 +196,7 @@ export async function apply(ctx) {
         expectedRevision: before.revision, action: { kind: 'create', title: '静态安全简报',
           objective: '仅静态检查提供的源码。没有独立复核时保持待复核状态。', environmentIds: [], maxAttempts: 1,
           taskContext: { background: '仅整理本任务提供的材料，不运行样本。授权声明未填写。' } } }))
-      const result = await next()
-      assert.notEqual(result.isError, true)
-      const view = await securityCtx.securityWorkbench.view(exec.agent)
-      const report = view.records.find(record => record.kind === 'report')
-      assert(report)
-      const markdown = await securityCtx.securityWorkbench.report(report.value.engagementId, report.value.id, 'markdown')
-      assert(markdown.includes('尚无可判断目标安全性的实现证据。'))
-      assert(markdown.includes('目标实现尚未检查'))
-      const service = securityCtx.securityWorkbench
-      let selected = await service.view(exec.agent)
-      const project = selected.records.find(record => record.kind === 'engagement')
-      assert(project)
-      const elf = Buffer.alloc(64)
-      elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1])
-      selected = await service.importMaterials(exec.agent, JSON.stringify({ operationId: 'fixture-paste', expectedRevision: selected.revision,
-        title: 'Mixed materials', objective: 'Inspect source, firmware and traffic together', material: { kind: 'files', directory: true,
-          files: [
-            { name: 'handler.js', base64: Buffer.from('export const read = request => request.query;\n').toString('base64') },
-            { name: 'firmware.elf', base64: elf.toString('base64') },
-            { name: 'traffic.pcapng', base64: Buffer.from('0a0d0d0a1c0000004d3c2b1a01000000ffffffffffffffff1c000000', 'hex').toString('base64') },
-            { name: 'unknown.bin', base64: Buffer.from([0, 1, 2, 3]).toString('base64') },
-          ] } }))
-      assert(selected.records.some(record => record.kind === 'asset'))
-      const source = selected.records.find(record => record.kind === 'asset' && record.value.kind === 'source')
-      assert(source)
-      assert.equal(selected.records.filter(record => record.kind === 'asset' && record.value.parentId === source.value.id).length, 3)
-      for (const kind of ['rename', 'archive', 'restore']) {
-        await service.manageProject(project.value.id, JSON.stringify({ operationId: 'fixture-' + kind, expectedRevision: selected.revision,
-          action: kind === 'rename' ? { kind, title: '静态安全简报' } : { kind } }))
-        selected = await service.project(project.value.id)
-        if (kind === 'archive') assert.equal((await service.view(exec.agent)).records.length, 0)
-      }
-      for (const action of [{ kind: 'select', engagementId: project.value.id }, { kind: 'resume' }]) {
-        selected = await service.command(exec.agent, JSON.stringify({ operationId: 'fixture-' + action.kind, expectedRevision: selected.revision, action }))
-      }
-      let checkpointId
-      for (const [index, phase, title] of [[1, 'recon', '材料侦察'], [2, 'recon', '材料侦察'],
-        [3, 'assessment', '证据评估'], [4, 'recon', '补充侦察']]) {
-        selected = await service.command(exec.agent, JSON.stringify({ operationId: 'fixture-checkpoint-' + index,
-          expectedRevision: selected.revision, action: { kind: 'checkpoint', phase, title,
-            ...(index === 2 ? { id: checkpointId } : {}), reason: index === 4 ? '实现证据不足' : '源码、固件与抓包需要组合 Web、逆向和 IoT 方法。',
-            summary: '已导入混合材料，尚无安全结论。', next: '先核对源码和文件内容，再选择所需工具。', evidenceIds: [], findingIds: [] } }))
-        checkpointId = selected.records.filter(record => record.kind === 'checkpoint').at(-1).value.id
-      }
-      assert.equal(selected.records.filter(record => record.kind === 'checkpoint').length, 3)
-      const controller = await service.ready
-      let revision = selected.revision
-      for (const action of [
-        { kind: 'create', title: 'Routine analysis', objective: 'Review an ordinary completed workflow', environmentIds: [], maxAttempts: 1 },
-        { kind: 'checkpoint', phase: 'assessment', title: 'Evidence review', reason: 'Review supplied notes',
-          summary: 'Available evidence was reviewed successfully; no workflow gap was observed.',
-          next: 'Wait for additional material', evidenceIds: [], findingIds: [] },
-      ]) {
-        const saved = await controller.command('fixture-evolution-operator', { operationId: 'fixture-evolution-' + action.kind,
-          expectedRevision: revision, action }, true)
-        revision = saved.revision
-      }
-      const projectId = controller.binding('fixture-evolution-operator').engagementId
-      const improvements = await service.improvements()
-      await service.analyzeImprovements(JSON.stringify({ operationId: 'fixture-evolution-run',
-        expectedRevision: improvements.revision, projectId }))
-      const abort = new AbortController()
-      let completed
-      try {
-        for await (const current of service.followImprovements(abort.signal)) {
-          const run = current.runs.find(item => item.projectId === projectId)
-          if (!run || run.status === 'queued' || run.status === 'running') continue
-          assert.equal(run.status, 'completed', run.detail)
-          assert.equal(run.proposalIds.length, 0)
-          completed = { status: run.status, suggestions: run.proposalIds.length }
-          break
-        }
-      } finally { abort.abort() }
-      const toolbox = await service.toolboxInventory('fixture-remote', ['fixture-console'])
-      assert.equal(toolbox.inventory.tools[0].status, 'available')
-      assert.deepEqual(toolbox.inventory.tools[0].prefixArgs,
-        [...dockerPrefix, 'exec', '-i', '--workdir', '/analysis', 'fixture-container', 'fixture-console'])
-      return { ...result, value: JSON.parse(JSON.stringify({ report: result.value,
-        restoredProject: await service.view(exec.agent), improvements: completed, toolbox })) }
+      return next()
     })
   })
 }

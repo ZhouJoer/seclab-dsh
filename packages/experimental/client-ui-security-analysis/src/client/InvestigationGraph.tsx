@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Graph, layout } from '@dagrejs/dagre'
 import { ReactFlow, ReactFlowProvider, Background, Handle, Position, MarkerType, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { ActivityActions } from './ActivityPanel.tsx'
 import type { ProjectActivity } from './useProjectActivity.ts'
@@ -15,7 +15,7 @@ import type { NS, SecurityKey } from './locales.ts'
 import css from './InvestigationGraph.module.css'
 
 type ArtifactPreview = { text: string; truncated: boolean; binary?: boolean }
-type Props = PropsLocale<typeof NS> & Pick<ActivityActions, 'openChild'> & {
+type Props = PropsRenderFactories & PropsLocale<typeof NS> & Pick<ActivityActions, 'openChild'> & {
   view: WorkbenchView
   activity: ProjectActivity
   project: string
@@ -219,7 +219,7 @@ export function InvestigationGraph(props: Props) {
           {chosen.record.value.child && <button onClick={() => { if (chosen.record.kind === 'delegation' && chosen.record.value.child) props.openChild(chosen.record.value.child) }}>{t('delegationOpenChild')}</button>}
         </>}
         {chosen.record.kind === 'plan' && <button onClick={props.openPlans}>{t('planApprovals')}</button>}
-        {evidence && <>
+        {evidence && <>{props.renderFactorySlot('security.resource.actions', { projectId: props.project, resource: { kind: 'evidence', evidenceId: evidence.id, sha256: evidence.artifact.sha256, label: evidence.title } })}
           <p>{evidence.provider} · {t(evidence.method === 'simulation' ? 'graphSimulation' : evidence.method === 'device' ? 'graphDevice' : evidence.method === 'static' ? 'graphStatic' : 'graphMethodUnknown')}</p>
           {evidence.failure && <p role="alert">{evidence.failure}</p>}{evidence.incomplete && <p>{t('incomplete')}</p>}
           {evidence.cleanup && <p>{t('dashboardCleanup')}: {evidence.cleanup}</p>}

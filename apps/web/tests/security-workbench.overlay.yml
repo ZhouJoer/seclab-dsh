@@ -164,7 +164,12 @@
   config:
     default: security
 
+- id: harness-dev-context
+  disabled: true
+
 - insert:
+    - id: research-security
+      name: '@deepseek-ai/dsh-experimental-research-security'
     - id: security-presets
       name: '@deepseek-ai/dsh-experimental-security-profile'
     - id: ui-security-workbench

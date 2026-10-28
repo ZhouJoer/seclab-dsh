@@ -744,6 +744,24 @@ it('retains only open saved occurrences across inactive Sessions and deduplicate
   await expect.poll(() => calls.every(call => call[2]?.aborted)).toBe(true)
 })
 
+it('releasing a sidebar owner preserves the bottom workbench terminal hold', async () => {
+  storage()
+  const bindings = new TerminalBindings()
+  bindings.set(sessionId, 'shared', info.id)
+  const h = fixture()
+  const { service } = await h.service()
+  const bottom = {}
+  const tabs = [{ sessionId, tabId: 'shared', contentId: 'shared' }]
+  service.retainTabs(tabs)
+  service.retainTabs(tabs, bottom)
+  await expect.poll(() => h.remote.retain).toHaveBeenCalledOnce()
+  const signal = vi.mocked(h.remote.retain).mock.calls[0]?.[2]
+  service.retainTabs([])
+  expect(signal?.aborted).toBe(false)
+  service.retainTabs([], bottom)
+  await expect.poll(() => signal?.aborted).toBe(true)
+})
+
 it('waits for the window hold acknowledgement before restoring an output attachment', async () => {
   storage()
   new TerminalBindings().set(sessionId, 'restored', info.id)

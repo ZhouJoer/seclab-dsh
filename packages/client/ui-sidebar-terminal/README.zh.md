@@ -49,6 +49,8 @@ kind: "package-reference"
 
 插件启动时，侧栏完整打开标签清单中的 terminal 条目会持有相匹配的已保存 Host 身份，包括非当前 Session。窗口持有关系独立于 React 挂载和屏幕订阅。删除最后一个匹配的 occurrence 会释放持有关系；折叠或切换视图不会释放。[终端控制器](../../api/terminal-controller/README.zh.md#use-this-package) 负责无人持有时的空闲回收和长命令保护。
 
+其他 Session 界面可通过 `terminal.viewport` Factory 传入稳定的 `contentId`、可见状态和显式新建终端动作。它复用同一按需加载的终端视图与控制器，不会打开右栏标签。
+
 </details>
 
 <a id="further-exploration"></a>

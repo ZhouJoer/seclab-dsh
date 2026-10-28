@@ -26,11 +26,29 @@ export function TerminalBody({ useTabInfo, useTerminal, useTheme, view, t }: Ter
   const theme = useTheme(value => value)
   const model = view(tab.id)
   const state = useTerminal(tab.id)
+  return <TerminalViewport model={model} state={state} theme={theme} visible={tab.visible} t={t}
+    onNew={() => { tab.actions.openTab('terminal', { replaceTab: true }) }} />
+}
+
+/** Terminal view shared by independently owned workbench surfaces. */
+export interface TerminalViewportProps {
+  model: TerminalView
+  state: TerminalViewState | undefined
+  theme: ThemeSnapshot
+  visible: boolean
+  t: TerminalBodyProps['t']
+  onNew: () => void
+}
+
+/** Render an existing terminal model without taking ownership of its containing tab.
+ * @param props - model, framework-derived state, theme and explicit replacement command.
+ * @returns the lazy terminal screen and connection recovery controls. */
+export function TerminalViewport({ model, state, theme, visible, t, onNew }: TerminalViewportProps): ReactNode {
   useEffect(() => model.mount(), [model])
   if (state === undefined) return null
   const newTerminal = <Button variant="primary" size={state.issue === 'missingTerminal' ? 'md' : 'sm'}
     icon={<span className={css.actionIcon} aria-hidden="true"><IconPlusOutlineRegular /></span>}
-    onClick={() => { tab.actions.openTab('terminal', { replaceTab: true }) }}>
+    onClick={onNew}>
     {t('new')}
   </Button>
   if (state.issue === 'missingTerminal') return <section className={css.root} data-sidebar-terminal>
@@ -63,7 +81,7 @@ export function TerminalBody({ useTabInfo, useTerminal, useTheme, view, t }: Ter
           : <Button variant="outline" size="sm" onClick={() => { model.connect() }}>{t('reconnect')}</Button>)}
         {ended && newTerminal}
       </div>}
-      {state.info !== undefined && <TerminalScreen state={state} model={model} visible={tab.visible} label={t('title')} theme={theme} />}
+      {state.info !== undefined && <TerminalScreen state={state} model={model} visible={visible} label={t('title')} theme={theme} />}
       {error !== undefined && <p className={css.error} role="alert">{t('failed', { message: error })}</p>}
     </section>
   )

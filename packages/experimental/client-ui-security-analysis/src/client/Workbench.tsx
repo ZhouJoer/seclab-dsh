@@ -1,4 +1,5 @@
 import { CaptureControls } from './CaptureControls.tsx'
+import { TaskReportStatus } from './TaskReportStatus.tsx'
 /** Security project workbench presented inside the existing conversation shell. @module */
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { useEffect, useRef, useState } from 'react'
@@ -604,6 +605,8 @@ export function Workbench(props: WorkbenchProps) {
                   </article>
                 ))}
                 {tab === 'reports' && <>
+                  <TaskReportStatus completion={project?.value.completion} t={t} disabled={busy > 0 || !project || project.value.stopped}
+                    retry={() => void perform(() => command({ kind: 'report' }))} />
                   <button disabled={busy > 0 || !project} onClick={() => void perform(() => command({ kind: 'report' }))}>{t('generateReport')}</button>
                   {view.records.filter(item => item.kind === 'report').map(item => <article key={item.value.id} className={css.card}>
                     <strong>{t('revision')} {item.value.revision}</strong>

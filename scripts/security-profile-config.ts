@@ -13,7 +13,7 @@ export async function prepareSecurityProfile(directory: string): Promise<void> {
     const manifest = readProfileManifest('dsh', directory)
     const bundles = manifest.dsh?.profile?.bundles
     if (!bundles) throw new Error('Security profile must declare its bundle list')
-    const additions = ['@deepseek-ai/dsh-experimental-security-profile', '@deepseek-ai/dsh-experimental-security-web-profile']
+    const additions = ['@deepseek-ai/dsh-experimental-research-workbench-bundle', '@deepseek-ai/dsh-experimental-security-profile', '@deepseek-ai/dsh-experimental-security-web-profile']
       .filter(name => !bundles.includes(name))
     if (!additions.length) return Promise.resolve()
     writeProfileManifest(directory, {

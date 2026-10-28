@@ -8,3 +8,13 @@ export type MaterialBrowserView = { kind: 'directory'; entries: MaterialEntry[];
   | { kind: 'text'; path: string; size: number; text: string; truncated: boolean }
   | { kind: 'image'; path: string; size: number; url: string }
   | { kind: 'binary'; path: string; size: number; hex: string }
+
+/** Immutable document bytes or bounded text authorized by one project's asset record. */
+export type MaterialDocument = {
+  name: string
+  version: string
+  size: number
+} & ({ kind: 'text'; text: string; truncated: boolean }
+  | { kind: 'pdf'; data: Uint8Array; missingFonts: string[] }
+  | { kind: 'image'; data: Uint8Array; mediaType: string }
+  | { kind: 'binary'; hex: string })

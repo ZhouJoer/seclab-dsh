@@ -41,6 +41,7 @@ async function mountPlugin() {
     inject: (id: SessionId) => unknown
   }[] = []
   const dictionaries = new Map<string, unknown>()
+  const factories = new Map<string, unknown>()
   let closeHandler: SidebarRightCloseHandler | undefined
   const model = { state: {} }
   const terminals = {
@@ -61,6 +62,10 @@ async function mountPlugin() {
     registerCloseHandler: (kind: string, handler: SidebarRightCloseHandler) => { expect(kind).toBe('terminal'); closeHandler = handler; return () => { closeHandler = undefined } },
   } as never)
   ctx.provide('slots', {
+    registerFactory: (options: { name: string }, component: unknown) => {
+      factories.set(options.name, component)
+      return () => { factories.delete(options.name) }
+    },
     inject: (_name: string, register: () => () => void) => register(),
     register: (options: Omit<typeof entries[number], 'component'>, component: unknown) => { const entry = { ...options, component }; entries.push(entry); return () => { entries.splice(entries.indexOf(entry), 1) } },
   } as never)
@@ -76,7 +81,7 @@ async function mountPlugin() {
   ctx.provide('theme', { getTheme: () => theme } as never)
   const fiber = await ctx.plugin({ inject, apply })
   return {
-    tabs, entries, dictionaries, terminals, model, occurrence, openTabIn, tabsIn, openTabs, theme,
+    tabs, entries, dictionaries, factories, terminals, model, occurrence, openTabIn, tabsIn, openTabs, theme,
     commandTarget, openTabFromTarget, commands,
     emitTheme() { ctx.emit('theme/change', theme) },
     get closeHandler() { return closeHandler },
@@ -98,6 +103,7 @@ it('registers terminal views without recovery or cleanup slots, then releases co
     expect(renderToStaticMarkup(createElement(Icon))).toContain('width="36"')
     expect(definition.multiple).toBe(true)
     expect(h.dictionaries.get('sidebarTerminal')).toEqual({ en, zh })
+    expect(h.factories.has('terminal.viewport')).toBe(true)
     expect(h.entries.map(entry => [entry.name, entry.component, entry.locale])).toEqual([
       ['sidebar.right.tab.guide.entry', TerminalGuide, 'sidebarTerminal'],
       ['sidebar.right.pane.tab', LazyTerminalBody, 'sidebarTerminal'],

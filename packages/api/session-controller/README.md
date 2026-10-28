@@ -27,7 +27,9 @@ Desktop analytics follows the [product collection policy](../../client/product-a
 <a id="use-this-package"></a>
 ## Use this package
 
-Client plugins can register observable Session presentations with `registerPresentation`: a business title, a reservation for a blank conversation, and an optional rename action. Disposal restores native presentation. Host plugins use `registerReuseGuard` to keep associated blank Sessions out of ordinary creation reuse; the guard is rechecked when acquiring a stored Session writer.
+Client plugins can register observable Session presentations with `registerPresentation`: a business title, a reservation for a blank conversation, an optional rename action and a composer placeholder. Disposal restores native presentation. Host plugins use `registerReuseGuard` to keep associated blank Sessions out of ordinary creation reuse; the guard is rechecked when acquiring a stored Session writer.
+
+Prompt admission awaits `api-session/before-prompt` after validating attachments and before queueing the message. Plugins may prepare their task association or reject with a typed Remote error. Rejection consumes no upload receipts and starts no model request; a retry can reuse the prepared association.
 
 History pages and follow opening snapshots carry one `{ type: 'event', event: SessionWireEvent }` record per durable Session event. The Client retains each accepted record as one durable `SessionEventLikeEntry`; Assistant token boundaries remain inside the compact stream on `assistant/message` or `assistant/attempt`. Tool arguments, result content, failures, and `tool/result.data.meta` pass through unchanged; the controller does not resolve a Tool definition, run a presenter, or attach UI data.
 

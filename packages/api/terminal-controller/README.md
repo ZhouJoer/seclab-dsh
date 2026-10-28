@@ -67,6 +67,8 @@ New views start automatically, using an explicit guide selection or the remember
 
 Closing saves an unfinished cleanup request before releasing the tab, then awaits Host cleanup in the background. A failure exposes a retry notification. Each request has its own terminal-ID localStorage key and is removed after successful cleanup or a definitive `session/not-found` response; startup retries saved requests. Transport failures retain the request. Cleanup requests persist independently of tab associations and sidebar layout. If browser storage is unavailable, cleanup remains usable in memory but cannot be recovered after reload.
 
+Independent surfaces pass a stable owner object to `retainTabs`. Updating or releasing one owner preserves terminal holds from the others; the omitted owner denotes the native sidebar.
+
 </details>
 
 <a id="further-exploration"></a>

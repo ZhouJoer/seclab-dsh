@@ -15,6 +15,7 @@ import * as SecurityProfile from '@deepseek-ai/dsh-experimental-security-profile
 import { execa } from 'execa'
 import { load } from 'js-yaml'
 import { expect, it } from 'vitest'
+import { resolveSecurityToolsFile } from './security-tools-config.ts'
 
 interface DumpEntry {
   id?: string
@@ -85,12 +86,15 @@ it('keeps task intake and operator tools in the launched profile and resolves it
     const homeTools = join(cwd, '.dsh', 'security', 'tools.json')
     const resolved = (): unknown => interpolate(scope, workbench?.config)
     expect(resolved()).toMatchObject({ toolConfiguration: { path: cwd + '/.dsh/security-tools.json' } })
+    expect(resolveSecurityToolsFile(cwd, join(cwd, '.dsh'))).toBe(localTools)
     await mkdir(join(cwd, '.dsh', 'security'), { recursive: true })
     const savedTools = '{"installations":{"local":{"python":{"command":"custom-python"}}}}'
     await writeFile(homeTools, savedTools)
     expect(resolved()).toMatchObject({ toolConfiguration: { path: homeTools } })
+    expect(resolveSecurityToolsFile(cwd, join(cwd, '.dsh'))).toBe(homeTools)
     await writeFile(localTools, savedTools)
     expect(resolved()).toMatchObject({ toolConfiguration: { path: cwd + '/.dsh/security-tools.json' } })
+    expect(resolveSecurityToolsFile(cwd, join(cwd, '.dsh'))).toBe(localTools)
     expect(await readFile(homeTools, 'utf8')).toBe(savedTools)
     expect(await readFile(localTools, 'utf8')).toBe(savedTools)
     const profilePatch = join(cwd, '.dsh', 'profiles', 'security', 'cordis.patch.yml')

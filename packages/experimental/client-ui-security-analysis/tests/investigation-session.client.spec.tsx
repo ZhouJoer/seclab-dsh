@@ -28,7 +28,7 @@ it('projects the canonical recorded Session result with its saved relationships'
   expect(investigation(result.restoredProject).edges.map(edge => edge.relation))
     .toEqual(['graphContains', 'graphContains', 'graphContains', 'graphFollowup', 'graphFollowup'])
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
-  render(<InvestigationGraph view={result.restoredProject} project="recorded" t={makeTranslate(en, common)}
+  render(<InvestigationGraph renderFactorySlot={() => null} view={result.restoredProject} project="recorded" t={makeTranslate(en, common)}
     projectArtifact={vi.fn()} openChild={vi.fn()} openPlans={vi.fn()}
     activity={{ usage: [], briefs: [], connected: true, error: '', retry: vi.fn() }} />)
   expect(screen.getAllByRole('button').map(button => button.textContent)).toMatchInlineSnapshot(`

@@ -113,7 +113,7 @@
           "type": "tool-call",
           "id": "read-failure-evidence",
           "name": "security_evidence",
-          "arguments": "{\"evidenceId\":\"00000000-0000-4000-8000-000000000015\",\"offset\":0,\"length\":4096}"
+          "arguments": "{\"evidenceId\":\"00000000-0000-4000-8000-000000000019\",\"offset\":0,\"length\":4096}"
         }
       },
       {
@@ -276,7 +276,7 @@
         "index": 0,
         "block": {
           "type": "tool-call",
-          "id": "progress-overdue",
+          "id": "continue-without-checkpoint",
           "name": "security_static",
           "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":0,\\\"length\\\":1}\"}"
         }
@@ -311,7 +311,7 @@
           "type": "tool-call",
           "id": "save-research-progress",
           "name": "security_command",
-          "arguments": "{\"command\":\"{\\\"operationId\\\":\\\"save-progress\\\",\\\"expectedRevision\\\":6,\\\"action\\\":{\\\"kind\\\":\\\"checkpoint\\\",\\\"phase\\\":\\\"recon\\\",\\\"title\\\":\\\"样本识别与工具检查\\\",\\\"reason\\\":\\\"汇总已完成的静态观察\\\",\\\"summary\\\":\\\"保存读取失败与文件身份观察，运行行为尚未验证。\\\",\\\"next\\\":\\\"继续检查文件头\\\",\\\"evidenceIds\\\":[\\\"00000000-0000-4000-8000-000000000015\\\",\\\"00000000-0000-4000-8000-000000000037\\\"],\\\"findingIds\\\":[]}}\"}"
+          "arguments": "{\"command\":\"{\\\"operationId\\\":\\\"save-progress\\\",\\\"expectedRevision\\\":7,\\\"action\\\":{\\\"kind\\\":\\\"checkpoint\\\",\\\"phase\\\":\\\"recon\\\",\\\"title\\\":\\\"样本识别与工具检查\\\",\\\"reason\\\":\\\"汇总已完成的静态观察\\\",\\\"summary\\\":\\\"保存读取失败与文件身份观察，运行行为尚未验证。\\\",\\\"next\\\":\\\"继续检查文件头\\\",\\\"evidenceIds\\\":[\\\"00000000-0000-4000-8000-000000000019\\\",\\\"00000000-0000-4000-8000-000000000041\\\"],\\\"findingIds\\\":[]}}\"}"
         }
       },
       {

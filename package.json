@@ -209,6 +209,7 @@
     "dsh": "node --import tsx/esm apps/cli/src/bin.ts",
     "security": "node --import tsx/esm scripts/start-security.ts",
     "security:doctor": "node --import tsx/esm scripts/security-tools.ts doctor",
+    "security:python": "node --import tsx/esm scripts/security-python.ts",
     "security:tools": "node --import tsx/esm scripts/security-tools.ts",
     "security:cve-bench": "node --import tsx/esm scripts/security-cve-bench.ts",
     "demo:ptc": "node scripts/demo-ptc.mjs",

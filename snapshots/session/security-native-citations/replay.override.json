@@ -1,0 +1,99 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "native-source-read",
+          "name": "read",
+          "arguments": "{\"file_path\":\"handler.js\",\"offset\":1,\"limit\":1}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "complete-native-investigation",
+          "name": "security_command",
+          "arguments": "{\"command\":\"{\\\"operationId\\\":\\\"native-complete\\\",\\\"expectedRevision\\\":1,\\\"action\\\":{\\\"kind\\\":\\\"complete-task\\\",\\\"summary\\\":\\\"仅检查了输入读取函数，尚未验证运行时行为。\\\",\\\"methods\\\":[\\\"原生源码读取\\\"],\\\"analysis\\\":[\\\"函数直接返回请求的 query 字段。\\\"],\\\"results\\\":[{\\\"title\\\":\\\"输入读取\\\",\\\"result\\\":\\\"函数直接返回请求的 query 字段。\\\",\\\"citations\\\":[{\\\"kind\\\":\\\"source\\\",\\\"path\\\":\\\"handler.js\\\",\\\"startLine\\\":1,\\\"endLine\\\":1}]}],\\\"limitations\\\":\\\"没有执行应用或复核调用方。\\\"}}\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 1200,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "DONE"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  }
+]
