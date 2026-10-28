@@ -145,12 +145,12 @@
 .stop {
   color: var(--dsw-alias-state-error-primary);
 }
-.panel button {
+:where(.panel button) {
   padding: 6px 11px;
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 5px;
 }
-.panel button:disabled {
+:where(.panel button:disabled) {
   opacity: 0.5;
 }
 @media (max-width: 720px) {
@@ -194,8 +194,8 @@
 .noteEditor h3 { grid-column: 1 / -1; margin: 0; }
 .emptyState { padding: 60px 24px; text-align: center; color: var(--dsw-alias-label-secondary); }
 .emptyState p { font-size: 13px; }
-.panel button { cursor: pointer; }
-.panel button:disabled { cursor: default; }
+:where(.panel button) { cursor: pointer; }
+:where(.panel button:disabled) { cursor: default; }
 .panel :focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 3px; }
 @media (max-width: 720px) {
   .knowledgeHeader, .maintenance { align-items: flex-start; flex-wrap: wrap; }

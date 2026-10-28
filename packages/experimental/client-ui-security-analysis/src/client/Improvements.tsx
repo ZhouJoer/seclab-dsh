@@ -1,9 +1,9 @@
 /** Lightweight engineering suggestions and portable coding-AI handoff. @module */
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { zipSync, strToU8 } from 'fflate/browser'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
-import { Button, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutlineRegular, Menu, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { EvolutionView, EvolutionBundle } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { NS, SecurityKey } from './locales.ts'
@@ -54,8 +54,12 @@ export function Improvements(props: ImprovementActions & PropsLocale<typeof NS> 
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [taskFilter, setTaskFilter] = useState('')
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState('')
+  const [deleting, setDeleting] = useState('')
+  const queryInput = useRef<HTMLInputElement>(null)
+  const deleteButton = useRef<HTMLButtonElement | null>(null)
   const [draft, setDraft] = useState({ summary: '', reference: '', command: '', result: '', remaining: '' })
   const [receipt, setReceipt] = useState('')
   const [validation, setValidation] = useState('')
@@ -91,13 +95,16 @@ export function Improvements(props: ImprovementActions & PropsLocale<typeof NS> 
   }
   const fields = [['summary', 'evoSummary'], ['reference', 'evoReference'], ['command', 'evoTestCommand'],
     ['result', 'evoTestResult'], ['remaining', 'evoRemaining']] as const
+  const toggleDetails = (id: string) => {
+    setSelected(selected === id ? '' : id); setDeleting(''); setValidation(''); setReceipt(''); setDraft({ summary: '', reference: '', command: '', result: '', remaining: '' })
+  }
   return <section className={css.root} aria-label={t('evoTitle')}>
     <header className={css.header}><h2>{t('evoTitle')}</h2>
-      {projectId && <Button disabled={busy || props.disabled || !view || run?.status === 'queued' || run?.status === 'running'} onClick={() => void perform(async () => {
+      {projectId && <Button variant="primary" size="sm" disabled={busy || props.disabled || !view || run?.status === 'queued' || run?.status === 'running'} onClick={() => void perform(async () => {
         if (view) setView(await props.analyzeImprovements(JSON.stringify({
           projectId, operationId: randomUUID(), expectedRevision: view.revision,
         })))
-      }, 'evoRequested')}>{t('evoAnalyze')}</Button>}
+      }, 'evoRequested')}>{t(run?.status === 'failed' || run?.status === 'interrupted' || run?.status === 'cancelled' ? 'evoRetry' : 'evoAnalyze')}</Button>}
     </header>
     {projectId && <p role="status">{run ? t(runLabels[run.status]) : t('evoIdle')}{run?.status === 'completed' && run.proposalIds.length === 0 ? ` · ${t('evoNoNew')}` : ''}</p>}
     {run?.detail && <details><summary>{t('evoRunDetail')}</summary><p>{run.detail}</p></details>}
@@ -106,20 +113,48 @@ export function Improvements(props: ImprovementActions & PropsLocale<typeof NS> 
     {!view && !failed && <div className={css.skeleton} aria-label={t('loading')}><div /><div /><div /></div>}
     {view && <>
       <div className={css.filters}>
-        <label>{t('query')}<input value={query} onChange={(event) => { setQuery(event.target.value) }} /></label>
+        <label>{t('query')}<input ref={queryInput} value={query} onChange={(event) => { setQuery(event.target.value) }} /></label>
         <label>{t('evoProgress')}<select value={status} onChange={(event) => { setStatus(event.target.value) }}>
           <option value="">{t('dashboardAll')}</option>{Object.entries(progressLabels).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}
         </select></label>
-        {!projectId && <label>{t('evoSourceTask')}<select value={taskFilter} onChange={(event) => { setTaskFilter(event.target.value) }}><option value="">{t('dashboardAll')}</option>
-          {tasks.map(id => <option key={id} value={id}>{props.tasks?.find(task => task.id === id)?.title ?? id}</option>)}</select></label>}
+        {!projectId && <div className={css.taskFilter}><span>{t('evoSourceTask')}</span>
+          <Menu open={taskMenuOpen} onClose={() => { setTaskMenuOpen(false) }} portal autoFocus
+            className={css.taskMenu} listClassName={css.taskMenuList} selectedId={taskFilter}
+            items={[{ id: '', label: t('evoAllTasks') }, ...tasks.map(id => ({ id, label: <span className={css.taskOption}>{props.tasks?.find(task => task.id === id)?.title ?? id}</span> }))]}
+            onSelect={(id) => { setTaskFilter(id); setTaskMenuOpen(false) }}
+            anchor={<Button variant="outline" className={css.taskSelector} aria-label={t('evoSourceTask')}
+              aria-haspopup="menu" aria-expanded={taskMenuOpen} onClick={() => { setTaskMenuOpen(open => !open) }}>
+              <span>{taskFilter ? props.tasks?.find(task => task.id === taskFilter)?.title ?? taskFilter : t('evoAllTasks')}</span>
+              <IconChevronDownOutlineRegular size={14} />
+            </Button>} />
+        </div>}
       </div>
       {!proposals.length && <p className={css.empty}>{t('evoEmpty')}</p>}
       {proposals.map(item => <article key={item.id} className={css.card}>
-        <button className={css.title} aria-expanded={selected === item.id} onClick={() => {
-          setSelected(selected === item.id ? '' : item.id); setValidation(''); setReceipt(''); setDraft({ summary: '', reference: '', command: '', result: '', remaining: '' })
-        }}><span>{item.title}</span><span>{t(progressLabels[item.status])}</span></button>
+        <button className={css.title} aria-expanded={selected === item.id} onClick={() => { toggleDetails(item.id) }}>
+          <span>{item.title}</span><span>{t(progressLabels[item.status])}</span>
+        </button>
         <p>{item.problem}</p><p className={css.meta}>{t('evoSourceTask')} {new Set(item.occurrences.map(source => source.projectId)).size} · {t('evoObservations')} {item.occurrences.length}</p>
+        <p className={css.meta}>{t('evoUpdatedAt')} <time dateTime={new Date(item.updatedAt).toISOString()}>{new Date(item.updatedAt).toLocaleString()}</time></p>
         {item.needsReview && <p>{t('evoReviewAgain')}</p>}
+        <div className={css.actions}>
+          <Button variant="outline" size="sm" aria-expanded={selected === item.id} onClick={() => { toggleDetails(item.id) }}>{t(selected === item.id ? 'evoHideDetails' : 'evoShowDetails')}</Button>
+          <Button size="sm" disabled={busy} onClick={() => void perform(async () => { await navigator.clipboard.writeText((await props.exportImprovement(item.id)).markdown) }, 'evoCopied')}>{t('evoCopy')}</Button>
+          <Button size="sm" disabled={busy} onClick={() => void perform(() => download(item.id), 'evoDownloaded')}>{t('evoDownload')}</Button>
+          {(['open', 'modified', 'verified', 'ignored'] as const).filter(value => value !== item.status).map(value => <Button size="sm" key={value} disabled={busy}
+            onClick={() => void update({ kind: 'status', proposalId: item.id, status: value })}>{t(value === 'open' ? 'evoRestore' : value === 'verified' ? 'evoConfirmVerified' : value === 'ignored' ? 'evoIgnore' : 'evoMarkModified')}</Button>)}
+          <Button variant="outline" size="sm" className={css.deleteAction} disabled={busy}
+            aria-expanded={deleting === item.id} onClick={(event) => { deleteButton.current = event.currentTarget; setDeleting(item.id) }}>{t('evoDelete')}</Button>
+        </div>
+        {deleting === item.id && <div className={css.confirmation} role="group" aria-label={t('evoDeleteConfirm')}>
+          <strong>{t('evoDeleteConfirm')} · {item.title}</strong><p>{t('evoDeleteHint')}</p>
+          <div className={css.actions}><Button disabled={busy} onClick={() => { setDeleting(''); deleteButton.current?.focus() }}>{t('cancel')}</Button>
+            <Button variant="outline" className={css.deleteAction} disabled={busy} onClick={() => void perform(async () => {
+              setView(await props.updateImprovement(JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision,
+                action: { kind: 'delete', proposalId: item.id } })))
+              setDeleting(''); setSelected(''); queryInput.current?.focus()
+            }, 'evoDeleted')}>{t('evoDeleteConfirm')}</Button></div>
+        </div>}
         {selected === item.id && <div className={css.detail}>
           <h3>{t('conditions')}</h3><p>{item.conditions}</p><h3>{t('evoChange')}</h3><p>{item.change}</p>
           <p>{t('evoComponent')} {item.component}</p>{item.uncertainty && <p>{t('evoUncertainty')} {item.uncertainty}</p>}
@@ -127,12 +162,6 @@ export function Improvements(props: ImprovementActions & PropsLocale<typeof NS> 
           <details><summary>{t('evoEvidence')}</summary>{item.occurrences.map(source => <div key={source.projectId + source.source.id}>
             <p>{source.projectId} · {source.source.id} · {source.version}{source.source.truncated ? ` · ${t('evoClipped')}` : ''}</p><pre>{source.source.excerpt}</pre>
           </div>)}</details>
-          <div className={css.actions}>
-            <Button disabled={busy} onClick={() => void perform(async () => { await navigator.clipboard.writeText((await props.exportImprovement(item.id)).markdown) }, 'evoCopied')}>{t('evoCopy')}</Button>
-            <Button disabled={busy} onClick={() => void perform(() => download(item.id), 'evoDownloaded')}>{t('evoDownload')}</Button>
-            {(['open', 'modified', 'verified', 'ignored'] as const).filter(value => value !== item.status).map(value => <Button key={value} disabled={busy}
-              onClick={() => void update({ kind: 'status', proposalId: item.id, status: value })}>{t(value === 'open' ? 'evoRestore' : value === 'verified' ? 'evoConfirmVerified' : value === 'ignored' ? 'evoIgnore' : 'evoMarkModified')}</Button>)}
-          </div>
           <details><summary>{t('evoReceipt')}</summary><p>{t('evoReceiptHint')}</p>
             <form className={css.form} onSubmit={(event) => {
               event.preventDefault()

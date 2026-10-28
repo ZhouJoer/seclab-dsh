@@ -854,7 +854,7 @@ export class SecurityController {
     const action = command.action
     const operatorActions = ['create', 'select', 'leave', 'approve', 'publish', 'resume', 'web-target', 'external-web-target']
     if (operatorActions.includes(action.kind) && !operator) throw new Error('This action requires an operator gesture')
-    if (action.kind === 'report') return this.createReport(sessionId, command, operator, signal)
+    if (action.kind === 'report' || action.kind === 'complete-task') return this.createReport(sessionId, command, operator, signal)
     await this.journal.commit(
       command.operationId,
       action.kind === 'stop' || action.kind === 'revoke' ? undefined : command.expectedRevision,
@@ -1324,27 +1324,76 @@ export class SecurityController {
     const project = this.project(snapshot, binding.engagementId)
     const input = { sessionId, operator, action: command.action }
     if (this.journal.replay(command.operationId, input)) return this.view(sessionId)
-    const key = command.operationId
+    const key = project.id
     const fingerprint = JSON.stringify(input)
     const running = this.reports.get(key)
     if (running) {
-      if (running.fingerprint !== fingerprint) throw new Error('operationId was already used for different input')
+      if (running.fingerprint !== fingerprint) throw new Error('A different report request is already running for this task')
       return running.pending
     }
-    if (project.stopped) throw new Error('Project is stopped')
+    if (project.stopped || project.archived) throw new Error('Resume the task before generating its report')
     if (snapshot.revision !== command.expectedRevision) throw new Error('Security state changed; reload before retrying')
-    if (!this.generateReport || !this.options.reportLimits) throw new Error('Report model is unavailable')
     const generate = this.generateReport
     const limits = this.options.reportLimits
     const recordsOf = (view: WorkbenchView) => view.records.filter(record => record.kind !== 'binding' && record.kind !== 'report' &&
       (record.kind === 'engagement' ? record.value.id : record.value.engagementId) === project.id)
-    const records = recordsOf(snapshot)
-    const source = JSON.stringify(records)
+    const sourceOf = (records: SecurityRecord[]) => JSON.stringify(records.map((record) => {
+      if (record.kind !== 'engagement' || !record.value.completion) return record
+      const { completion, ...value } = record.value
+      return { ...record, value: { ...value, completion: { results: completion.results, limitations: completion.limitations } } }
+    }))
     const abort = new AbortController()
     const combined = AbortSignal.any([signal, abort.signal])
-    const pending = (async () => {
+    const pending = Promise.resolve().then(async () => {
       combined.throwIfAborted()
-      const prompt = reportPrompt(records, limits)
+      const action = command.action
+      if (action.kind === 'complete-task' || project.completion) {
+        const outcomeOperation = command.operationId + ':outcome'
+        const saved = this.journal.replay(outcomeOperation, input)
+        await this.journal.commit(saved ? randomUUID() : outcomeOperation, command.expectedRevision, input, (view) => {
+          combined.throwIfAborted()
+          const current = this.project(view, project.id)
+          if (this.requireBinding(view, sessionId).engagementId !== project.id || current.stopped || current.archived)
+            throw new Error('Task selection changed before report generation')
+          const outcome = action.kind === 'complete-task' ? action : current.completion
+          assert(outcome, 'Report retry retains its task outcomes')
+          for (const result of outcome.results) for (const id of result.evidenceIds) {
+            if (!view.records.some(record => record.kind === 'evidence' && record.value.id === id && record.value.engagementId === project.id))
+              throw new Error('Task outcome cites evidence outside this project')
+          }
+          return [{ kind: 'engagement', value: { ...current, completion: {
+            results: outcome.results, limitations: outcome.limitations, status: 'running', detail: '', updatedAt: Date.now(),
+          } } }]
+        })
+      }
+      if (!generate || !limits) throw new Error('Report model is unavailable')
+      const observed = this.journal.view()
+      const records = recordsOf(observed)
+      const source = sourceOf(records)
+      const sourceHash = createHash('sha256').update(source).digest('hex')
+      const cached = observed.records.find(record => record.kind === 'report' && record.value.engagementId === project.id && record.value.sourceHash === sourceHash)
+      const settle = (report: Extract<SecurityRecord, { kind: 'report' }>) => this.journal.commit(command.operationId, undefined, input, (view) => {
+        combined.throwIfAborted()
+        const current = this.project(view, project.id)
+        if (this.requireBinding(view, sessionId).engagementId !== project.id || current.stopped || current.archived ||
+          sourceOf(recordsOf(view)) !== source) throw new Error('Project analysis changed; generate the report again')
+        return [report, ...(current.completion ? [{ kind: 'engagement' as const, value: { ...current, completion: {
+          ...current.completion, status: 'completed' as const, detail: '', reportId: report.value.id, updatedAt: Date.now(),
+        } } }] : [])]
+      })
+      if (cached?.kind === 'report') { await settle(cached); return this.view(sessionId) }
+      const outcome = records.find(record => record.kind === 'engagement')?.value.completion
+      const evidenceIds = new Set(outcome?.results.flatMap(result => result.evidenceIds) ?? [])
+      const observations: { id: string; text: string; truncated: boolean; incomplete: boolean }[] = []
+      for (const record of records) {
+        if (record.kind !== 'evidence' || !evidenceIds.has(record.value.id)) continue
+        combined.throwIfAborted()
+        const bytes = await this.artifacts.read(record.value.artifact)
+        const budget = Math.floor(limits.inputBytes / 2 / evidenceIds.size)
+        observations.push({ id: record.value.id, text: bytes.subarray(0, budget).toString('utf8'),
+          truncated: bytes.length > budget, incomplete: record.value.incomplete })
+      }
+      const prompt = reportPrompt(records, limits, observations)
       const response = await generate(prompt, combined, sessionId)
       combined.throwIfAborted()
       const rendered = renderReport(records, response, limits)
@@ -1353,16 +1402,23 @@ export class SecurityController {
         : await this.artifacts.put(Buffer.from(rendered.findingsMarkdown), 'text/markdown')
       const recommendationsMarkdown = rendered.recommendationsMarkdown === undefined ? undefined
         : await this.artifacts.put(Buffer.from(rendered.recommendationsMarkdown), 'text/markdown')
-      const json = await this.artifacts.put(Buffer.from(JSON.stringify({ revision: snapshot.revision, records })), 'application/json')
-      await this.journal.commit(command.operationId, undefined, input, (view) => {
-        combined.throwIfAborted()
-        if (this.requireBinding(view, sessionId).engagementId !== project.id || this.project(view, project.id).stopped ||
-          JSON.stringify(recordsOf(view)) !== source) throw new Error('Project analysis changed; generate the report again')
-        return [{ kind: 'report', value: reportSchema.parse({ id: randomUUID(), engagementId: project.id,
-          revision: snapshot.revision, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown }) }]
-      })
+      const json = await this.artifacts.put(Buffer.from(JSON.stringify({ revision: observed.revision, records })), 'application/json')
+      await settle({ kind: 'report', value: reportSchema.parse({ id: randomUUID(), engagementId: project.id,
+        revision: observed.revision, sourceHash, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown }) })
       return this.view(sessionId)
-    })()
+    }).catch(async (error: unknown) => {
+      const current = this.journal.view().records.find(record => record.kind === 'engagement' && record.value.id === project.id)
+      if (current?.kind === 'engagement' && current.value.completion?.status === 'running') {
+        await this.journal.commit(randomUUID(), undefined, { reportFailure: command.operationId }, (view) => {
+          const latest = this.project(view, project.id)
+          assert(latest.completion, 'Failed report retains saved outcomes')
+          return [{ kind: 'engagement', value: { ...latest, completion: { ...latest.completion,
+            status: combined.aborted ? 'interrupted' : 'failed', detail: String(error), updatedAt: Date.now(),
+          } } }]
+        })
+      }
+      throw error
+    })
     const release = this.trackDelegation(project.id, abort, pending)
     const settled = pending.finally(() => { release(); this.reports.delete(key) })
     this.reports.set(key, { fingerprint, pending: settled })
@@ -1402,6 +1458,31 @@ export class SecurityController {
     this.project(view, projectId)
     return { revision: view.revision, records: view.records.filter(item => item.kind !== 'binding' &&
       (item.kind === 'engagement' ? item.value.id : item.value.engagementId) === projectId) }
+  }
+  /** Read one immutable report while preventing deletion of its artifacts.
+   * @param projectId - owning project.
+   * @param reportId - report selected in that project.
+   * @param format - required report artifact.
+   * @param signal - caller cancellation.
+   * @returns verified report text, or rejects when unavailable or cancelled.
+   */
+  async readReport(projectId: string, reportId: string,
+    format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown', signal: AbortSignal): Promise<string> {
+    if (this.disposed || this.purging) throw new Error('Report reads are unavailable during cleanup')
+    const report = this.projectView(projectId).records.find(item => item.kind === 'report' && item.value.id === reportId)
+    if (report?.kind !== 'report') throw new Error('Report is outside the project scope')
+    const artifact = report.value[format]
+    if (!artifact) throw new Error('This report does not contain the requested artifact')
+    const abort = new AbortController()
+    const combined = AbortSignal.any([signal, abort.signal])
+    const done = Promise.withResolvers<void>()
+    this.exportReads.set(abort, { project: projectId, done: done.promise })
+    try {
+      combined.throwIfAborted()
+      const bytes = await this.artifacts.read(artifact)
+      combined.throwIfAborted()
+      return bytes.toString('utf8')
+    } finally { this.exportReads.delete(abort); done.resolve() }
   }
   /** Export the selected immutable report while retaining its artifact reads.
    * @param projectId - authenticated operator's selected project.
@@ -1480,6 +1561,10 @@ export class SecurityController {
           : item,
       )
     for (const item of view.records) {
+      if (item.kind === 'engagement' && item.value.completion?.status === 'running')
+        records.push({ kind: 'engagement', value: { ...item.value, completion: { ...item.value.completion,
+          status: 'interrupted', detail: 'Host restarted before report publication; retry the saved outcomes', updatedAt: Date.now(),
+        } } })
       if (item.kind === 'delegation' && (item.value.status === 'pending' || item.value.status === 'running'))
         records.push({ kind: 'delegation', value: { ...item.value, status: 'interrupted', settledAt: Date.now(),
           detail: 'Host restarted before the worker settled; review saved evidence before dispatching another assignment' } })

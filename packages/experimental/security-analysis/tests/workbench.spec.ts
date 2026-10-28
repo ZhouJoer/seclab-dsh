@@ -80,6 +80,105 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
   return { root, ctx, journal, controller, artifacts, send, assetId: sample.value.id }
 }
 
+const outcomeReport = JSON.stringify({ assessment: '离线复现得到任务结果，未运行原始应用。', scope: [], attackPath: [],
+  objectives: [], findings: [], excludedIndices: [], lessons: [], uncovered: [] })
+
+async function completionFixture(generate?: (prompt: string, signal: AbortSignal) => Promise<string>) {
+  const fixture = await harness(generate ?? (async () => outcomeReport))
+  fixture.controller.providers.register(new BinaryProvider())
+  const evidence = await fixture.controller.observe('parent', { provider: 'binary', operation: 'hex',
+    assetId: fixture.assetId, environmentId: 'local', parameters: {}, impact: 'observe' }, 'outcome-evidence', new AbortController().signal)
+  if (evidence.kind !== 'evidence') throw new Error('Missing outcome evidence')
+  const action: SecurityCommand['action'] = { kind: 'complete-task', results: [
+    { title: '四阶段输入', result: 'first / second / third / fourth', evidenceIds: [evidence.value.id] },
+    { title: '最终 flag', result: 'owned-fixture@example.test', evidenceIds: [evidence.value.id] },
+  ], limitations: '仅离线复现，未在 Android 设备运行。' }
+  return { ...fixture, action }
+}
+
+it('saves outcomes without findings and reuses the report across chat and operator requests', async () => {
+  const generate = vi.fn(async (_prompt: string) => outcomeReport)
+  const { send, controller, action, artifacts } = await completionFixture(generate)
+  expect(controller.projects()[0]!.completion).toBeUndefined()
+  await send(action)
+  const report = controller.view('parent').records.find(item => item.kind === 'report')!
+  if (report.kind !== 'report') throw new Error('Missing report')
+  const markdown = (await artifacts.read(report.value.markdown)).toString()
+  expect(markdown).toContain('first / second / third / fourth')
+  expect(markdown).toContain('owned-fixture@example.test')
+  expect(markdown).toContain('未在 Android 设备运行')
+  expect(controller.projects()[0]!.completion).toMatchObject({ status: 'completed', reportId: report.value.id })
+  await send({ kind: 'report' }, true)
+  await send(action)
+  expect(generate).toHaveBeenCalledOnce()
+  expect(controller.view('parent').records.filter(item => item.kind === 'report')).toHaveLength(1)
+  expect(controller.view('parent').records.filter(item => item.kind === 'finding')).toHaveLength(0)
+  expect(generate.mock.calls[0]?.[0]).toContain('first / second / third / fourth')
+  expect(generate.mock.calls[0]?.[0]).toContain('observations')
+})
+
+it('retains saved outcomes after synthesis failure and retries through report', async () => {
+  let fail = true
+  const { send, controller, action } = await completionFixture(async () => {
+    if (fail) throw new Error('Provider unavailable')
+    return outcomeReport
+  })
+  await expect(send(action)).rejects.toThrow('Provider unavailable')
+  expect(controller.projects()[0]!.completion).toMatchObject({ status: 'failed', results: action.kind === 'complete-task' ? action.results : [] })
+  expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(false)
+  fail = false
+  await send({ kind: 'report' })
+  expect(controller.projects()[0]!.completion?.status).toBe('completed')
+})
+
+it.each(['cancel', 'change', 'stop'] as const)('does not publish completion when %s occurs during synthesis', async (reason) => {
+  const entered = Promise.withResolvers<undefined>()
+  const output = Promise.withResolvers<string>()
+  const { controller, journal, send, action } = await completionFixture(async () => { entered.resolve(undefined); return output.promise })
+  const abort = new AbortController()
+  const pending = controller.command('parent', { operationId: randomUUID(), expectedRevision: journal.view().revision, action }, false, abort.signal)
+  const rejected = expect(pending).rejects.toThrow()
+  let stopping: Promise<unknown> | undefined
+  try {
+    await entered.promise
+    expect(controller.projects()[0]!.completion?.status).toBe('running')
+    if (reason === 'cancel') abort.abort(new Error('Cancelled'))
+    else if (reason === 'change') await send({ kind: 'remember', entry })
+    else {
+      const committed = Promise.withResolvers<undefined>()
+      const unsubscribe = journal.subscribeAll(() => { if (controller.projects()[0]?.stopped) committed.resolve(undefined) })
+      stopping = send({ kind: 'stop' }, true)
+      await committed.promise
+      unsubscribe()
+    }
+  } finally { output.resolve(outcomeReport) }
+  await rejected
+  await stopping
+  expect(controller.projects()[0]!.completion?.status).toBe(reason === 'change' ? 'failed' : 'interrupted')
+  expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(false)
+})
+
+it('recovers interrupted report delivery without repeating synthesis', async () => {
+  const generate = vi.fn(async () => outcomeReport)
+  const { controller, journal, action } = await completionFixture(generate)
+  if (action.kind !== 'complete-task') throw new Error('Missing outcome action')
+  const project = controller.projects()[0]!
+  await journal.commit(randomUUID(), journal.view().revision, { interrupted: true }, () => [{ kind: 'engagement', value: {
+    ...project, completion: { results: action.results, limitations: action.limitations, status: 'running', detail: '', updatedAt: 1 },
+  } }])
+  await controller.recover()
+  expect(controller.projects()[0]!.completion?.status).toBe('interrupted')
+  expect(generate).not.toHaveBeenCalled()
+})
+
+it('rejects a foreign outcome citation before saving completion', async () => {
+  const { send, controller } = await completionFixture()
+  await expect(send({ kind: 'complete-task', results: [{ title: 'Result', result: 'unsupported', evidenceIds: [] }], limitations: '' })).rejects.toThrow()
+  await expect(controller.command('parent', { operationId: randomUUID(), expectedRevision: controller.view('parent').revision,
+    action: { kind: 'complete-task', results: [{ title: 'Result', result: 'unsupported', evidenceIds: ['foreign'] }], limitations: '' } })).rejects.toThrow('outside this project')
+  expect(controller.projects()[0]!.completion).toBeUndefined()
+})
+
 describe('security workbench', () => {
   it('commits the unseal mode through the revision-checked project operation', async () => {
     const { controller, journal } = await harness()
@@ -1496,4 +1595,36 @@ it('rejects foreign evidence and keeps failed and interrupted assignments availa
   await journal.close()
   const reopened = await openSecurityJournal(ctx)
   try { expect(reopened.view()).toEqual(saved) } finally { await reopened.close() }
+})
+
+it('keeps literal challenge output characters and digest-shaped results in the delivered report', async () => {
+  const { send, controller, action } = await completionFixture()
+  if (action.kind !== 'complete-task') throw new Error('Missing completion')
+  action.results[0]!.result = '<flag>_' + 'a'.repeat(64)
+  await send(action)
+  const report = controller.view('parent').records.find(item => item.kind === 'report')!
+  if (report.kind !== 'report') throw new Error('Missing report')
+  const markdown = await controller.readReport(report.value.engagementId, report.value.id, 'markdown', new AbortController().signal)
+  expect(markdown).toContain('a'.repeat(64))
+  expect(markdown).toContain('flag')
+  expect(markdown).toContain('>')
+})
+
+it('marks a same-operation delivery retry running and rejects changed retry inputs', async () => {
+  let attempts = 0
+  const fixture = await completionFixture(async () => {
+    if (++attempts === 1) throw new Error('Temporary provider failure')
+    expect(fixture.controller.projects()[0]!.completion?.status).toBe('running')
+    return outcomeReport
+  })
+  const { controller, action } = fixture
+  const retry = (next = action) => controller.command('parent', {
+    operationId: 'stable-completion', expectedRevision: controller.view('parent').revision, action: next,
+  })
+  await expect(retry()).rejects.toThrow('Temporary provider failure')
+  if (action.kind !== 'complete-task') throw new Error('Missing completion')
+  await expect(retry({ ...action, limitations: 'Changed limits' })).rejects.toThrow('different input')
+  await retry()
+  expect(attempts).toBe(2)
+  expect(controller.projects()[0]!.completion?.status).toBe('completed')
 })

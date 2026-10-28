@@ -43,7 +43,7 @@ function harness(extra: object = {}) {
     httpIdentities: unavailable, configureHttpIdentity: unavailable, removeHttpIdentity: unavailable,
     command: unavailable, execute: unavailable,
     useResource: () => ({ status: 'none', value: undefined, failure: undefined }),
-    beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(), refreshWorkspaceMaterials: vi.fn(),
+    generateReport: unavailable, beginAnalysis: vi.fn(), openChat: vi.fn(), selectDestination: vi.fn(), refreshWorkspaceMaterials: vi.fn(),
     configuration: vi.fn(async () => workbenchConfiguration()),
     configureWorkspace: vi.fn(async (_id: string, input: string) => workbenchConfiguration({
       workspace: { ...workbenchConfiguration().workspace!, revision: 1,

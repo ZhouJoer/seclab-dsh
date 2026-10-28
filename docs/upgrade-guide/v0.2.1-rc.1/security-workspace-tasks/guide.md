@@ -13,6 +13,8 @@ New analysis opens a blank native conversation, inheriting workspace environment
 
 Custom Client ISessions implementations must provide registerPresentation() and renameDisplayTitle(). Presentation sources overlay business-owned names and reserve associated blank conversations; the original Session title remains unchanged. The project directory now includes associated sessions for exact navigation.
 
+Task records also accept optional saved outcomes and report delivery status; report records can include a material fingerprint for reuse. The current reader accepts records lacking these fields. Older strict readers reject records written with them; keep Host and Client on the same version and restore the pre-upgrade store backup before downgrading.
+
 ## Migration
 
 1. Upgrade the Host and Client together. Existing tasks remain readable and keep their current materials; their historical conversations are not renamed.

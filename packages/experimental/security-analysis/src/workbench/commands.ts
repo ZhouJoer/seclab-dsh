@@ -9,6 +9,7 @@ import {
   knowledgeEntrySchema,
   operationSchema,
   phaseSchema,
+  taskOutcomeSchema,
 } from './model.ts'
 
 const text = z.string().trim().min(1)
@@ -64,6 +65,7 @@ const actions = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('delegation-disposition'), delegationId: text,
     decision: z.enum(['accepted', 'needs-more', 'rejected']), reason: text }).strict(),
   z.object({ kind: z.literal('report') }).strict(),
+  taskOutcomeSchema.extend({ kind: z.literal('complete-task') }).strict(),
   z.object({ kind: z.literal('template'), assetId: text }).strict(),
   z.object({ kind: z.literal('finish'), checkId: text, evidenceIds: z.array(text), rationale: text }).strict(),
   z.object({ kind: z.literal('reopen'), checkId: text, rationale: text }).strict(),

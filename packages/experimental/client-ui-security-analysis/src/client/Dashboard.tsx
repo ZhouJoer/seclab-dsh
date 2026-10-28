@@ -27,6 +27,7 @@ import { MaterialBrowser } from './MaterialBrowser.tsx'
 import { EvidencePreview } from './EvidencePreview.tsx'
 import { CoveragePanel } from './CoveragePanel.tsx'
 import { ReportExportButton } from './ReportExportButton.tsx'
+import { TaskReportStatus } from './TaskReportStatus.tsx'
 import { HttpWorkbench, type HttpActions } from './HttpWorkbench.tsx'
 import { HttpHistory } from './HttpHistory.tsx'
 import type { SecurityProjectSummary } from '@deepseek-ai/dsh-experimental-security-analysis/client'
@@ -41,6 +42,7 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   openChat(id: SessionId): void
   selectDestination(projectId: string): void
   refreshWorkspaceMaterials(projectId: string): Promise<void>
+  generateReport(sessionId: SessionId, revision: number): Promise<WorkbenchView>
   /** Omission displays the task overview; supplying a destination opens that exact task. */
   destination?: { projectId: string; sessionId?: SessionId } | undefined
   followProjects(this: void, signal: AbortSignal): AsyncIterable<SecurityProjectSummary[]>
@@ -424,6 +426,13 @@ export function Dashboard(props: Props) {
           </div>}
           {project.stopped && !project.archived && <div className={css.notice}><p>{t('dashboardStoppedHint')}</p><button disabled={busy} onClick={() => void perform(() => connect(true, true))}>{t('resume')}</button></div>}
           {missingSession && <div className={css.notice}><p>{t('dashboardMissingSession')}</p>{workspacePicker}<button className={css.primary} disabled={busy || !selectedWorkspace} onClick={() => void perform(() => connect(true, project.stopped))}>{t('dashboardContinue')}</button></div>}
+          <TaskReportStatus completion={project.completion} t={t}
+            disabled={busy || !sessionId || project.stopped || !!project.archived}
+            retry={() => { if (sessionId) void perform(async () => {
+              const current = generation.current
+              const next = await props.generateReport(sessionId, view.revision)
+              if (current === generation.current) { setView(next); setTab('reports') }
+            }) }} />
           <nav className={css.detailTabs} aria-label={t('dashboardDetailNavigation')}>{(['overview', 'assets', 'findings', 'evidence', 'reports'] as const).map(key => <button key={key} aria-pressed={tab === key} onClick={() => { setTab(key); setEvidenceId('') }}>{t(key === 'overview' ? 'dashboardOverview' : key === 'assets' ? 'dashboardMaterials' : key)}</button>)}</nav><details><summary>{t('analysisMore')}</summary><div className={css.actions}>{(['graphTitle', 'activityEntry', 'httpTitle', 'laboratories', 'improvements'] as const).map(key => <button key={key} onClick={() => { if (key === 'graphTitle') setGraphOpened(true); setTab(key) }}>{t(key === 'improvements' ? 'evoTitle' : key)}</button>)}</div></details>
           {tab === 'httpTitle' && <HttpWorkbench key={project.id} {...props} project={selected} session={sessionId} view={view} disabled={project.stopped || !!project.archived} connect={() => void perform(() => connect(false, false, false, false, undefined, false))} changed={setView} />}
           {tab === 'laboratories' && <ProjectLaboratories t={t} view={view} busy={busy} run={async (action, id) => { await perform(async () => { const current = generation.current; const next = await props.laboratory(selected, action, id); if (current === generation.current) setView(next) }) }} />}

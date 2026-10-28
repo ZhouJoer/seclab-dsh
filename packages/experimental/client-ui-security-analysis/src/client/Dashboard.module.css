@@ -5,11 +5,11 @@
 .topbar { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; margin: 0 0 24px; }
 .topbar h1 { font-size: 28px; line-height: 1.3; margin: 0; font-weight: 650; letter-spacing: -.03em; }
 .detailHeader p { color: var(--dsw-alias-label-secondary); margin: 8px 0 0; line-height: 1.7; }
-.main button, .main input, .main select, .main textarea { font: inherit; color: inherit; }
-.main button { cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 16px; background: var(--dsw-alias-bg-layer-1); transition: background .15s; }
-.main button:hover { background: var(--dsw-alias-bg-module-platform); }
-.main button:disabled { opacity: .5; cursor: not-allowed; }
-.main button:focus-visible, .main input:focus-visible, .main select:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
+:where(.main button), .main input, .main select, .main textarea { font: inherit; color: inherit; }
+:where(.main button) { cursor: pointer; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 8px 16px; background: var(--dsw-alias-bg-layer-1); transition: background .15s; }
+:where(.main button:hover) { background: var(--dsw-alias-bg-module-platform); }
+:where(.main button:disabled) { opacity: .5; cursor: not-allowed; }
+:where(.main button:focus-visible), .main input:focus-visible, .main select:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
 .main input, .main select, .main textarea { background: var(--dsw-alias-bg-layer-1); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 10px 12px; min-width: 0; }
 .root .primary { background: var(--dsw-alias-link); color: var(--dsw-alias-label-primary-inverted); border-color: transparent; }
 .root .primary:hover { filter: brightness(.95); background: var(--dsw-alias-link); }

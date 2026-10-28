@@ -60,6 +60,18 @@ export const artifactSchema = z
     mediaType: text,
   })
   .strict()
+/** Coordinator-authored outcomes with explicit evidence and validation limitations. */
+export const taskOutcomeSchema = z.object({
+  results: z.array(z.object({ title: text.max(160), result: text.max(3000),
+    evidenceIds: z.array(id.transform(brandString<EvidenceId>)).min(1).max(20),
+  }).strict()).min(1).max(30),
+  limitations: z.string().max(3000),
+}).strict()
+/** Saved outcomes survive report failure; a report ID exists only after publication. */
+export const taskCompletionSchema = taskOutcomeSchema.extend({
+  status: z.enum(['running', 'completed', 'failed', 'interrupted']),
+  detail: z.string(), reportId: id.optional(), updatedAt: z.number().int().nonnegative(),
+}).strict()
 /** An operator's project scope and limits. */
 export const engagementSchema = z
   .object({
@@ -74,6 +86,7 @@ export const engagementSchema = z
     archived: z.boolean().optional(),
     maxAttempts: z.number().int().positive(),
     taskContext: taskContextSchema.optional(),
+    completion: taskCompletionSchema.optional(),
     moduleSelection: moduleSelectionSchema.optional(),
     /** Operator-enabled direct-execution contract anchored to this project's registered scope. */
     unsealed: z.boolean().optional(),
@@ -183,6 +196,7 @@ export const reviewSchema = z.object({
 /** Immutable report exports for one observed project revision. */
 export const reportSchema = z.object({
   id, engagementId: id, revision: z.number().int().nonnegative(),
+  sourceHash: digest.optional(),
   markdown: artifactSchema, json: artifactSchema, findingsMarkdown: artifactSchema.optional(),
   recommendationsMarkdown: artifactSchema.optional(), createdAt: z.number().int().nonnegative(),
 }).strict()

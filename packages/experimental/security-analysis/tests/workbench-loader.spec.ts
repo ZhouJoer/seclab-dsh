@@ -3212,3 +3212,35 @@ it('settles a timed-out improvement request without publishing or retrying it', 
     expect(result.proposals).toHaveLength(0)
   })
 })
+
+it('delivers coordinator outcomes through the logged tool and reuses the operator report', async () => {
+  const { ctx, agent, controller, model } = await load(false, 0, { dedicatedModel: false })
+  const send = operator(controller, agent)
+  await send({ kind: 'create', title: 'Challenge results', objective: 'Deliver the recovered inputs', environmentIds: ['local'], maxAttempts: 1 })
+  const source = join(roots.at(-1)!, 'solution.txt')
+  await writeFile(source, 'first / second / third / fourth; flag=owned-fixture@example.test; offline only')
+  await send({ kind: 'import-source', path: source, label: 'Offline solution' })
+  const asset = controller.view(agent.id).records.find(item => item.kind === 'asset')!
+  if (asset.kind !== 'asset') throw new Error('Missing source')
+  const evidence = await controller.observe(agent.id, { provider: 'source', operation: 'read', assetId: asset.value.id,
+    environmentId: 'local', parameters: { path: 'solution.txt', startLine: 1, limit: 10 }, impact: 'observe' }, 'solution-read', new AbortController().signal)
+  if (evidence.kind !== 'evidence') throw new Error('Missing evidence')
+  model.reportOutput = (prompt) => {
+    expect(prompt).toContain('offline only')
+    return JSON.stringify({ assessment: '离线复现结果。', scope: [], attackPath: [], objectives: [], findings: [], excludedIndices: [], lessons: [], uncovered: [] })
+  }
+  const receipt = await execute(ctx, agent, 'security_command', { command: JSON.stringify({ operationId: 'completion',
+    expectedRevision: controller.view(agent.id).revision, action: { kind: 'complete-task', results: [
+      { title: 'Inputs', result: 'first / second / third / fourth', evidenceIds: [evidence.value.id] },
+      { title: 'Flag', result: 'owned-fixture@example.test', evidenceIds: [evidence.value.id] },
+    ], limitations: '仅离线验证，未运行原始应用。' } }) })
+  expect(JSON.stringify(receipt)).toContain('/api/security.report?')
+  expect(controller.projects()[0]?.completion?.status).toBe('completed')
+  await send({ kind: 'report' })
+  expect(model.requests).toHaveLength(1)
+  const report = controller.view(agent.id).records.find(item => item.kind === 'report')!
+  if (report.kind !== 'report') throw new Error('Missing report')
+  const markdown = await controller.readReport(report.value.engagementId, report.value.id, 'markdown', new AbortController().signal)
+  expect(markdown).toContain('owned-fixture@example.test')
+  expect(markdown).toContain('未运行原始应用')
+})

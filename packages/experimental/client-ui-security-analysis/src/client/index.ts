@@ -232,6 +232,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       })
     }
     const dashboardActions: DashboardActions = {
+      generateReport: (id, revision) => scoped.sessions.using(id, { source: 'securityWorkbench' }, () =>
+        actions.command(id, JSON.stringify({ operationId: randomUUID(), expectedRevision: revision, action: { kind: 'report' } }))),
       beginAnalysis,
       openChat: (id) => { scoped.uiWorkspace.openSession(id) },
       selectDestination: (id) => { openWorkbench(id) },
