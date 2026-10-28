@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { dshHomePath } from '../packages/util/home-paths/src/index.ts'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
 import { LocalEnvironmentManager, Config as EnvironmentConfig } from '../packages/experimental/security-analysis/src/environment-local.ts'
@@ -12,7 +13,7 @@ import { inspectToolbox } from '../packages/experimental/security-analysis/src/t
 import type { ToolCatalogSnapshot } from '../packages/experimental/security-analysis/src/tool-catalog.ts'
 import type { SecurityEnvironment } from '../packages/experimental/security-analysis/src/workbench/providers.ts'
 import type { ToolboxInventory } from '../packages/experimental/security-analysis/src/toolbox-types.ts'
-import { readSecurityEnvironments, readSecurityTools, readToolSettings, securityToolsFile, standaloneTool, writeSecurityEnvironments, writeSecurityToolsFile } from './security-tools-config.ts'
+import { readSecurityEnvironments, readSecurityTools, readToolSettings, resolveSecurityToolsFile, standaloneTool, writeSecurityEnvironments, writeSecurityToolsFile } from './security-tools-config.ts'
 
 async function inspectTools(environment: SecurityEnvironment, requested: string[], catalog: ToolDefinition[],
   directories: readonly string[] = []): Promise<ToolboxInventory> {
@@ -150,11 +151,12 @@ export async function manageSecurityTools(args: string[]): Promise<void> {
     throw new Error('Expected list, scan [ids...], set ID PATH, or remove ID; use --help')
   if (values.arg && action !== 'set') throw new Error('--arg is only valid with set')
   if (values['version-arg'] && action !== 'set') throw new Error('--version-arg is only valid with set')
-  const file = resolve(values.config ?? securityToolsFile)
-  const environmentsFile = resolve(values.environments ?? join(dirname(file), 'security-environments.json'))
+  const file = resolveSecurityToolsFile(process.cwd(), dshHomePath(), values.config)
+  const definitionDirectory = values.config ? dirname(file) : resolve('.dsh')
+  const environmentsFile = resolve(values.environments ?? join(definitionDirectory, 'security-environments.json'))
   if (values.environments && !values.environment) throw new Error('--environments requires --environment')
   if (values.environment && values.dir) throw new Error('--dir searches the Host filesystem; use catalog command names or set ID COMMAND for a selected environment')
-  const store = new ToolCatalog(resolve(values.catalog ?? join(dirname(values.environment ? environmentsFile : file), 'security-tool-packs.json')))
+  const store = new ToolCatalog(resolve(values.catalog ?? join(values.environment ? dirname(environmentsFile) : definitionDirectory, 'security-tool-packs.json')))
   if (action === 'import') {
     if (selected.length !== 1) throw new Error('Expected import PACK.json')
     const input = readFileSync(resolve(selected[0] ?? ''), 'utf8'), preview = store.preview(input)

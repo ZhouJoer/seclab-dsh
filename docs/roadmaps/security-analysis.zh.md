@@ -8,6 +8,8 @@ description: "安全 Harness 的交付优先级、依赖和验收条件。"
 
 ## 摘要
 
+[环境管理方案](environment-management.zh.md)覆盖运行时选择、工具链、依赖初始化与分阶段验证。
+
 专项评估见 [Advisor 功能实验评估报告](advisor-evaluation-2026-10-15.zh.md)，涵盖高级模型求助的触发、诊断价值、等待成本和验收标准。
 
 [安全增强与交互精简计划](security-harness-simplification.zh.md) 维护当前重构顺序和实施清单。本路线图保留专项能力待办和已记录的交付范围；其中的优先级标签不覆盖该计划。[包参考](../../packages/experimental/security-analysis/README.zh.md) 维护当前运行行为和工具兼容矩阵，[用户指南](../user/guide/security-analysis.zh.md) 维护启动方式。

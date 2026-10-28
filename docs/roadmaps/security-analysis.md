@@ -8,6 +8,8 @@ English | [中文](security-analysis.zh.md)
 
 ## Summary
 
+The [environment management plan](environment-management.md) covers runtime selection, toolchains, dependency provisioning and staged validation.
+
 The [Advisor experimental evaluation report](advisor-evaluation-2026-10-15.md) examines advanced-model consultation triggers, diagnostic value, waiting cost, and acceptance criteria.
 
 The [security enhancement and interaction simplification plan](security-harness-simplification.md) owns the current refactoring order and implementation checklist. This roadmap retains the specialist capability backlog and recorded delivery scope; its priority labels do not override that plan. The [package reference](../../packages/experimental/security-analysis/README.md) owns current runtime behavior and the tool compatibility matrix; the [user guide](../user/guide/security-analysis.md) owns setup.

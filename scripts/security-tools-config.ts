@@ -1,5 +1,5 @@
 /** Operator tool configuration files shared by the source utilities. @module */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { parseSecurityEnvironments } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
 import type { SecurityEnvironmentsConfiguration } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
@@ -7,8 +7,18 @@ export { readSecurityEnvironments, type SecurityEnvironmentsConfiguration } from
 import { writeSecurityToolsFile } from '../packages/experimental/security-analysis/src/local-tools.ts'
 export { readSecurityTools, readToolSettings, standaloneTool, writeSecurityToolsFile } from '../packages/experimental/security-analysis/src/local-tools.ts'
 
-/** Checkout-local installations; .dsh is excluded from version control. */
-export const securityToolsFile = resolve('.dsh/security-tools.json')
+/** Select the same installation file as the security profile; explicit paths always win.
+ * @param cwd - launch directory.
+ * @param home - resolved Harness home.
+ * @param explicit - optional operator-selected file.
+ * @returns absolute installation configuration path.
+ */
+export function resolveSecurityToolsFile(cwd: string, home: string, explicit?: string): string {
+  if (explicit !== undefined) return resolve(cwd, explicit)
+  const local = resolve(cwd, '.dsh/security-tools.json')
+  const legacy = resolve(home, 'security/tools.json')
+  return existsSync(local) || !existsSync(legacy) ? local : legacy
+}
 
 /** Save installations if the configuration is unchanged and every environment remains valid.
  * @param path - existing environment configuration file.

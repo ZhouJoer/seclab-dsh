@@ -1,5 +1,5 @@
 /** Tool diagnostics report broken saved paths without losing working installations. @module */
-import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -91,7 +91,7 @@ async function executeTools(directory: string, args: string[], signal: AbortSign
   const child = execa(process.execPath, ['--import', import.meta.resolve('tsx/esm'),
     fileURLToPath(new URL('./security-tools.ts', import.meta.url)), ...args], {
     cwd: directory, reject: false, timeout: cliDeadlineMs, stdin: 'ignore', cancelSignal: signal, killSignal: 'SIGKILL',
-    env: { TSX_TSCONFIG_PATH: fileURLToPath(new URL('../tsconfig.base.json', import.meta.url)) },
+    env: { TSX_TSCONFIG_PATH: fileURLToPath(new URL('../tsconfig.base.json', import.meta.url)), DSH_HOME: join(directory, 'home') },
   })
   const closed = new Promise<void>(resolve => child.nodeChildProcess.once('close', () => { resolve() }))
   const completed = Promise.all([child, closed])
@@ -102,6 +102,20 @@ async function executeTools(directory: string, args: string[], signal: AbortSign
   expect(result.signal, result.stderr).toBeUndefined()
   return result
 }
+
+it('doctor reads existing home installations without moving the checkout tool catalog', cliTestOptions(1), async ({ signal }) => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-home-tools-'))
+  onTestFinished(() => rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }))
+  await mkdir(join(directory, 'home/security'), { recursive: true })
+  const file = join(directory, 'home/security/tools.json')
+  const saved = JSON.stringify({ fixture: { command: process.execPath, prefixArgs: [], versionArgs: ['--version'] } })
+  await writeFile(file, saved)
+  const result = await executeTools(directory, ['doctor', 'fixture'], signal)
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.stdout).toContain('fixture: available')
+  expect(result.stdout).toContain(file)
+  expect(await readFile(file, 'utf8')).toBe(saved)
+})
 
 async function executeToolSequence(file: string, actions: string[][], signal: AbortSignal) {
   const steps: { exitCode: number | undefined; stdout: string; stderr: string; contents: string }[] = []

@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for environment-management.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/roadmaps/environment-management.md
+/:
+  en: b66cf51aade52741
+  zh: c38ea0aebd71bfff
+/security-environment-management-plan:
+  en: d7d6d5081f8906c4
+  zh: 81787c5e31fc2280
+/security-environment-management-plan/summary:
+  en: c9dd938fcba2dfdd
+  zh: eeb97e353caf4479
+/security-environment-management-plan/contents:
+  en: f86eaf95d0fb4d99
+  zh: e547d52f7f6353f5
+/security-environment-management-plan/observed-workstation:
+  en: ca5605f7567ab519
+  zh: 24bcfc5e713409cb
+/security-environment-management-plan/management-design:
+  en: 1b17897ba890f179
+  zh: 06c59662dc4f4591
+/security-environment-management-plan/delivery-and-acceptance:
+  en: 365b201b3675587f
+  zh: 30e9a208c6dfad20
+/security-environment-management-plan/dev-note:
+  en: b6b7b3d8c9747685
+  zh: 1c20ce8201ce727a
