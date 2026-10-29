@@ -32,6 +32,7 @@ import { httpHistory, httpHistoryQuerySchema, httpExchange } from './http-eviden
 import type { HttpIdentityDescription, HttpIdentityId, HttpHistoryPage, HttpExchangePage } from './http-model.ts'
 import { projectDirectory, type SecurityProjectSummary } from './project-directory.ts'
 import { analysisScripts } from './analysis-scripts.ts'
+import { discoverScripts } from './script-discovery.ts'
 import type { AnalysisScript } from './analysis-script-types.ts'
 import { randomUUID } from 'node:crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -431,10 +432,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
     ctx.tools.register(
       defineTool({
         name: 'security_capabilities',
-        description: 'Discover task-relevant tools by query, tags, collectionIds or toolIds. Default returns brief definitions without probing. Set details with toolIds or providerId to load selected invocation guides. Use offset and limit for bounded pages. Definitions do not establish installation or execution permission.',
+        description: 'Discover task-relevant tools by query, tags, collectionIds or toolIds, or packaged scripts with kind:scripts and scriptIds. Default returns brief definitions without probing. Set details with selected IDs or providerId to load invocation guides. Use offset and limit for bounded pages. Inactive module candidates remain visible; definitions do not establish installation or execution permission.',
         parameters: { query: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } },
           collectionIds: { type: 'array', items: { type: 'string' } }, toolIds: { type: 'array', items: { type: 'string' } },
           providerId: { type: 'string' }, details: { type: 'boolean' },
+          kind: { type: 'string', enum: ['tools', 'scripts'], description: 'Search tool definitions (default) or packaged scripts.' },
+          scriptIds: { type: 'array', items: { type: 'string' } },
           native: { type: 'boolean', description: 'Load existing advanced workflows for operations or environments outside dedicated adapter coverage. Select toolIds and details.' },
           offset: { type: 'integer' }, limit: { type: 'integer' } },
         output,
@@ -444,20 +447,33 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const binding = controller.binding(exec.agent.id)
           const catalog = this.toolCatalog()
           const selection = controller.moduleSelection(exec.agent.id)
+          if (args.kind === 'scripts') {
+            if (args.details && !args.scriptIds?.length) throw new Error('Select scriptIds before loading details')
+            const matches = discoverScripts(args.query ?? '', args.scriptIds, args.details ?? false)
+            const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
+            const limit = z.number().int().positive().max(config.toolDiscoveryPageSize).parse(args.limit ?? config.toolDiscoveryPageSize)
+            const page = matches.slice(offset, offset + limit)
+            while (page.length && Buffer.byteLength(JSON.stringify(page)) > config.modelResultBytes - 512) page.pop()
+            if (!page.length && offset < matches.length) throw new Error('Selected script details exceed the response budget')
+            return json({ kind: 'scripts', catalog: page, total: matches.length,
+              nextOffset: offset + page.length < matches.length ? offset + page.length : null,
+              nativePreferenceAllowed: !this.adapterPreferences(exec.agent.id),
+              guidance: 'Use selected script help and skill for parameters. Native execution still requires the existing role, task and environment permissions.' })
+          }
           if (args.details && !args.toolIds?.length && !args.providerId) throw new Error('Select toolIds before loading details')
           if (args.native && (!args.details || !args.toolIds?.length)) throw new Error('Select toolIds and details for native workflows')
           if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (args.providerId && !controller.providers.list().includes(args.providerId)) throw new Error('Unknown provider: ' + args.providerId)
           const matches = args.providerId && !args.toolIds?.length ? [] : discoverTools(catalog.tools, catalog.collections, args)
-            .filter(tool => moduleAllowsDefinition(tool, selection))
           const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
           const limit = z.number().int().positive().max(config.toolDiscoveryPageSize).parse(args.limit ?? config.toolDiscoveryPageSize)
           const page = matches.slice(offset, offset + limit)
-          const configurationEnvironment = config.environments.find(env => env.kind !== 'android' && !env.externalContainer)
+          const project = controller.view(exec.agent.id).records.find(item => item.kind === 'engagement' && item.value.id === binding?.engagementId)
+          const configurationEnvironment = config.environments.find(env => env.kind !== 'android' && !env.externalContainer
+            && project?.kind === 'engagement' && project.value.environmentIds.includes(env.id))
           const adapters = configurationEnvironment ? this.toolboxConfiguration(configurationEnvironment.id).adapters : undefined
-          const project = controller.view(exec.agent.id).records.find(item => item.kind === 'engagement')
           const adapterOnly = this.adapterPreferences(exec.agent.id)
-          return json({
+          const response = {
             role: binding?.role ?? null,
             analysisDirectory: analysisDirectory(exec.agent.session.header.cwd, binding),
             tools: toolsForRole(binding?.role).filter(name => moduleAllowsTool(name, selection)),
@@ -471,8 +487,12 @@ export default class SecurityWorkbench extends TypertRemoteService {
             catalogRevision: catalog.revision,
             total: matches.length, nextOffset: offset + page.length < matches.length ? offset + page.length : null,
             catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false, args.native ?? false, adapterOnly),
+              moduleEnabled: moduleAllowsDefinition(tool, selection),
+              ...(!moduleAllowsDefinition(tool, selection) ? { prerequisite: 'Enable an associated analysis module before execution; manual selections require the operator.' } : {}),
               ...(adapters?.some(adapter => adapter.id === tool.id)
-                ? { adapter: adapters.find(adapter => adapter.id === tool.id) } : {}) })),
+                ? { adapter: { ...adapters.find(adapter => adapter.id === tool.id),
+                  environmentIds: adapters.find(adapter => adapter.id === tool.id)?.environmentIds?.filter(id =>
+                    project?.kind === 'engagement' && project.value.environmentIds.includes(id)) } } : {}) })),
             collections: catalog.collections.slice(offset, offset + limit).map(({ id, label }) => ({ id, label })),
             preferences: this.preferences.get(exec.agent.id) ?? null,
             providers: controller.providers.list().map(id => ({ id,
@@ -485,7 +505,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
             readiness: this.adapterPreferences(exec.agent.id)
               ? 'Selected adapters were checked at preference save. Call them directly; sample and device access are checked during the operation.'
               : 'Use security_environment when allowed, otherwise ask the coordinator for health results, and use the exact provider request; configured installations do not establish readiness. Binary inspection needs no external executable. Other providers require operator configuration.',
-          })
+          }
+          while (response.catalog.length && Buffer.byteLength(JSON.stringify(response)) > config.modelResultBytes) {
+            response.catalog.pop()
+            response.nextOffset = offset + response.catalog.length
+          }
+          if (!response.catalog.length && page.length) throw new Error('Capability details exceed the response budget; narrow the query')
+          return json(response)
         },
       }),
     )
@@ -495,6 +521,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         description: 'Check tool versions and runtime readiness in one project environment, saving unique verified local installations for adapters. Multiple installations require operator selection; existing pins are preserved. Optionally select toolId to narrow inventory. Does not install software, start containers or change devices. Health is not sample evidence.',
         parameters: { environmentId: { type: 'string', required: true }, toolId: { type: 'string' }, toolIds: { type: 'array', items: { type: 'string' } },
           native: { type: 'boolean', description: 'Include measured launch configuration for advanced native workflows. External-container inventory always retains it.' },
+          cached: { type: 'boolean', description: 'Read existing observations only, without probes or starting containers. Missing observations remain unchecked.' },
           devices: { type: 'boolean', description: 'Inspect Windows interfaces only; does not open devices or validate capture.' } },
         output,
         execute: async (args, exec) => {
@@ -508,6 +535,18 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const environment = config.environments.find(env => env.id === args.environmentId)
           assert(environment, 'Project environment must be configured')
           this.toolConfiguration.refresh()
+          if (args.cached) {
+            if (args.devices) throw new Error('Device inspection requires a fresh observation')
+            const inventory = this.toolboxDirectory(environment.id).inventory
+            const selected = args.toolIds ?? (args.toolId === undefined ? undefined : [args.toolId])
+            if (selected) {
+              for (const id of selected) if (!inventory.tools.some(tool => tool.id === id)) throw new Error('Unknown tool identity: ' + id)
+              inventory.tools = inventory.tools.filter(tool => selected.includes(tool.id))
+            }
+            const rendered = modelToolInventory(inventory, { native: args.native ?? false,
+              adapterOnly: this.adapterPreferences(exec.agent.id), externalContainer: environment.externalContainer !== undefined })
+            return json(Buffer.byteLength(JSON.stringify(rendered)) <= config.modelResultBytes ? rendered : compactToolInventory(inventory))
+          }
           const manager = controller.environments.get('local').manager
           if (args.devices) return json(await controller.manageEnvironment(environment.id, signal => manager.devices(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal])), project.value.id))

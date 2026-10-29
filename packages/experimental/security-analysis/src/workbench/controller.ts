@@ -542,6 +542,7 @@ export class SecurityController {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       action: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal('rename'), title: text }).strict(),
+        z.object({ kind: z.literal('add-environments'), environmentIds: z.array(text).min(1) }).strict(),
         z.object({ kind: z.literal('modules'), selection: moduleSelectionSchema }).strict(),
         z.object({ kind: z.literal('task-context'), taskContext: taskContextSchema.nullable().optional() }).strict(),
         z.object({ kind: z.literal('archive') }).strict(),
@@ -560,6 +561,12 @@ export class SecurityController {
     }
     await this.journal.commit(request.operationId, request.expectedRevision, { projectId, request }, (view) => {
       const project = this.project(view, projectId)
+      if (request.action.kind === 'add-environments') {
+        for (const id of request.action.environmentIds)
+          if (!this.options.environments.some(environment => environment.id === id)) throw new Error('Unknown security environment: ' + id)
+        return [{ kind: 'engagement', value: { ...project,
+          environmentIds: [...new Set([...project.environmentIds, ...request.action.environmentIds])] } }]
+      }
       if (request.action.kind === 'modules') return [{ kind: 'engagement', value: { ...project, moduleSelection: request.action.selection } }]
       if (request.action.kind === 'task-context') {
         const taskContext = resolveTaskContext(request.action.taskContext === undefined ? project.taskContext : request.action.taskContext,

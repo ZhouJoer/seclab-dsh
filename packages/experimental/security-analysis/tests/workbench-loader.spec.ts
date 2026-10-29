@@ -1360,6 +1360,28 @@ else if (args.includes('--output')) {
     expect(allowed.isError, JSON.stringify(allowed)).toBe(false)
     expect(JSON.stringify(allowed)).toContain('restored-native')
   })
+  it('discovers inactive capabilities and scripts, reads unchecked cache and appends operator environments', async () => {
+    const { ctx, agent, controller } = await load()
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Discovery', objective: 'Select methods from evidence', environmentIds: ['local'], maxAttempts: 2 })
+    const discovery = await execute(ctx, agent, 'security_capabilities', { toolIds: ['radare2'] })
+    expect(discovery.isError).toBe(false)
+    expect(JSON.stringify(discovery.value)).toContain('radare2')
+    const scripts = await execute(ctx, agent, 'security_capabilities', { kind: 'scripts', query: '地址' })
+    expect(scripts.isError).toBe(false)
+    expect(JSON.stringify(scripts.value)).toContain('pe.map')
+    const cached = await execute(ctx, agent, 'security_environment', { environmentId: 'local', cached: true, toolIds: ['radare2'] })
+    expect(cached.isError).toBe(false)
+    expect(JSON.stringify(cached.value)).toContain('not-checked')
+    const project = controller.binding(agent.id)!.engagementId
+    const revision = controller.view(agent.id).revision
+    await expect(controller.manageProject(project, { operationId: randomUUID(), expectedRevision: revision,
+      action: { kind: 'add-environments', environmentIds: ['missing'] } })).rejects.toThrow('Unknown security environment')
+    expect(controller.view(agent.id).revision).toBe(revision)
+    const projects = await controller.manageProject(project, { operationId: randomUUID(), expectedRevision: revision,
+      action: { kind: 'add-environments', environmentIds: ['local', 'local'] } })
+    expect(projects.find(item => item.id === project)?.environmentIds).toEqual(['local'])
+  })
   it('runs generated scripts and relative outputs in the analysis directory and captures the execution log', async () => {
     const { ctx, agent, model, controller } = await load(false, 0, { native: true })
     const root = roots[roots.length - 1]!

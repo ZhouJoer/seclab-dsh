@@ -151,3 +151,15 @@ it('rejects external Kali adapter bindings while preserving its deployment insta
   expect(kali.tools).toEqual(tools)
   expect(kali.externalContainer).toEqual({ name: 'existing-kali', workdir: '/analysis' })
 })
+
+it('selects an authorized environment per call without changing bindings or falling back', () => {
+  const { local, docker } = fixture()
+  docker.tools.push({ id: 'radare2', command: '/usr/bin/r2', source: 'Deployment', versionArgs: ['-v'] })
+  const settings = new LocalToolConfiguration(undefined, local, undefined, [local, docker])
+  expect(settings.route('radare2', ['local', 'box'], 'box')).toBe('box')
+  expect(() => settings.route('radare2', ['local', 'box'])).toThrow('exactly one compatible')
+  expect(() => settings.route('radare2', ['local'], 'box')).toThrow('outside the task')
+  expect(() => settings.route('radare2', ['local', 'box'], 'local')).toThrow('installation')
+  const pinned = new LocalToolConfiguration(undefined, local, undefined, [local, docker], { radare2: 'local' })
+  expect(() => pinned.route('radare2', ['local', 'box'], 'box')).toThrow('fixed binding')
+})

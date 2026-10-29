@@ -36,6 +36,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用
 
+通过 `security_capabilities kind:scripts` 发现内置脚本；使用 `scriptIds` 和 `details` 获取调用参考。工具发现保留未启用模块中的候选并说明模块前置条件，不会开启执行权限。适配器接受任务环境内的单次 `environmentId` 选择，并保留固定绑定。`security_environment cached:true` 读取已有观察而不进行探测；未检查项仍保持未检查状态。操作员可通过 `manageProject` 的 `add-environments` 为已有项目追加已配置环境。
+
 `environmentConfigurationPath` 是可选的操作员 JSON 文件绝对路径。文件中的环境替换同 ID 的部署声明，其他环境保留。相对 `cwd` 以 JSON 所在目录解析。文件不存在时不添加配置，声明无效时启动失败。可选的 `defaultEnvironmentIds` 仅在配置了 `taskIntake` 时替换接入默认值。文件不改变预算、演进设置、数据根或工具安装文件。环境 provider 热重载会停止自身操作并清理自有容器，工作台、报告和其他环境继续可用。完整工作台卸载会取消自有 Job，并在关闭存储前保存最终活动状态。只读 `followSessionView` Remote 接收已授权的 `sessionId`，不会激活 Agent。
 
 可选的 `taskContext` 包含 `background` 和独立可选的 `authorization` 声明（`basis`、`scope`、`allowedActions`、`restrictions`，以及可选的毫秒时间戳 `expiresAt`）。仅启用授权声明时要求四个文字字段完整。声明是用户填写的信息，不代表已核验权限；它不登记资产，也不替代执行审批、角色、有效期或次数检查。缺少此字段的旧任务保持不变。
