@@ -3173,6 +3173,55 @@ it.each([20000, 100000])('starts a workspace containing %i source files without 
 }, 300000)
 
 
+it('starts adapter analysis from a restarted workspace after selecting automatic modules', async () => {
+  const installations = [{ id: 'radare2', command: process.execPath,
+    prefixArgs: ['-e', 'console.log(JSON.stringify({bin:{arch:"x86",bits:64},core:{format:"pe"}}))', '--'], versionArgs: ['--version'], source: 'Fixture' }]
+  const { ctx, agent, controller, model } = await load(false, 0, { advisor: true, adapters: true, installations })
+  const root = agent.session.header.cwd!
+  await ctx.plugin(WorkspaceRegistry)
+  createSessionTestController(ctx, { cwd: root, defaultModelSelection: () => ({ provider: 'fixture', model: 'fixture' }) })
+  await writeFile(join(root, 'restart.exe'), 'MZ workspace input')
+  await controller.createWorkspaceTask(agent.id, randomUUID(), root, { title: 'Restart analysis', environmentIds: ['local'] },
+    async () => ({ maxAttempts: 3, moduleSelection: { mode: 'auto', modules: ['reverse.native'], reason: 'Native file' } }))
+  await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: ['radare2'], tags: [], collectionIds: [] }))
+  const restarted = await ctx.securityWorkbench.restartTask(agent, '{}')
+  const destination = ctx.agents.get(restarted.sessionId)!
+  controller.options.importRoots = []
+  const objective = 'Analyze restart.exe with the retained tool preferences.'
+  model.beforeResponse = async (request) => {
+    if (request === 1) await vi.waitFor(() => {
+      expect(controller.projects().find(project => project.id === restarted.projectId)?.objective).toBe(objective)
+    })
+  }
+  const command = (action: Record<string, unknown>) => ({ command: JSON.stringify({
+    operationId: randomUUID(), expectedRevision: controller.view(destination.id).revision, action,
+  }) })
+  model.nativeCalls = [
+    { name: 'security_command', args: () => command({ kind: 'modules', selection: {
+      mode: 'auto', modules: ['reverse.native'], reason: 'Inspect the selected binary',
+    } }) },
+    { name: 'security_command', args: () => command({ kind: 'import-member',
+      assetId: controller.view(destination.id).records.find(item => item.kind === 'asset')!.value.id,
+      path: 'restart.exe', label: 'restart.exe' }) },
+    { name: 'security_radare2', args: () => ({ operation: 'identity',
+      assetId: controller.view(destination.id).records.filter(item => item.kind === 'asset').find(item => 'format' in item.value)!.value.id }) },
+  ]
+  destination.followup(webPrompt(objective))
+  await destination.whenIdle()
+  const first = model.requests[0]!
+  expect(first.tools?.some(tool => tool.name === 'security_radare2')).toBe(false)
+  const contexts = first.messages.filter(message => message.role === 'user').flatMap(message => message.content)
+    .filter(block => block.type === 'text').map(block => block.text).join('\n')
+  expect(contexts).toContain('"moduleEnabled":false')
+  expect(contexts).toContain('security_help(action: "modules")')
+  expect(contexts).toContain('exact relative file path')
+  const results = destination.session.snapshotEvents().filter(event => event.type === 'tool/result')
+  expect(results).toHaveLength(3)
+  expect(results.every(event => !event.data.message.isError), JSON.stringify(results)).toBe(true)
+  expect(model.requests[1]?.tools?.some(tool => tool.name === 'security_radare2')).toBe(true)
+  expect(controller.view(destination.id).records.some(item => item.kind === 'evidence' && item.value.provider === 'tool-adapter')).toBe(true)
+})
+
 it.each(['normal', 'proactive', 'off'] as const)('retains task settings and Advisor %s when restarting a round', async (mode) => {
   const installations = [{ id: 'radare2', command: process.execPath,
     prefixArgs: ['-e', 'console.log("fixture 1.0")', '--'], versionArgs: ['--version'], source: 'Fixture' }]

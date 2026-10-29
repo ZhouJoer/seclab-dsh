@@ -45,7 +45,7 @@ import type { SecurityActivityStore } from './activity.ts'
 import { canObserve, toolsForRole, resolveTask } from './roles.ts'
 import { findingHash } from './assessment.ts'
 import { renderReport, type ReportLimits } from './report.ts'
-import { importSource, sourceManifest } from './source.ts'
+import { importSource, sourceManifest, sourceManifestSchema } from './source.ts'
 import { materialInputSchema, prepareMaterials } from './materials.ts'
 import { apkMembers } from './apk.ts'
 import { validateExternalTarget } from '../http-scope.ts'
@@ -1060,16 +1060,22 @@ export class SecurityController {
           }
           case 'import-member': {
             const source = asset(action.assetId)
-            const manifest = await sourceManifest(this.artifacts, source)
-            const member = manifest.files.find(file => file.path === action.path)
+            const workspacePath = 'kind' in source && source.kind === 'workspace'
+              ? resolve(source.root, sourceManifestSchema.shape.files.element.shape.path.parse(action.path)) : undefined
+            const member = workspacePath && 'root' in source
+              ? { path: action.path, artifact: (await this.artifacts.import(workspacePath, [source.root])).artifact }
+              : (await sourceManifest(this.artifacts, source)).files.find(file => file.path === action.path)
             if (!member) throw new Error('Source member is not present at that exact manifest path. Use source list to read the saved manifest, then pass its complete relative path, including any directory prefix. Do not re-import a Host path.')
             const existing = view.records.find(record => record.kind === 'asset' && !('kind' in record.value)
-              && record.value.parentId === source.id && record.value.label === member.path
+              && record.value.parentId === source.id && (workspacePath
+              ? record.value.inputSource?.kind === 'path' && record.value.inputSource.path === workspacePath
+              : record.value.label === member.path)
               && record.value.artifact.sha256 === member.artifact.sha256)
             if (existing) return [existing]
             const bytes = await this.artifacts.read(member.artifact)
             const sample = fileAssetSchema.parse({ id: randomUUID(), engagementId: project.id,
               label: action.label, parentId: source.id, artifact: member.artifact,
+              ...(workspacePath ? { inputSource: { kind: 'path', path: workspacePath } } : {}),
               format: detectFileFormat(bytes, member.path), identity: 'measured' })
             return this.importedRecords(sample)
           }

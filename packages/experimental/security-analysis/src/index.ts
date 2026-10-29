@@ -503,7 +503,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
                   && moduleAllowsOperation(id, operation, selection) })),
             })),
             readiness: this.adapterPreferences(exec.agent.id)
-              ? 'Selected adapters were checked at preference save. Call them directly; sample and device access are checked during the operation.'
+              ? 'Selected adapters were checked at preference save. Enable the required automatic modules before calling an adapter marked moduleEnabled: false; manual changes require the operator. Sample and device access are checked during the operation.'
               : 'Use security_environment when allowed, otherwise ask the coordinator for health results, and use the exact provider request; configured installations do not establish readiness. Binary inspection needs no external executable. Other providers require operator configuration.',
           }
           while (response.catalog.length && Buffer.byteLength(JSON.stringify(response)) > config.modelResultBytes) {
@@ -969,7 +969,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         const target = view.records.find(item => item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'workspace')
         return project && target?.kind === 'asset' ? 'Selected analysis task and workspace target: '
           + JSON.stringify({ projectId: project.id, objective: project.objective, target: target.value })
-          + '. Use native file tools directly. Read security_scope only when additional project state is needed.' : ''
+          + '. Use native file tools directly. For adapters requiring a file assetId, use security_command action import-member with this workspace target id and the exact relative file path; read security_help(action: "import-member") for fields. Only that file is imported. Read security_scope only when additional project state is needed.' : ''
       },
     })
     ctx.systemPrompt.context({ name: 'security:tool-preferences', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'),
@@ -981,9 +981,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
           ...preferences.collectionIds.filter(id => !catalog.collections.some(group => group.id === id))]
         const adapters = (missing.length ? [] : discoverTools(catalog.tools, catalog.collections, preferences)).flatMap((tool) => {
           const adapter = toolAdapters.find(item => item.id === tool.id)
-          return adapter ? [{ id: tool.id, toolName: adapter.toolName, operations: adapter.operations }] : []
+          return adapter ? [{ id: tool.id, toolName: adapter.toolName, operations: adapter.operations,
+            moduleEnabled: moduleAllowsTool(adapter.toolName, this.controller?.moduleSelection(agent.id)) }] : []
         })
-        return 'Operator-selected adapters were checked when preferences were saved. Call these interfaces directly; do not locate executables, probe installations again, or use native Shell workflows. Shell execution is disabled while this selection is active. If an adapter fails or lacks an operation, report the limitation to the operator. Checks do not grant execution authority or establish sample/device readiness: '
+        return 'Operator-selected adapters were checked when preferences were saved. When moduleEnabled is false, the tool is not callable yet: read security_capabilities and security_help(action: "modules"); in automatic mode select the required modules with security_command before calling the adapter. Manual module changes require the operator. Call enabled interfaces directly; do not locate executables, probe installations again, or use native Shell workflows. Shell execution is disabled while this selection is active. If an adapter fails or lacks an operation, report the limitation to the operator. Checks do not grant execution authority or establish sample/device readiness: '
           + JSON.stringify({ adapters, unavailableReferences: missing })
       },
     })

@@ -36,6 +36,8 @@ On the home screen, choose the security preset and send directly with workspace 
 
 The compact progress entry follows project updates and reconnect snapshots as well as tool activity. Its running indicator includes active child assignments and clears when they complete, fail or are cancelled. Historical child progress reads the authorized Session identity without activating the child.
 
+An associated blank conversation shows a collapsed task-settings summary with its execution environments. Expand **Configure** to edit tool preferences; the expanded form remains scrollable from its top on narrow screens.
+
 **Restart task** stays in the task's sticky action bar. Its confirmation and the new draft show the task’s actual execution environments separately from saved tool preferences; expand preferences to edit them. Empty tool preferences allow selection as needed. Its confirmation keeps materials and settings, shows which legacy inputs will reuse saved content, and opens the new Conversation with the objective as an unsent draft. The new Session is selected in the sidebar; sending remains an explicit action. Cancel or Escape returns focus to the entry. Failed requests keep the confirmation open with a retry action and expandable technical details. [Restart behavior](../security-analysis/README.md#use-this-package) defines retained settings and cleared context.
 
 **Unseal / Seal again** appears in the button row below the Security workspace title and in the workbench header. The button disables while saving; failed saves retain the mode and allow retry. Hover over or focus the mode button to read the current mode and explanation. Analysis settings contain no second mode control.

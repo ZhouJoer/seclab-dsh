@@ -1,6 +1,6 @@
 /** Real storage and provider effects for project authority and execution recovery. @module */
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, symlink, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -279,6 +279,34 @@ describe('security workbench', () => {
     await expect(controller.restart('parent', 'fresh', randomUUID(), {}, stopped)).rejects.toThrow('Reselect')
     expect(stopped).not.toHaveBeenCalled()
     expect(controller.projects()[0]?.stopped).toBe(false)
+  })
+  it('imports one workspace member after restart without granting access outside that workspace', async () => {
+    const { controller, root, artifacts, send } = await harness()
+    const workspace = join(root, 'workspace')
+    await mkdir(workspace)
+    await writeFile(join(workspace, 'sample.exe'), 'MZ restarted workspace sample')
+    await symlink(root, join(workspace, 'outside'), process.platform === 'win32' ? 'junction' : 'dir')
+    await controller.createWorkspaceTask(SessionId('workspace-source'), randomUUID(), workspace,
+      { title: 'Workspace task', environmentIds: ['local'] }, async () => ({ maxAttempts: 3 }))
+    await controller.restart('workspace-source', 'workspace-restarted', randomUUID(), {}, async () => {})
+    controller.options.importRoots = []
+    const target = controller.view('workspace-restarted').records.find(item => item.kind === 'asset')!
+    const action = { kind: 'import-member' as const, assetId: target.value.id, path: 'sample.exe', label: 'sample.exe' }
+    await send(action, false, 'workspace-restarted')
+    const imported = controller.view('workspace-restarted').records.find(item => item.kind === 'asset' && 'format' in item.value)!
+    if (imported.kind !== 'asset' || !('artifact' in imported.value)) throw new Error('Missing imported member')
+    expect((await artifacts.read(imported.value.artifact)).toString()).toBe('MZ restarted workspace sample')
+    expect(imported.value).toMatchObject({ parentId: target.value.id, format: 'pe' })
+    await send(action, false, 'workspace-restarted')
+    expect(controller.view('workspace-restarted').records.filter(item => item.kind === 'asset')).toHaveLength(2)
+    for (const path of ['../sample.exe', join(root, 'sample.exe'), 'outside/sample.exe']) {
+      await expect(send({ ...action, path }, false, 'workspace-restarted')).rejects.toThrow()
+    }
+    expect(controller.view('workspace-restarted').records.filter(item => item.kind === 'asset')).toHaveLength(2)
+    controller.providers.register(new BinaryProvider())
+    const result = await controller.observe('workspace-restarted', { provider: 'binary', operation: 'hex',
+      assetId: imported.value.id, environmentId: 'local', parameters: { offset: 0, length: 2 }, impact: 'observe' }, 'restart-header', new AbortController().signal)
+    expect(result.kind).toBe('evidence')
   })
   it('requires the original environment before stopping the previous task on restart', async () => {
     const { controller } = await harness()

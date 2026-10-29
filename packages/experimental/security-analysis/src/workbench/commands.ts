@@ -55,7 +55,7 @@ const actions = z.discriminatedUnion('kind', [
   }).strict(),
   z.object({ kind: z.literal('import'), path: text, label: text }).strict(),
   z.object({ kind: z.literal('import-source'), path: text.describe('Absolute source file or directory inside the configured import roots. A selected file imports only that file.'), label: text }).strict(),
-  z.object({ kind: z.literal('import-member'), assetId: text, path: text.describe('Exact relative path from the imported source manifest.'), label: text }).strict(),
+  z.object({ kind: z.literal('import-member'), assetId: text, path: text.describe('Exact relative file path within the selected workspace or imported source manifest. Workspace reads stay inside its root; source members use saved bytes.'), label: text }).strict(),
   z.object({ kind: z.literal('import-legacy'), path: text, title: text }).strict(),
   z.object({ kind: z.literal('check'), check: checkInput }).strict(),
   z.object({ kind: z.literal('web-target'), environmentId: text, label: text, pathPrefix: text.default('/') }).strict(),

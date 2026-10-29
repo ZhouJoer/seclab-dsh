@@ -547,7 +547,7 @@ button.crumb:hover {
    the tree seat matches active (sticky footer) without a Root remount. */
 .root[data-phase='hero'] .scrollBody,
 .embeddedBody[data-content-phase='hero'] .scrollBody {
-  justify-content: center;
+  justify-content: safe center;
   overflow-y: auto;
 }
 
