@@ -51,6 +51,8 @@ it.skipIf(!process.env.DSH_SECURITY_ADAPTER_TOOLS)('runs local ELF, empty APK an
   for (const [tool, action, format, bytes, parameters] of [
     ['radare2', 'identity', 'elf', elf(), {}],
     ['radare2', 'disassemble', 'elf', elf(), { address: '0x400078', count: 3 }],
+    ['radare2', 'batch', 'elf', elf(), { queries: [{ operation: 'identity' },
+      { operation: 'disassemble', address: '0x400078', count: 3, limit: 1 }] }],
     ['r2ghidra', 'decompile', 'elf', elf(), { address: '0x400078' }],
     ['jadx', 'decompile', 'apk', emptyApk(), {}],
     ['tshark', 'summary', 'other', Buffer.from('d4c3b2a1020004000000000000000000ffff000001000000', 'hex'), {}],
@@ -64,7 +66,18 @@ it.skipIf(!process.env.DSH_SECURITY_ADAPTER_TOOLS)('runs local ELF, empty APK an
     const result = await provider.run(provider.resolve(operation, context), context)
     expect(result.failure, tool + ': ' + Buffer.from(result.bytes).toString()).toBeUndefined()
     const saved = adapterResultSchema.parse(JSON.parse(Buffer.from(result.bytes).toString()))
-    expect(saved.incomplete, tool + ': ' + saved.diagnostics).toBe(false)
+    expect(saved.incomplete, tool + ': ' + saved.diagnostics).toBe(action === 'batch')
+    if (action === 'batch') {
+      expect(saved.items).toMatchObject([{ operation: 'identity', incomplete: false },
+        { operation: 'disassemble', offset: 0, nextOffset: 1, incomplete: true }])
+      const continuation = operationSchema.parse({ ...operation, parameters: { queries: [
+        { operation: 'disassemble', address: '0x400078', count: 3, offset: 1, limit: 2 },
+      ] } })
+      const page = await provider.run(provider.resolve(continuation, context), context)
+      expect(page.failure, Buffer.from(page.bytes).toString()).toBeUndefined()
+      expect(adapterResultSchema.parse(JSON.parse(Buffer.from(page.bytes).toString())).items)
+        .toMatchObject([{ offset: 1, nextOffset: null, incomplete: false }])
+    }
     if (tool === 'radare2' || tool === 'r2ghidra') expect(saved.items.length).toBeGreaterThan(0)
     expect(await readdir(join(root, 'runs'))).toEqual([])
   }

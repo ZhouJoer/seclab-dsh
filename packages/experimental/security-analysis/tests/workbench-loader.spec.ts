@@ -51,6 +51,7 @@ import type { EvolutionConfig } from '../src/evolution.ts'
 import { evolutionInputSchema } from '../src/evolution-model.ts'
 import * as Ghidra from '../src/ghidra-provider.ts'
 import * as Frida from '../src/frida-provider.ts'
+import * as Debugger from '../src/debugger-provider.ts'
 import * as Android from '../src/android-provider.ts'
 import * as Web from '../src/web-provider.ts'
 import ExternalWeb from '../src/external-web-provider.ts'
@@ -250,6 +251,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     ['security', Security],
     ['ghidra', Ghidra],
     ['frida', Frida],
+    ['debugger', Debugger],
     ['android', Android],
     ['environments', Environments],
     ['web', Web],
@@ -1532,6 +1534,7 @@ else if (args.includes('--output')) {
     for (const role of ['reconnaissance', 'reviewer'] as const) {
       const result = await execute(ctx, agent, 'security_delegate', {
         assetId: asset.value.id, role, question: 'Inspect the assigned scope.', criterion: 'Return a scoped structured report.',
+        inputEvidenceIds: [evidence.value.id],
       }, 'delegation-' + role)
       expect(result.isError, JSON.stringify(result)).toBe(false)
       const { jobId } = JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join('')) as { jobId: string }
@@ -1638,7 +1641,7 @@ else if (args.includes('--output')) {
   })
   it('loads independent providers and logs model-visible scope through the unchanged loop', async () => {
     const { ctx, agent, controller, model } = await load()
-    expect(controller.providers.list().sort()).toEqual(['android', 'binary', 'external-web', 'frida', 'ghidra', 'native', 'offline', 'packet-capture', 'source', 'tool-adapter', 'web'])
+    expect(controller.providers.list().sort()).toEqual(['android', 'binary', 'debugger', 'external-web', 'frida', 'ghidra', 'native', 'offline', 'packet-capture', 'source', 'tool-adapter', 'web'])
     expect(controller.environments.list()).toEqual(['local'])
     agent.followup(
       createUserMessage({ content: [{ type: 'text', text: 'Inspect the scope.' }], source: { kind: 'user' } }),
@@ -2284,8 +2287,9 @@ it('continues native exploration without requiring progress bookkeeping', async 
   for (let index = 0; index < 30; index++) await controller.activity!.start({ projectId, sessionId: agent.id,
     callId: 'progress-' + String(index), checkpointId: '', tools: ['script'], verified: false, parameters: '' })
   const search = vi.fn(async () => true)
-  independentTool(ctx, 'web_search', search)
-  expect((await execute(ctx, agent, 'web_search')).isError).toBe(false)
+  independentTool(agent.ctx, 'web_search', search)
+  const result = await execute(ctx, agent, 'web_search')
+  expect(result.isError, JSON.stringify(result)).toBe(false)
   expect(search).toHaveBeenCalledOnce()
 })
 
@@ -2317,6 +2321,27 @@ it('blocks repeated wrap-up exploration and preserves new user steering for the 
   expect(endings.map(event => event.data.reason.kind)).toEqual(['blocked', 'completed', 'completed'])
 })
 
+it('persists a checkpoint during wrap-up and then removes collection and persistence tools', async () => {
+  const { agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Save progress', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'security_command', args: () => ({ command: JSON.stringify({
+    operationId: 'save-budget-progress', expectedRevision: controller.view(agent.id).revision,
+    action: { kind: 'checkpoint', phase: 'assessment', title: 'Unresolved input', reason: 'Preserve the remaining question',
+      summary: 'No runtime evidence yet.', next: 'Inspect the input parser.', evidenceIds: [], findingIds: [] },
+  }) }) }
+  model.nativeCalls[2] = { name: 'pwsh', args: { command: 'Write-Output unexpected' } }
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(3)
+  expect(model.requests[1]!.tools?.some(tool => tool.name === 'security_command')).toBe(true)
+  expect((model.requests[2]!.tools ?? []).every(tool => tool.name === 'structured_output')).toBe(true)
+  expect(JSON.stringify(controller.view(agent.id).records)).toContain('Unresolved input')
+  expect(JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result')))
+    .toContain('Analysis budget wrap-up allows only the final response')
+  expect(shell).not.toHaveBeenCalled()
+})
+
 it('keeps a delegated structured report available during budget wrap-up', async () => {
   const { ctx, agent, controller, model } = await load(true, 0, { analysisTurnTokens: 1000 })
   ctx.jobs.attachController('budget-child')
@@ -2341,7 +2366,7 @@ it('keeps a delegated structured report available during budget wrap-up', async 
   const { jobId } = JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join('')) as { jobId: string }
   expect((await ctx.jobs.wait(JobId(jobId), 10000, agent.id)).status).toBe('completed')
   expect(model.requests).toHaveLength(2)
-  expect(model.requests[1]!.tools?.map(tool => tool.name)).toEqual(['structured_output'])
+  expect(model.requests[1]!.tools?.map(tool => tool.name)).toEqual(['security_evidence', 'security_help', 'security_scope', 'structured_output'])
   expect(JSON.stringify(model.requests[1]!.messages)).toContain('security-analysis-budget')
   expect(controller.view(agent.id).records.filter(item => item.kind === 'delegation').map(item => item.value.report)).toContainEqual(model.childReport)
 })

@@ -1,6 +1,7 @@
 /** Per-turn exploration accounting and a single logged budget wrap-up. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { z } from 'zod'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { WorkbenchConfig } from './index.ts'
@@ -10,6 +11,22 @@ interface TurnBudget {
   used: number
   last: number
   closing: boolean
+  saved?: boolean
+  finalizing?: boolean
+}
+
+const closingTools = new Set(['structured_output', 'security_scope', 'security_evidence', 'security_help', 'security_command'])
+const closingCommand = z.object({ action: z.object({ kind: z.enum(['checkpoint', 'complete-task', 'report']) }) })
+
+function allowsClosingCall(name: string, args: unknown): boolean {
+  if (!closingTools.has(name)) return false
+  if (name !== 'security_command') return true
+  const envelope = z.object({ command: z.string() }).safeParse(args)
+  if (!envelope.success) return false
+  let command: unknown
+  try { command = JSON.parse(envelope.data.command) }
+  catch (_error) { return false /* Malformed commands cannot authorize a closing action. */ }
+  return closingCommand.safeParse(command).success
 }
 
 /** Install per-Session accounting without changing provider usage or billing totals.
@@ -42,11 +59,18 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, hasTas
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembly = await next()
     if (!context.agent || !closingState(context.agent)) return assembly
-    return { ...assembly, tools: assembly.tools.filter(tool => tool.name === 'structured_output') }
+    const state = turns.get(context.agent.id)
+    return { ...assembly, tools: assembly.tools.filter(tool => state?.saved || state?.finalizing
+      ? tool.name === 'structured_output' : closingTools.has(tool.name)) }
   }, { prepend: true })
-  ctx.tools.guard(exec => exec.agent && turns.get(exec.agent.id)?.closing && exec.name !== 'structured_output'
-    ? 'Analysis budget wrap-up allows only the final response; continue exploration in a follow-up turn.'
-    : undefined)
+  ctx.tools.guard((exec) => {
+    const state = exec.agent && turns.get(exec.agent.id)
+    if (!state?.closing) return undefined
+    if (state.finalizing ? exec.name !== 'structured_output' : !allowsClosingCall(exec.name, exec.arguments))
+      return 'Analysis budget wrap-up allows only the final response or one batch of saved-evidence reads and checkpoint, complete-task or report actions; continue exploration in a follow-up turn.'
+    if (exec.name !== 'structured_output') state.saved = true
+    return undefined
+  })
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
@@ -55,6 +79,10 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, hasTas
     if (state.closing) {
       for (const message of decision.messages) {
         if (message.source.kind === 'user') agent.send(message, 'next-turn', false)
+      }
+      if (state.saved && !state.finalizing) {
+        state.finalizing = true
+        return { ...decision, messages: decision.messages.filter(message => message.source.kind !== 'user') }
       }
       return { kind: 'reject' }
     }
@@ -70,7 +98,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, hasTas
           + 'Continue the current research direction without creating a new stage. Write three concise lines in Simplified Chinese: current conclusion, key impact or limitation, and next action or blocker. Preserve code identifiers and paths. Include tools only when essential. Use only existing results: what is established, '
           + 'saved evidence or file locations, uncertainty and unfinished checks, and the next focused action. '
           + 'Explain that analysis can continue from these results in a follow-up; do not claim the investigation is complete. '
-          + 'Do not call exploration tools. If structured_output is available, return the assigned report with uncertainty and nextSteps.' }],
+          + 'You may use one batch of security_scope, security_evidence or security_help reads and security_command checkpoint, complete-task or report actions to preserve existing results. Only complete a task when its objective is already verified. After that batch, give the final response without further collection. Do not call exploration tools. If structured_output is available, return the assigned report with uncertainty and nextSteps.' }],
       })],
     }
   })

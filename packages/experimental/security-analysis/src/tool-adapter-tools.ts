@@ -9,6 +9,7 @@ import { operationSchema } from './workbench/model.ts'
 import { toolAdapters } from './tool-adapter-catalog.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
 import { parseAdapterParameters } from './tool-adapter-provider.ts'
+import { analysisFailure } from './analysis-failure.ts'
 
 /** Register dedicated tools while keeping execution inside the existing observation owner.
  * @param ctx - scoped registry owner.
@@ -79,7 +80,9 @@ export function registerToolAdapters(ctx: Context, options: {
         }
         const pending = run()
         options.pending.add(pending)
-        try { return await pending } finally { options.pending.delete(pending) }
+        try { return await pending }
+        catch (error) { throw analysisFailure(error) }
+        finally { options.pending.delete(pending) }
       },
     })))
   }

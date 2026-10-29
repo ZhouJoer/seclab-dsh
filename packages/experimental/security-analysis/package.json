@@ -48,6 +48,10 @@
       "types": "./lib/types/frida-provider.d.ts",
       "default": "./lib/frida.js"
     },
+    "./debugger": {
+      "types": "./lib/types/debugger-provider.d.ts",
+      "default": "./lib/debugger.js"
+    },
     "./android": {
       "types": "./lib/types/android-provider.d.ts",
       "default": "./lib/android.js"
@@ -91,6 +95,7 @@
     "lib/environment.js",
     "lib/ghidra.js",
     "lib/frida.js",
+    "lib/debugger.js",
     "lib/android.js",
     "lib/commands.js",
     "lib/web.js",
@@ -111,6 +116,7 @@
     "lib/artifacts-*.js",
     "lib/device-inventory-*.js",
     "resources/**/*.py",
+    "resources/kali-debug.Dockerfile",
     "resources/skills/*.md",
     "resources/prompts/unsealed.md",
     "resources/**/*.js",

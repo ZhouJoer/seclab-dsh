@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "bounded-debuggers",
+  "label": "Bounded debuggers / 有界调试观察",
+  "tools": [
+    {
+      "id": "cdb",
+      "label": "CDB",
+      "description": "Windows debugger: one breakpoint, registers and fixed-length memory / Windows 断点、寄存器与定长内存",
+      "category": "reverse",
+      "tags": ["reverse", "runtime", "debugger", "pe"],
+      "platforms": ["win32"],
+      "commands": ["cdb"],
+      "args": ["-version"],
+      "invocation": "shell",
+      "provider": "debugger",
+      "guide": "Inspect file architecture and dependencies first. Match CDB architecture to the imported executable. Load security_capabilities for providerId debugger, then use debugger/run through an approved validation plan. Parameters select engine cdb, breakpoint, optional argv and fixed-length memory. Host debugging uses Host permissions. Detection does not authorize execution or prove that the requested observation is available.",
+      "skills": ["security-native"]
+    },
+    {
+      "id": "gdb",
+      "label": "GDB/MI",
+      "description": "Managed Linux debugger: one breakpoint, registers and fixed-length memory / 托管 Linux 断点、寄存器与定长内存",
+      "category": "reverse",
+      "tags": ["reverse", "runtime", "debugger", "elf"],
+      "platforms": ["linux"],
+      "commands": ["gdb"],
+      "args": ["--version"],
+      "invocation": "shell",
+      "provider": "debugger",
+      "guide": "Inspect file architecture and dependencies first. The debugger provider accepts imported ELF executables in managed Linux Docker, not an external container. Load security_capabilities for providerId debugger, then use debugger/run through an approved validation plan. Parameters select engine gdb, breakpoint, optional argv and fixed-length memory. Fork children remain under debugger control. Detection does not authorize execution or prove that the requested observation is available.",
+      "skills": ["security-native"]
+    }
+  ],
+  "collections": [{ "id": "bounded-debuggers", "label": "Bounded debuggers / 有界调试观察", "toolIds": ["cdb", "gdb"] }]
+}

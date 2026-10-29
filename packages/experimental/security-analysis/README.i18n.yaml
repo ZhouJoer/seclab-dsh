@@ -18,11 +18,11 @@
   en: ec51178ff9f77aa5
   zh: 0637ecfb1f609276
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/configure-analysis-providers:
-  en: acf79e61e68a014a
-  zh: fcbe224b22de6244
+  en: a7e56fa08e450eae
+  zh: e01da16a9c45923a
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/tool-inventory-and-acceptance:
-  en: 7ebf2bba230dc78c
-  zh: 14db286ec1512545
+  en: 81be3db1733cccea
+  zh: bac81c4d390939e7
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/roles-tasks-and-tool-management:
   en: d8cfccc9c981137f
   zh: 6d360f02028d6279
@@ -60,8 +60,8 @@
   en: 3ff97e67fd306141
   zh: e1d174df6bd7abff
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/token-effect:
-  en: e5084a4efe7dc3c4
-  zh: af51bd41e51ca9e7
+  en: 3f34862cb778161e
+  zh: ff9bb4b1573a669d
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/kv-cache-effect:
   en: a3623adc2b64df40
   zh: d48df86714e73e8c
