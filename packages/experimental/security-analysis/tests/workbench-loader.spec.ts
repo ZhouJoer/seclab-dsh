@@ -208,7 +208,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { advisor?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { advisor?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -303,6 +303,8 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                     ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
                       ...(options.evolution ? { evolution: options.evolution } : {}),
                       ...(options.analysisTurnTokens === undefined ? {} : { analysisTurnTokens: options.analysisTurnTokens }),
+                      ...(options.analysisWrapUpSteps === undefined ? {} : { analysisWrapUpSteps: options.analysisWrapUpSteps }),
+                      ...(options.analysisProgressCalls === undefined ? {} : { analysisProgressCalls: options.analysisProgressCalls }),
                       ...(options.maxConcurrentDelegations === undefined ? {}
                         : { maxConcurrentDelegations: options.maxConcurrentDelegations }),
                       ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
@@ -2242,7 +2244,8 @@ it('publishes submitted conclusions through the Loader without a report model re
     if (session.id !== agent.id && event.type === 'user/message' && event.data.source.kind === 'user')
       loggedInputs.push(event.data.content.filter(block => block.type === 'text').map(block => block.text).join(''))
   })
-  const result = await send({ kind: 'complete-task', summary: '目标已完成独立静态复核。', results: [{ title: '权限检查', result: '已识别对象级授权缺失。', evidenceIds: [observation.value.id] }], limitations: '调用方与运行行为未验证。', recommendations: [{ findingId: review.value.findingId, text: '读取前校验记录所有权' }] })
+  await send({ kind: 'complete-task', summary: '目标已完成独立静态复核。', results: [{ title: '权限检查', result: '已识别对象级授权缺失。', evidenceIds: [observation.value.id] }], limitations: '调用方与运行行为未验证。', recommendations: [{ findingId: review.value.findingId, text: '读取前校验记录所有权' }] })
+  const result = await send({ kind: 'report' })
   const report = result.records.find(item => item.kind === 'report')
   expect(report?.kind).toBe('report')
   if (report?.kind !== 'report') throw new Error('Report missing')
@@ -2291,10 +2294,30 @@ it('continues native exploration without requiring progress bookkeeping', async 
   const result = await execute(ctx, agent, 'web_search')
   expect(result.isError, JSON.stringify(result)).toBe(false)
   expect(search).toHaveBeenCalledOnce()
+  const directory = vi.fn(async () => true)
+  independentTool(agent.ctx, 'working_directory', directory)
+  expect((await execute(ctx, agent, 'working_directory')).isError).toBe(false)
+  expect(directory).toHaveBeenCalledOnce()
+})
+
+it('keeps native tools and ordinary answers available when the additional analysis budget is disabled', async () => {
+  const { ctx, agent, controller, model } = await load(false, 0, { analysisTurnTokens: 0 })
+  const search = independentTool(ctx, 'web_search')
+  await operator(controller, agent)({ kind: 'create', title: 'Local transformation', objective: 'Return a computed value', environmentIds: ['local'], maxAttempts: 1 })
+  model.usageTokens = 200000
+  model.nativeCalls = [{ name: 'web_search', args: {} }]
+  agent.followup(webPrompt('Compute the value; no formal report is requested.'))
+  await agent.whenIdle()
+  expect(search, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).toHaveBeenCalledOnce()
+  expect(model.requests).toHaveLength(2)
+  expect(model.requests[1]!.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  expect(JSON.stringify(model.requests[1]!.messages)).not.toContain('Analysis exploration is ending')
+  expect(JSON.stringify(model.requests[1]!.messages)).toContain('A report or checkpoint is not a prerequisite')
+  expect(controller.view(agent.id).records.some(record => record.kind === 'report')).toBe(false)
 })
 
 it('blocks repeated wrap-up exploration and preserves new user steering for the next turn', async () => {
-  const { agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000 })
+  const { agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000, analysisWrapUpSteps: 1 })
   await operator(controller, agent)({ kind: 'create', title: 'Stop exploration', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
   model.usageTokens = 1200
   model.beforeResponse = (request) => {
@@ -2307,34 +2330,33 @@ it('blocks repeated wrap-up exploration and preserves new user steering for the 
   }) } }
   agent.followup(webPrompt('Inspect the project.'))
   await agent.whenIdle()
-  expect(model.requests).toHaveLength(2)
+  expect(model.requests).toHaveLength(4)
   agent.followup(webPrompt('Resume the queued instruction.'))
   await agent.whenIdle()
-  expect(model.requests).toHaveLength(4)
-  expect(model.requests[2]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
-  expect(JSON.stringify(model.requests[2]!.messages)).toContain('Continue with the saved results.')
+  expect(model.requests).toHaveLength(5)
+  expect(model.requests[3]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
+  expect(JSON.stringify(model.requests[3]!.messages)).toContain('Continue with the saved results.')
   expect(controller.view(agent.id).records.some(record => record.kind === 'knowledge')).toBe(false)
   expect(shell).not.toHaveBeenCalled()
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
   expect(JSON.stringify(results)).toContain('Analysis budget wrap-up allows only the final response')
   const endings = agent.session.snapshotEvents().filter(event => event.type === 'turn/end')
-  expect(endings.map(event => event.data.reason.kind)).toEqual(['blocked', 'completed', 'completed'])
+  expect(endings.map(event => event.data.reason.kind)).toEqual(['completed', 'completed', 'completed'])
 })
 
-it('persists a checkpoint during wrap-up and then removes collection and persistence tools', async () => {
+it('persists a typed checkpoint during wrap-up and then removes collection and persistence tools', async () => {
   const { agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000 })
   await operator(controller, agent)({ kind: 'create', title: 'Save progress', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
   model.usageTokens = 1200
-  model.nativeCalls[1] = { name: 'security_command', args: () => ({ command: JSON.stringify({
-    operationId: 'save-budget-progress', expectedRevision: controller.view(agent.id).revision,
-    action: { kind: 'checkpoint', phase: 'assessment', title: 'Unresolved input', reason: 'Preserve the remaining question',
-      summary: 'No runtime evidence yet.', next: 'Inspect the input parser.', evidenceIds: [], findingIds: [] },
-  }) }) }
+  model.nativeCalls[1] = { name: 'security_checkpoint', args: {
+    phase: 'assessment', title: 'Unresolved input', reason: 'Preserve the remaining question',
+    summary: 'No runtime evidence yet.', next: 'Inspect the input parser.', evidenceIds: [], findingIds: [],
+  } }
   model.nativeCalls[2] = { name: 'pwsh', args: { command: 'Write-Output unexpected' } }
   agent.followup(webPrompt('Inspect the project.'))
   await agent.whenIdle()
   expect(model.requests).toHaveLength(3)
-  expect(model.requests[1]!.tools?.some(tool => tool.name === 'security_command')).toBe(true)
+  expect(model.requests[1]!.tools?.some(tool => tool.name === 'security_checkpoint')).toBe(true)
   expect((model.requests[2]!.tools ?? []).every(tool => tool.name === 'structured_output')).toBe(true)
   expect(JSON.stringify(controller.view(agent.id).records)).toContain('Unresolved input')
   expect(JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result')))
@@ -2369,6 +2391,78 @@ it('keeps a delegated structured report available during budget wrap-up', async 
   expect(model.requests[1]!.tools?.map(tool => tool.name)).toEqual(['security_evidence', 'security_help', 'security_scope', 'structured_output'])
   expect(JSON.stringify(model.requests[1]!.messages)).toContain('security-analysis-budget')
   expect(controller.view(agent.id).records.filter(item => item.kind === 'delegation').map(item => item.value.report)).toContainEqual(model.childReport)
+})
+
+it('reads the current revision and retries a failed wrap-up save before finalizing', async () => {
+  const { agent, controller, model } = await load(false, 0, { analysisTurnTokens: 1000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Recover save', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.usageTokens = 1200
+  const action = { kind: 'checkpoint', phase: 'assessment', title: 'Observed input', reason: 'Record verified progress',
+    summary: 'Input inspected; behavior unverified.', next: 'Compare the original behavior.', evidenceIds: [], findingIds: [] }
+  model.nativeCalls[1] = { name: 'security_command', args: { command: JSON.stringify({ operationId: 'stale-save', expectedRevision: 0, action }) } }
+  model.nativeCalls[2] = { name: 'security_scope', args: {} }
+  model.nativeCalls[3] = { name: 'security_command', args: () => ({ command: JSON.stringify({
+    operationId: 'fresh-save', expectedRevision: controller.view(agent.id).revision, action,
+  }) }) }
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(5)
+  expect(model.requests[2]!.tools?.some(tool => tool.name === 'security_command')).toBe(true)
+  expect(model.requests[3]!.tools?.some(tool => tool.name === 'security_command')).toBe(true)
+  expect(model.requests[4]!.tools ?? []).toEqual([])
+  expect(JSON.stringify(model.requests[4]!.messages)).toContain('A permitted save action succeeded')
+  expect(JSON.stringify(model.requests[4]!.messages)).toContain('Do not retry any tool or print tool-call markup such as DSML')
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').map(record => record.value.title)).toEqual(['Observed input'])
+})
+
+it('ends unsuccessful wrap-up retries with an explicit unsaved-progress summary', async () => {
+  const { agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000, analysisWrapUpSteps: 2 })
+  await operator(controller, agent)({ kind: 'create', title: 'Bound retries', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.usageTokens = 1200
+  const failed = { name: 'security_command', args: { command: JSON.stringify({ operationId: 'stale', expectedRevision: 0,
+    action: { kind: 'checkpoint', phase: 'assessment', title: 'Unsaved', reason: 'Summarize', summary: 'Unverified.', next: 'Inspect.', evidenceIds: [], findingIds: [] },
+  }) } }
+  model.nativeCalls[1] = failed
+  model.nativeCalls[2] = failed
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(model.requests[3]!.tools ?? []).toEqual([])
+  expect(JSON.stringify(model.requests[3]!.messages)).toContain('No successful checkpoint or report save was observed')
+  expect(controller.view(agent.id).records.some(record => record.kind === 'checkpoint')).toBe(false)
+  expect(shell).not.toHaveBeenCalled()
+})
+
+it('validates typed checkpoints and preserves direction identity across updates', async () => {
+  const { ctx, agent, controller } = await load()
+  await operator(controller, agent)({ kind: 'create', title: 'Format investigation', objective: 'Identify input', environmentIds: ['local'], maxAttempts: 1 })
+  const args = { phase: 'recon', title: 'Inspect structure', reason: 'Conflicting format hints', summary: 'Candidate format only',
+    next: 'Validate lengths', evidenceIds: [], findingIds: [] }
+  expect((await execute(ctx, agent, 'security_checkpoint', { ...args, summary: 'x'.repeat(301) }, 'invalid-progress')).isError).toBe(true)
+  expect(controller.checkpointId(agent.id)).toBe('')
+  expect((await execute(ctx, agent, 'security_checkpoint', args, 'first-progress')).isError).toBe(false)
+  const id = controller.checkpointId(agent.id)
+  expect((await execute(ctx, agent, 'security_checkpoint', args, 'first-progress')).isError).toBe(false)
+  expect((await execute(ctx, agent, 'security_checkpoint', { ...args, summary: 'Length checked' }, 'first-progress')).isError).toBe(true)
+  expect((await execute(ctx, agent, 'security_checkpoint', { ...args, summary: 'Length checked' }, 'second-progress')).isError).toBe(false)
+  expect(controller.checkpointId(agent.id)).toBe(id)
+  expect((await execute(ctx, agent, 'security_checkpoint', { ...args, phase: 'assessment' }, 'new-direction')).isError).toBe(false)
+  expect(controller.checkpointId(agent.id)).not.toBe(id)
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint')).toHaveLength(2)
+})
+
+it('requests a research checkpoint after unreported native analysis without assigning a phase', async () => {
+  const { agent, controller, model } = await load(false, 0, { analysisProgressCalls: 1 })
+  await operator(controller, agent)({ kind: 'create', title: 'Record progress', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.nativeCalls[0] = { name: 'pwsh', args: { command: 'Write-Output observation' } }
+  model.nativeCalls[1] = { name: 'security_checkpoint', args: { phase: 'recon', title: 'Inspect input',
+    reason: 'Record observations', summary: 'Input observed; format not yet established.', next: 'Check structure.', evidenceIds: [], findingIds: [] } }
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(JSON.stringify(model.requests[0]!.messages)).not.toContain('Research progress has unsaved observations')
+  expect(JSON.stringify(model.requests[1]!.messages)).toContain('Research progress has unsaved observations')
+  expect(JSON.stringify(model.requests[1]!.messages)).toContain('invocation counts do not establish a new phase')
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').map(record => record.value.phase)).toEqual(['recon'])
 })
 
 async function delegationFixture(
@@ -3126,7 +3220,7 @@ it('settles a timed-out improvement request without publishing or retrying it', 
   })
 })
 
-it('delivers coordinator outcomes through the logged tool and reuses the operator report', async () => {
+it.each(['security_command', 'security_complete'])('delivers coordinator outcomes through %s and reuses the operator report', async (tool) => {
   const { ctx, agent, controller, model } = await load(false, 0, { dedicatedModel: false })
   const send = operator(controller, agent)
   await send({ kind: 'create', title: 'Challenge results', objective: 'Deliver the recovered inputs', environmentIds: ['local'], maxAttempts: 1 })
@@ -3138,14 +3232,19 @@ it('delivers coordinator outcomes through the logged tool and reuses the operato
   const evidence = await controller.observe(agent.id, { provider: 'source', operation: 'read', assetId: asset.value.id,
     environmentId: 'local', parameters: { path: 'solution.txt', startLine: 1, limit: 10 }, impact: 'observe' }, 'solution-read', new AbortController().signal)
   if (evidence.kind !== 'evidence') throw new Error('Missing evidence')
-  const receipt = await execute(ctx, agent, 'security_command', { command: JSON.stringify({ operationId: 'completion',
+  const receipt = await execute(ctx, agent, tool, tool === 'security_complete' ? { summary: 'Recovered inputs verified offline', results: [
+    { title: 'Inputs', result: 'first / second / third / fourth', evidenceIds: [evidence.value.id], toolCallIds: [] },
+    { title: 'Flag', result: 'owned-fixture@example.test', evidenceIds: [evidence.value.id], toolCallIds: [] },
+  ], limitations: '仅离线验证，未运行原始应用。' } : { command: JSON.stringify({ operationId: 'completion',
     expectedRevision: controller.view(agent.id).revision, action: { kind: 'complete-task', results: [
       { title: 'Inputs', result: 'first / second / third / fourth', evidenceIds: [evidence.value.id] },
       { title: 'Flag', result: 'owned-fixture@example.test', evidenceIds: [evidence.value.id] },
     ], limitations: '仅离线验证，未运行原始应用。' } }) })
-  expect(JSON.stringify(receipt)).toContain('/api/security.report?')
-  expect(controller.projects()[0]?.completion?.status).toBe('completed')
+  expect(receipt.isError).toBe(false)
+  expect(controller.projects()[0]?.completion?.status).toBe('saved')
+  expect(controller.view(agent.id).records.some(record => record.kind === 'report')).toBe(false)
   await send({ kind: 'report' })
+  expect(controller.projects()[0]?.completion?.status).toBe('completed')
   expect(model.requests).toHaveLength(0)
   const report = controller.view(agent.id).records.find(item => item.kind === 'report')!
   if (report.kind !== 'report') throw new Error('Missing report')
@@ -3286,4 +3385,24 @@ it.each(['normal', 'proactive', 'off'] as const)('retains task settings and Advi
   })
   expect(await ctx.securityWorkbench.restartTask(agent, '{}')).toEqual(restarted)
   expect(model.requests).toHaveLength(0)
+})
+
+
+it('saves verified native results without generating a report or requiring a checkpoint', async () => {
+  const { agent, controller, model } = await load(false, 0, {
+    native: true, advisor: true, analysisTurnTokens: 0, analysisProgressCalls: 1,
+  })
+  await controller.createWorkspaceTask(agent.id, 'completion-fixture', agent.session.header.cwd!,
+    { title: 'Native outcome', environmentIds: ['local'] }, async () => ({ maxAttempts: 1 }))
+  independentTool(agent.ctx, 'pwsh')
+  model.nativeCalls[0] = { name: 'pwsh', args: { command: 'Write-Output observation' } }
+  model.nativeCalls[1] = { name: 'security_complete', args: { summary: 'Observed fixture output', results: [
+    { title: 'Output', result: 'Fixture observation', toolCallIds: [model.nativeCallId(1)], evidenceIds: [] },
+  ], limitations: 'Fixture only.' } }
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(controller.projects()[0]!.completion?.status, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).toBe('saved')
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint')).toHaveLength(0)
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'report')).toHaveLength(0)
+  expect(model.requests).toHaveLength(3)
 })

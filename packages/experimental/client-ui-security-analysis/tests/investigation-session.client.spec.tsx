@@ -36,6 +36,7 @@ it('projects the canonical recorded Session result with its saved relationships'
       "Investigation",
       "List",
       "Expand observations",
+      "Reports · Task report published; open Reports to read itRevision 1Not yet linked",
       "Materialhandler.js",
       "Materialfirmware.elf",
       "Materialtraffic.pcapng",

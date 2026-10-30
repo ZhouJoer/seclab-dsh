@@ -149,7 +149,7 @@ it('renders saved Markdown reports from the report read API', async () => {
   fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
   fireEvent.click(screen.getByRole('button', { name: '报告' }))
-  fireEvent.click(screen.getByRole('button', { name: 'OSCP 风格报告' }))
+  fireEvent.click(screen.getByRole('button', { name: '任务分析报告' }))
   await screen.findByRole('heading', { name: 'Target security' })
   expect(report).toHaveBeenCalledWith('project', 'brief', 'markdown')
   fireEvent.click(screen.getByRole('button', { name: '修复建议' }))

@@ -2399,3 +2399,33 @@ describe('disposeCodexChild', () => {
     await disposal
   })
 })
+
+
+it('captures early native tool start and completion while excluding reasoning and foreign turns', async () => {
+  const observations: import('../src/tool-records.ts').CodexToolObservation[] = []
+  const { child, run, turnStart } = await publishRun(fakeChild(), undefined, { onTool: (item) => { observations.push(item) } })
+  try {
+    const item = { id: 'read-1', type: 'commandExecution', command: 'read input', cwd: '/work' }
+    child.peer.send({ method: 'item/started', params: { threadId: 'thread-1', turnId: 'turn-1', item } })
+    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
+    await nextTask()
+    child.peer.send({ method: 'item/completed', params: { threadId: 'foreign', turnId: 'turn-1', item } })
+    child.peer.send({ method: 'item/completed', params: { threadId: 'thread-1', turnId: 'foreign', item } })
+    child.peer.send({ method: 'item/completed', params: { threadId: 'thread-1', turnId: 'turn-1', item: { type: 'reasoning', id: 'private', text: 'private' } } })
+    child.peer.send({ method: 'item/completed', params: { threadId: 'thread-1', turnId: 'turn-1', item: { ...item, status: 'completed', exitCode: 0, aggregatedOutput: 'observed bytes' } } })
+    child.peer.send(agentMessage('Advice', 'final_answer'))
+    child.peer.send(turnCompleted('completed'))
+    expect((await run.result).stopReason).toBe('completed')
+    expect(observations.map(item => item.phase)).toEqual(['started', 'completed'])
+    expect(observations[1]?.item).toMatchObject({ command: 'read input', aggregatedOutput: 'observed bytes', exitCode: 0 })
+  } finally { await run.dispose() }
+})
+
+it('reports a trace sink failure instead of a successfully audited consultation', async () => {
+  const { child, run, turnStart } = await publishRun(fakeChild(), undefined, { onTool: () => { throw new Error('Trace storage failed') } })
+  try {
+    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
+    child.peer.send({ method: 'item/started', params: { threadId: 'thread-1', turnId: 'turn-1', item: { id: 'read', type: 'commandExecution', command: 'read input' } } })
+    expect((await run.result).stopReason).not.toBe('completed')
+  } finally { await run.dispose() }
+})

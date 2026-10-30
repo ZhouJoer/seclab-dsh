@@ -137,6 +137,22 @@
       }
     },
     {
+      "name": "exit_plan_mode",
+      "description": "Use only in plan mode. Present your plan for the user's review and, on approval, leave plan mode. The user may approve (carry out the plan from your next step) or keep planning — their feedback comes back in the tool result; revise and present again.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "string",
+            "description": "The complete plan, as markdown, starting with a # heading that names it."
+          }
+        },
+        "required": [
+          "plan"
+        ]
+      }
+    },
+    {
       "name": "get_goal",
       "description": "Read the current session goal, including the id and revision that update_goal requires.",
       "parameters": {
@@ -370,8 +386,65 @@
       }
     },
     {
+      "name": "security_checkpoint",
+      "description": "Save concise research progress for the current task. The Host supplies revision and operation identity. The same title and phase update the current direction; a changed title or phase starts a new direction. Phase describes evidence, not tool count. This saves progress, not task completion. Returns committed revision and changed record IDs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "recon",
+              "surface",
+              "assessment",
+              "validation"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Research direction, at most 100 characters."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this direction is warranted, at most 300 characters."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Established result, coverage and uncertainty, at most 300 characters."
+          },
+          "next": {
+            "type": "string",
+            "description": "Next distinguishing experiment or blocker, at most 300 characters."
+          },
+          "evidenceIds": {
+            "type": "array",
+            "description": "Saved evidence IDs; use [] when none. Paths and tool call IDs are not evidence IDs.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "findingIds": {
+            "type": "array",
+            "description": "Saved finding IDs; use [] when none.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "phase",
+          "title",
+          "reason",
+          "summary",
+          "next",
+          "evidenceIds",
+          "findingIds"
+        ]
+      }
+    },
+    {
       "name": "security_command",
-      "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: modules, import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, complete-task, report. Use complete-task only when the requested objective is achieved: submit results with title, exact result and evidenceIds, plus limitations describing the validation actually performed. It saves outcomes and generates the official task report. Use report to generate or retry the same official report when asked; do not use write for a report unless the user explicitly requests an additional file. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
+      "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: modules, import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, complete-task, report. Use complete-task only when the requested objective is achieved: submit results with title, exact result and evidenceIds, plus limitations describing the validation actually performed. It saves outcomes only. Report generation is a separate user-triggered action. Use report to generate or retry the same official report when asked; do not use write for a report unless the user explicitly requests an additional file. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -382,6 +455,65 @@
         },
         "required": [
           "command"
+        ]
+      }
+    },
+    {
+      "name": "security_complete",
+      "description": "Submit a verified task outcome without generating a report. The Host supplies revision and operation identity and resolves committed tool citations. No prior checkpoint or vulnerability finding is required. The user generates the report manually from Reports, or explicitly asks for security_command report. This declares the objective achieved; use security_checkpoint for unfinished work.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "description": "Verified outcome and its scope, at most 4000 characters."
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Result title, at most 160 characters."
+                },
+                "result": {
+                  "type": "string",
+                  "description": "Exact result and verification, at most 3000 characters."
+                },
+                "toolCallIds": {
+                  "type": "array",
+                  "description": "Successful observed tool calls in this Session. Include verification and relevant artifact reads.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "evidenceIds": {
+                  "type": "array",
+                  "description": "Existing saved evidence IDs; [] when using tool calls.",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "title",
+                "result",
+                "toolCallIds",
+                "evidenceIds"
+              ]
+            }
+          },
+          "limitations": {
+            "type": "string",
+            "description": "Unverified coverage, external assistance and remaining qualifications; empty only when none."
+          }
+        },
+        "required": [
+          "summary",
+          "results",
+          "limitations"
         ]
       }
     },
@@ -882,6 +1014,19 @@
       }
     },
     {
+      "name": "working_directory",
+      "description": "Read the current working directory, or change it with cd. Relative paths use the current directory. Existing shells and running processes keep their own directories.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cd": {
+            "type": "string",
+            "description": "Existing directory to enter. Omit to read the current directory."
+          }
+        }
+      }
+    },
+    {
       "name": "write",
       "description": "Create or fully replace a UTF-8 text file.",
       "parameters": {
@@ -918,8 +1063,65 @@
   "changes": [
     [
       {
+        "name": "security_checkpoint",
+        "description": "Save concise research progress for the current task. The Host supplies revision and operation identity. The same title and phase update the current direction; a changed title or phase starts a new direction. Phase describes evidence, not tool count. This saves progress, not task completion. Returns committed revision and changed record IDs.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "phase": {
+              "type": "string",
+              "enum": [
+                "recon",
+                "surface",
+                "assessment",
+                "validation"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "description": "Research direction, at most 100 characters."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Why this direction is warranted, at most 300 characters."
+            },
+            "summary": {
+              "type": "string",
+              "description": "Established result, coverage and uncertainty, at most 300 characters."
+            },
+            "next": {
+              "type": "string",
+              "description": "Next distinguishing experiment or blocker, at most 300 characters."
+            },
+            "evidenceIds": {
+              "type": "array",
+              "description": "Saved evidence IDs; use [] when none. Paths and tool call IDs are not evidence IDs.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "findingIds": {
+              "type": "array",
+              "description": "Saved finding IDs; use [] when none.",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "phase",
+            "title",
+            "reason",
+            "summary",
+            "next",
+            "evidenceIds",
+            "findingIds"
+          ]
+        }
+      },
+      {
         "name": "security_command",
-        "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: modules, import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, complete-task, report. Use complete-task only when the requested objective is achieved: submit results with title, exact result and evidenceIds, plus limitations describing the validation actually performed. It saves outcomes and generates the official task report. Use report to generate or retry the same official report when asked; do not use write for a report unless the user explicitly requests an additional file. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
+        "description": "Submit a JSON security command with operationId, expectedRevision and action. Use the latest returned revision from security_static, security_command or security_scope; concurrent changes can still require a fresh revision. Request security_help with the needed action for its exact fields. Actions: modules, import, import-source, import-member, checkpoint, template, check, finish, reopen, reconcile, finding, revise-finding, finding-http-reference, conclude, plan, stop, revoke, remember, complete-task, report. Use complete-task only when the requested objective is achieved: submit results with title, exact result and evidenceIds, plus limitations describing the validation actually performed. It saves outcomes only. Report generation is a separate user-triggered action. Use report to generate or retry the same official report when asked; do not use write for a report unless the user explicitly requests an additional file. Use conclude with reviewId to apply a persisted independent review to its finding. Use reconcile only for interrupted checks. Use import-source for an absolute source file or directory; import only the selection authorized by the user. For a member already captured in a source asset, use import-member with source assetId, exact relative path and label. This reuses the immutable snapshot without Host import permissions. Returns committed revision and changed record IDs; read full records with security_scope. Use remember for concise structured retrospectives or reusable experience without reasoning traces or evidence. Plans require checkId, operation, hypothesis, expectedObservation, impact, cleanup and durationMs. Operator approval is separate.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -930,6 +1132,65 @@
           },
           "required": [
             "command"
+          ]
+        }
+      },
+      {
+        "name": "security_complete",
+        "description": "Submit a verified task outcome without generating a report. The Host supplies revision and operation identity and resolves committed tool citations. No prior checkpoint or vulnerability finding is required. The user generates the report manually from Reports, or explicitly asks for security_command report. This declares the objective achieved; use security_checkpoint for unfinished work.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "Verified outcome and its scope, at most 4000 characters."
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Result title, at most 160 characters."
+                  },
+                  "result": {
+                    "type": "string",
+                    "description": "Exact result and verification, at most 3000 characters."
+                  },
+                  "toolCallIds": {
+                    "type": "array",
+                    "description": "Successful observed tool calls in this Session. Include verification and relevant artifact reads.",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "evidenceIds": {
+                    "type": "array",
+                    "description": "Existing saved evidence IDs; [] when using tool calls.",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "result",
+                  "toolCallIds",
+                  "evidenceIds"
+                ]
+              }
+            },
+            "limitations": {
+              "type": "string",
+              "description": "Unverified coverage, external assistance and remaining qualifications; empty only when none."
+            }
+          },
+          "required": [
+            "summary",
+            "results",
+            "limitations"
           ]
         }
       },

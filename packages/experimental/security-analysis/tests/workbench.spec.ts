@@ -103,6 +103,8 @@ it('saves outcomes without findings and reuses the report across chat and operat
   const { send, controller, action, artifacts } = await completionFixture(generate)
   expect(controller.projects()[0]!.completion).toBeUndefined()
   await send(action)
+  expect(controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion?.status).toBe('saved')
+  await send({ kind: 'report' })
   const report = controller.view('parent').records.find(item => item.kind === 'report')!
   if (report.kind !== 'report') throw new Error('Missing report')
   const markdown = (await artifacts.read(report.value.markdown)).toString()
@@ -112,6 +114,8 @@ it('saves outcomes without findings and reuses the report across chat and operat
   expect(controller.projects()[0]!.completion).toMatchObject({ status: 'completed', reportId: report.value.id })
   await send({ kind: 'report' }, true)
   await send(action)
+  expect(controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion?.status).toBe('saved')
+  await send({ kind: 'report' })
   expect(generate).toHaveBeenCalledOnce()
   expect(controller.view('parent').records.filter(item => item.kind === 'report')).toHaveLength(1)
   expect(controller.view('parent').records.filter(item => item.kind === 'finding')).toHaveLength(0)
@@ -125,7 +129,8 @@ it('retains saved outcomes after artifact publication failure and retries throug
     if (fail) throw new Error('Provider unavailable')
     return outcomeReport
   })
-  await expect(send(action)).rejects.toThrow('Provider unavailable')
+  await send(action)
+  await expect(send({ kind: 'report' })).rejects.toThrow('Provider unavailable')
   expect(controller.projects()[0]!.completion).toMatchObject({ status: 'failed', results: action.kind === 'complete-task' ? action.results : [] })
   expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(false)
   fail = false
@@ -133,12 +138,37 @@ it('retains saved outcomes after artifact publication failure and retries throug
   expect(controller.projects()[0]!.completion?.status).toBe('completed')
 })
 
+it('links the report to saved research and evidence without requiring intermediate phases', async () => {
+  const { send, controller, action } = await completionFixture()
+  await send({ kind: 'checkpoint', phase: 'recon', title: 'Material identity', reason: 'Inspect input',
+    summary: 'Input identified.', next: 'Verify behavior.', evidenceIds: [], findingIds: [] })
+  const checkpointId = controller.checkpointId('parent')
+  await send(action)
+  expect(controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion?.status).toBe('saved')
+  await send({ kind: 'report' })
+  const report = controller.view('parent').records.find(record => record.kind === 'report')!
+  expect(report.value).toMatchObject({ checkpointId,
+    evidenceIds: action.kind === 'complete-task' ? action.results[0]!.evidenceIds : [] })
+  expect(controller.view('parent').records.filter(record => record.kind === 'checkpoint')).toHaveLength(1)
+})
+
+it('accepts an unrelated project revision when submitting a report but rejects stale project changes', async () => {
+  const { send, controller, journal, action } = await completionFixture()
+  const revision = journal.view().revision
+  await send({ kind: 'create', title: 'Other task', objective: 'Read another input', environmentIds: ['local'], maxAttempts: 1 }, true, 'other')
+  await controller.command('parent', { operationId: 'scoped-completion', expectedRevision: revision, action })
+  expect(controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion?.status).toBe('saved')
+  await expect(controller.command('parent', { operationId: 'stale-completion', expectedRevision: revision,
+    action: action.kind === 'complete-task' ? { ...action, limitations: 'Changed scope' } : action })).rejects.toThrow('state changed')
+})
+
 it.each(['cancel', 'change', 'stop'] as const)('does not publish completion when %s occurs during publication', async (reason) => {
   const entered = Promise.withResolvers<undefined>()
   const output = Promise.withResolvers<string>()
   const { controller, journal, send, action } = await completionFixture(async () => { entered.resolve(undefined); return output.promise })
+  await send(action)
   const abort = new AbortController()
-  const pending = controller.command('parent', { operationId: randomUUID(), expectedRevision: journal.view().revision, action }, false, abort.signal)
+  const pending = controller.command('parent', { operationId: randomUUID(), expectedRevision: journal.view().revision, action: { kind: 'report' } }, false, abort.signal)
   const rejected = expect(pending).rejects.toThrow()
   let stopping: Promise<unknown> | undefined
   try {
@@ -388,6 +418,7 @@ describe('security workbench', () => {
     await controller.captureAnalysis('parent', assetId, ['export-observation'], Buffer.alloc(64000, 120), new AbortController().signal)
     await send({ kind: 'complete-task', results: [{ title: '分析结果', result: '已记录观察，结论见技术发现。',
       evidenceIds: controller.view('parent').records.filter(item => item.kind === 'evidence').map(item => item.value.id) }], limitations: '未检查的路径仍待验证。' })
+    await send({ kind: 'report' })
     const report = controller.view('parent').records.find(item => item.kind === 'report')!
     if (report.kind !== 'report') throw new Error('Missing report')
     if (action === 'purge') await controller.manageProject(projectId, { operationId: randomUUID(), expectedRevision: journal.view().revision, action: { kind: 'archive' } })
@@ -509,6 +540,34 @@ describe('security workbench', () => {
       expect(onStopped).toHaveBeenCalledExactlyOnceWith(project)
     } finally { cleanup.resolve(undefined); release(); await stopping }
   })
+  it('saves independent project checkpoints concurrently while rejecting stale project state and changed selections', async () => {
+    const { controller, journal, send, ctx } = await harness()
+    const original = controller.binding('parent')!.engagementId
+    await send({ kind: 'create', title: 'Protocol capture', objective: 'Inspect response changes', environmentIds: ['local'], maxAttempts: 1 }, true, 'other')
+    const action = { kind: 'checkpoint' as const, phase: 'recon' as const, title: 'Input structure',
+      reason: 'Identify material', summary: 'Structure is unverified', next: 'Check a boundary', evidenceIds: [], findingIds: [] }
+    const expectedRevision = journal.view().revision
+    const first = { operationId: 'first-progress', expectedRevision, action }
+    await Promise.all([
+      controller.command('parent', first),
+      controller.command('other', { operationId: 'other-progress', expectedRevision, action }),
+    ])
+    expect(controller.checkpointId('parent')).toBeDefined()
+    expect(controller.checkpointId('other')).toBeDefined()
+    await expect(controller.command('parent', first)).resolves.toMatchObject({ revision: expectedRevision + 2 })
+    await expect(controller.command('parent', { ...first, operationId: 'stale-progress' })).rejects.toThrow('state changed')
+    await expect(controller.command('parent', { ...first, action: { ...action, summary: 'Different input' } })).rejects.toThrow('different input')
+    await expect(controller.command('parent', { ...first, operationId: 'future-progress', expectedRevision: journal.view().revision + 1 })).rejects.toThrow('state changed')
+    const beforeSelection = journal.view().revision
+    await send({ kind: 'select', engagementId: original }, true, 'other')
+    await expect(controller.command('other', { operationId: 'changed-selection', expectedRevision: beforeSelection, action })).rejects.toThrow('state changed')
+    await journal.close()
+    const reopened = await openSecurityJournal(ctx)
+    try {
+      await expect(reopened.commit('stale-after-reload', { revision: expectedRevision, projectId: original, sessionId: 'parent' }, {}, () => []))
+        .rejects.toThrow('state changed')
+    } finally { await reopened.close() }
+  })
   it('merges a research direction across turns and preserves supplemental reconnaissance and delegated ownership', async () => {
     const { controller, send, assetId } = await harness()
     const checkpoint = { kind: 'checkpoint' as const, phase: 'recon' as const, title: 'Entry inventory',
@@ -567,6 +626,7 @@ describe('security workbench', () => {
     if (assessment.kind !== 'review') throw new Error('Review required')
     await send({ kind: 'conclude', reviewId: assessment.value.id })
     await send({ kind: 'complete-task', results: [{ title: '分析结果', result: '已记录观察。', evidenceIds: [first.value.id] }], limitations: '实现未验证。' })
+    await send({ kind: 'report' })
     expect(controller.view('parent').records.some(item => item.kind === 'report')).toBe(true)
     await send({ kind: 'stop' }, true)
     await expect(controller.captureAnalysis('parent', assetId, ['next'], bytes, signal)).rejects.toThrow('stopped')
@@ -1363,6 +1423,7 @@ it.each(['confirmed', 'refuted', 'inconclusive'] as const)('derives %s from an i
   await send({ kind: 'conclude', reviewId: await review(verdict) })
   await send({ kind: 'complete-task', results: [{ title: '复核结果', result: '已记录独立复核。',
     evidenceIds: controller.view('parent').records.filter(item => item.kind === 'evidence').map(item => item.value.id) }], limitations: '' })
+  await send({ kind: 'report' })
   const projectId = controller.projects()[0]!.id
   const view = controller.projectView(projectId)
   expect(view.records.some(item => item.kind === 'binding')).toBe(false)
@@ -1379,7 +1440,8 @@ it('generates a report outside the journal queue and rejects stale analysis', as
   const output = Promise.withResolvers<string>()
   const generate = vi.fn(async () => { entered.resolve(undefined); return output.promise })
   const { controller, journal, send, action } = await completionFixture(generate)
-  const command = { operationId: 'report-pending', expectedRevision: journal.view().revision, action }
+  await send(action)
+  const command = { operationId: 'report-pending', expectedRevision: journal.view().revision, action: { kind: 'report' as const } }
   const first = controller.command('parent', command)
   const second = controller.command('parent', command)
   await entered.promise
@@ -1396,7 +1458,8 @@ it('replays a completed report without another model request', async () => {
   const generate = vi.fn(async () => JSON.stringify({ assessment: 'Binary safety has not been assessed.', scope: [], attackPath: [], objectives: [], findings: [],
     excludedIndices: [], lessons: [], uncovered: ['Only file identity is known.'] }))
   const { controller, journal, action } = await completionFixture(generate)
-  const command = { operationId: 'report-once', expectedRevision: journal.view().revision, action }
+  await controller.command('parent', { operationId: 'save-once', expectedRevision: journal.view().revision, action })
+  const command = { operationId: 'report-once', expectedRevision: journal.view().revision, action: { kind: 'report' as const } }
   await controller.command('parent', command)
   await controller.command('parent', command)
   expect(generate).toHaveBeenCalledTimes(1)
@@ -1408,8 +1471,9 @@ it('does not publish a report after its request is cancelled', async () => {
   const generate = vi.fn(async () => { entered.resolve(undefined); return output.promise })
   const { controller, journal, action } = await completionFixture(generate)
   const abort = new AbortController()
+  await controller.command('parent', { operationId: 'save-before-cancel', expectedRevision: journal.view().revision, action })
   const pending = controller.command('parent', { operationId: 'report-cancelled',
-    expectedRevision: journal.view().revision, action }, false, abort.signal)
+    expectedRevision: journal.view().revision, action: { kind: 'report' } }, false, abort.signal)
   await entered.promise
   abort.abort(new Error('Cancelled'))
   output.resolve(JSON.stringify({ assessment: 'Unknown safety.', scope: [], attackPath: [], objectives: [], findings: [], excludedIndices: [],
@@ -1636,6 +1700,7 @@ it('keeps literal challenge output characters and digest-shaped results in the d
   if (action.kind !== 'complete-task') throw new Error('Missing completion')
   action.results[0]!.result = '<flag>_' + 'a'.repeat(64)
   await send(action)
+  await send({ kind: 'report' })
   const report = controller.view('parent').records.find(item => item.kind === 'report')!
   if (report.kind !== 'report') throw new Error('Missing report')
   const markdown = await controller.readReport(report.value.engagementId, report.value.id, 'markdown', new AbortController().signal)
@@ -1652,7 +1717,8 @@ it('marks a same-operation delivery retry running and rejects changed retry inpu
     return outcomeReport
   })
   const { controller, action } = fixture
-  const retry = (next = action) => controller.command('parent', {
+  await controller.command('parent', { operationId: 'saved-retry', expectedRevision: controller.view('parent').revision, action })
+  const retry = (next: SecurityCommand['action'] = { kind: 'report' }) => controller.command('parent', {
     operationId: 'stable-completion', expectedRevision: controller.view('parent').revision, action: next,
   })
   await expect(retry()).rejects.toThrow('Temporary provider failure')
@@ -1680,7 +1746,8 @@ it('fixes native citations before publication and retries without rereading the 
     if (mediaType === 'text/markdown') throw new Error('Publication failed')
     return put(bytes, mediaType)
   })
-  await expect(controller.command('source', { operationId: 'source-report', expectedRevision: journal.view().revision, action })).rejects.toThrow('Publication failed')
+  await controller.command('source', { operationId: 'source-save', expectedRevision: journal.view().revision, action })
+  await expect(controller.command('source', { operationId: 'source-report', expectedRevision: journal.view().revision, action: { kind: 'report' } })).rejects.toThrow('Publication failed')
   expect(reader).toHaveBeenCalledOnce()
   observed = 'changed code'
   writer.mockRestore()
@@ -1710,11 +1777,12 @@ it('rejects source observations from another workspace or foreign project', asyn
 
 it('does not retry an older operation using a replacement report submission', async () => {
   const { controller, journal, action } = await completionFixture(async () => { throw new Error('Write failed') })
-  const first = { operationId: 'first-submission', expectedRevision: journal.view().revision, action }
+  await controller.command('parent', { operationId: 'original-save', expectedRevision: journal.view().revision, action })
+  const first = { operationId: 'first-submission', expectedRevision: journal.view().revision, action: { kind: 'report' as const } }
   await expect(controller.command('parent', first)).rejects.toThrow('Write failed')
   if (action.kind !== 'complete-task') throw new Error('Outcome required')
-  await expect(controller.command('parent', { operationId: 'replacement', expectedRevision: journal.view().revision,
-    action: { ...action, summary: 'Replacement summary' } })).rejects.toThrow('Write failed')
+  await controller.command('parent', { operationId: 'replacement', expectedRevision: journal.view().revision,
+    action: { ...action, summary: 'Replacement summary' } })
   await expect(controller.command('parent', { ...first, expectedRevision: journal.view().revision })).rejects.toThrow('superseded')
   expect(controller.projects()[0]!.completion?.summary).toBe('Replacement summary')
 })
@@ -1725,8 +1793,9 @@ it('retries a failed report operation against its saved submission', async () =>
     if (++attempts < 3) throw new Error('Write failed')
     return outcomeReport
   })
-  await expect(controller.command('parent', { operationId: 'save-result', expectedRevision: journal.view().revision, action })).rejects.toThrow('Write failed')
+  await controller.command('parent', { operationId: 'save-result', expectedRevision: journal.view().revision, action })
   const retry = () => controller.command('parent', { operationId: 'publish-result', expectedRevision: journal.view().revision, action: { kind: 'report' } })
+  await expect(retry()).rejects.toThrow('Write failed')
   await expect(retry()).rejects.toThrow('Write failed')
   await retry()
   expect(attempts).toBe(3)

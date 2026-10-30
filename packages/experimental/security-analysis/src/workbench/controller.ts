@@ -869,9 +869,11 @@ export class SecurityController {
     const operatorActions = ['create', 'select', 'leave', 'approve', 'publish', 'resume', 'web-target', 'external-web-target']
     if (operatorActions.includes(action.kind) && !operator) throw new Error('This action requires an operator gesture')
     if (action.kind === 'report' || action.kind === 'complete-task') return this.createReport(sessionId, command, operator, signal)
+    const checkpointBinding = action.kind === 'checkpoint' ? this.requireBinding(this.journal.view(), sessionId) : undefined
     await this.journal.commit(
       command.operationId,
-      action.kind === 'stop' || action.kind === 'revoke' ? undefined : command.expectedRevision,
+      action.kind === 'stop' || action.kind === 'revoke' ? undefined : checkpointBinding
+        ? { revision: command.expectedRevision, projectId: checkpointBinding.engagementId, sessionId } : command.expectedRevision,
       { sessionId, operator, action },
       async (view) => {
         if (action.kind === 'create') return this.createRecords(sessionId, { ...action,
@@ -1391,6 +1393,7 @@ export class SecurityController {
     const project = this.project(snapshot, binding.engagementId)
     const input = { sessionId, operator, action: command.action }
     if (this.journal.replay(command.operationId, input)) return this.view(sessionId)
+    this.journal.replay(command.operationId + ':outcome', input)
     const key = project.id
     const fingerprint = JSON.stringify(input)
     const running = this.reports.get(key)
@@ -1399,7 +1402,8 @@ export class SecurityController {
       return running.pending
     }
     if (project.stopped || project.archived) throw new Error('Resume the task before generating its report')
-    if (snapshot.revision !== command.expectedRevision) throw new Error('Security state changed; reload before retrying')
+    if (command.expectedRevision > snapshot.revision) throw new Error('Security state changed; reload before retrying')
+    const expectedRevision = { revision: command.expectedRevision, projectId: project.id, sessionId }
     const limits = this.options.reportLimits
     const recordsOf = (view: WorkbenchView) => view.records.filter(record => record.kind !== 'binding' && record.kind !== 'report' &&
       (record.kind === 'engagement' ? record.value.id : record.value.engagementId) === project.id)
@@ -1415,9 +1419,9 @@ export class SecurityController {
       combined.throwIfAborted()
       const action = command.action
       if (action.kind === 'complete-task' || project.completion) {
-        const outcomeOperation = command.operationId + ':outcome'
+        const outcomeOperation = action.kind === 'complete-task' ? command.operationId : command.operationId + ':outcome'
         const saved = this.journal.replay(outcomeOperation, input)
-        await this.journal.commit(saved ? randomUUID() : outcomeOperation, command.expectedRevision, input, async (view) => {
+        await this.journal.commit(saved ? randomUUID() : outcomeOperation, expectedRevision, input, async (view) => {
           combined.throwIfAborted()
           const current = this.project(view, project.id)
           if (this.requireBinding(view, sessionId).engagementId !== project.id || current.stopped || current.archived)
@@ -1449,11 +1453,15 @@ export class SecurityController {
           return [...records, { kind: 'engagement', value: { ...current, completion: taskCompletionSchema.parse({
             operationId: command.operationId,
             summary: outcome.summary, methods: outcome.methods, analysis: outcome.analysis, recommendations: outcome.recommendations,
-            results, limitations: outcome.limitations, status: 'running', detail: '', updatedAt: Date.now(),
+            results, limitations: outcome.limitations, status: action.kind === 'complete-task' ? 'saved' : 'running', detail: '', updatedAt: Date.now(),
+            checkpointId: action.kind === 'complete-task'
+              ? view.records.filter(record => record.kind === 'checkpoint').filter(record => record.value.engagementId === project.id).at(-1)?.value.id
+              : current.completion?.checkpointId,
           }) } }]
         })
       }
-      if (!project.completion && action.kind !== 'complete-task') throw new Error('Submit task results before publishing a report')
+      if (action.kind === 'complete-task') return this.view(sessionId)
+      if (!project.completion) throw new Error('Submit task results before publishing a report')
       if (!limits) throw new Error('Report output limits are unavailable')
       const observed = this.journal.view()
       const records = recordsOf(observed)
@@ -1478,7 +1486,11 @@ export class SecurityController {
         : await this.artifacts.put(Buffer.from(rendered.recommendationsMarkdown), 'text/markdown')
       const json = await this.artifacts.put(Buffer.from(JSON.stringify({ revision: observed.revision, records })), 'application/json')
       await settle({ kind: 'report', value: reportSchema.parse({ id: randomUUID(), engagementId: project.id,
-        revision: observed.revision, sourceHash, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown }) })
+        revision: observed.revision, sourceHash, createdAt: Date.now(), markdown, json, findingsMarkdown, recommendationsMarkdown,
+        checkpointId: records.find(record => record.kind === 'engagement')?.value.completion?.checkpointId,
+        evidenceIds: [...new Set(records.filter(record => record.kind === 'engagement')
+          .flatMap(record => record.value.completion?.results.flatMap(result => result.evidenceIds) ?? []))],
+      }) })
       return this.view(sessionId)
     }).catch(async (error: unknown) => {
       const current = this.journal.view().records.find(record => record.kind === 'engagement' && record.value.id === project.id)

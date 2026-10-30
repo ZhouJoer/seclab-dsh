@@ -1298,12 +1298,16 @@ export interface WorkbenchConfig {
   modelResultBytes: number
   /** Maximum invocation details returned in one activity page. */
   activityPageSize: number
-  /** Exploration token allowance per analysis turn, followed by one summary step under existing model limits. */
+  /** Exploration tokens per analysis turn before wrap-up; zero disables this additional limit. */
   analysisTurnTokens: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
   /** Same-kind failures without new evidence before asking an available advisor to review the approach. */
   analysisReviewFailures: number
+  /** Maximum saved-evidence and persistence steps before a final budget summary. */
+  analysisWrapUpSteps: number
+  /** Unreported analysis invocations before requesting an updated research checkpoint. */
+  analysisProgressCalls: number
   /** Maximum target findings in the main report body. */
   reportMaxFindings: number
   /** Maximum approved operation duration in milliseconds. */
@@ -1744,7 +1748,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `subagents` · `llm` · `systemPrompt` · `sessionProjections`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/subagent/helper/src/index.ts:34`](../packages/subagent/helper/src/index.ts)
+- `source`: [`packages/subagent/helper/src/index.ts:35`](../packages/subagent/helper/src/index.ts)
 
 ```ts config-catalog
 /** Live settings; each consultation captures one complete selection. */
@@ -3755,6 +3759,8 @@ export type ClaudeCodePermissionMode = typeof CLAUDE_CODE_PERMISSION_MODES[numbe
 export interface Config {
   /** Expose native account/model controls and the read-only helper-codex provider. */
   consultation?: boolean
+  /** Maximum UTF-8 bytes retained per native consultation tool item. */
+  consultationToolRecordBytes?: number
   /** Provider name on `ctx.subagents` (default `codex`). */
   providerName?: string
   /** Native Codex model fixed for this instance; omitted to inherit Codex settings. */

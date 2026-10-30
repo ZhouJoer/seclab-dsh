@@ -24,8 +24,9 @@ type Props = PropsRenderFactories & PropsLocale<typeof NS> & Pick<ActivityAction
   httpRead?: HttpReadActions
 }
 const kinds: Record<InvestigationNode['record']['kind'], SecurityKey> = {
+  engagement: 'graphOutcome',
   asset: 'graphMaterial', check: 'graphCheck', checkpoint: 'graphDirection', delegation: 'graphDelegation',
-  evidence: 'graphEvidence', finding: 'graphFinding', plan: 'graphPlan', review: 'graphReview',
+  evidence: 'graphEvidence', finding: 'graphFinding', plan: 'graphPlan', review: 'graphReview', report: 'reports',
 }
 type CardNode = Node<{ title: string; summary: string; kind: string; state: string; attention: boolean; select: () => void }, 'investigation'>
 function Card({ data }: NodeProps<CardNode>) {
@@ -163,7 +164,8 @@ export function InvestigationGraph(props: Props) {
   const edges = shown.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   const topology = JSON.stringify({ ids: visible.map(node => node.id), edges: edges.map(({ source, target }) => ({ source, target })) })
   const placed = useMemo(() => investigationPositions(topology), [topology])
-  const title = (node: InvestigationNode) => node.title || t('unavailableReference')
+  const title = (node: InvestigationNode) => node.record.kind === 'report'
+    ? `${t('revision')} ${node.record.value.revision}` : node.title || t('unavailableReference')
   const nodes: CardNode[] = visible.map((node) => {
     const position = placed.get(node.id)
     if (!position) throw new Error('Missing investigation node layout')
@@ -210,6 +212,7 @@ export function InvestigationGraph(props: Props) {
         <header><span className={css.kind}>{t(kinds[chosen.record.kind])}</span><button onClick={() =>{  setSelected('') }}>{t('close')}</button></header>
         <h3>{title(chosen)}</h3>{chosen.state && <p className={css.state}>{t(chosen.state)}</p>}
         <h4>{t('graphResult')}</h4><p>{chosen.summary || t('activityNoConclusion')}</p>
+        {chosen.record.kind === 'engagement' && <p>{chosen.record.value.completion?.limitations}</p>}
         {chosen.record.kind === 'checkpoint' && <><h4>{t('activityNext')}</h4><p>{chosen.record.value.next}</p><p>{chosen.record.value.reason}</p></>}
         {chosen.record.kind === 'finding' && <><h4>{t('graphConditions')}</h4><p>{chosen.record.value.conditions}</p></>}
         {chosen.record.kind === 'review' && <><p>{t('graphHistoricalReview')}</p><p>{chosen.record.value.uncertainty}</p></>}
@@ -219,6 +222,9 @@ export function InvestigationGraph(props: Props) {
           {chosen.record.value.child && <button onClick={() => { if (chosen.record.kind === 'delegation' && chosen.record.value.child) props.openChild(chosen.record.value.child) }}>{t('delegationOpenChild')}</button>}
         </>}
         {chosen.record.kind === 'plan' && <button onClick={props.openPlans}>{t('planApprovals')}</button>}
+        {chosen.record.kind === 'report' && <a href={'/api/security.report?' + new URLSearchParams({
+          projectId: chosen.record.value.engagementId, reportId: chosen.record.value.id,
+        }).toString()} target="_blank" rel="noreferrer">{t('reports')}</a>}
         {evidence && <>{props.renderFactorySlot('security.resource.actions', { projectId: props.project, resource: { kind: 'evidence', evidenceId: evidence.id, sha256: evidence.artifact.sha256, label: evidence.title } })}
           <p>{evidence.provider} · {t(evidence.method === 'simulation' ? 'graphSimulation' : evidence.method === 'device' ? 'graphDevice' : evidence.method === 'static' ? 'graphStatic' : 'graphMethodUnknown')}</p>
           {evidence.failure && <p role="alert">{evidence.failure}</p>}{evidence.incomplete && <p>{t('incomplete')}</p>}

@@ -146,6 +146,8 @@ export function codexAppServerArgv(readOnly = false): string[] {
 
 /** Fully resolved inputs for one Codex app-server run. */
 export interface CodexRunSpec {
+  /** Native tool observations; sink failure fails the run rather than claiming a complete audit. */
+  readonly onTool?: (observation: import('./tool-records.ts').CodexToolObservation) => void
   /** Selected child working directory, also supplied to `thread/start`. */
   readonly cwd: string
   /** Profile-selected native model; omitted to preserve Codex settings. */
@@ -263,6 +265,7 @@ export async function startCodexRun(
     spec.permissionMode,
     spec.model,
     spec.reasoningEffort,
+    spec.onTool,
   )
   const onStderr = (chunk: Buffer | string): void => {
     const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : chunk

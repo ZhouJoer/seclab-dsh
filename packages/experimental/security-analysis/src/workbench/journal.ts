@@ -32,14 +32,14 @@ export interface SecurityJournal {
   /**
    * Commit one command atomically as one domain record.
    * @param operationId - caller's stable retry identity.
-   * @param expectedRevision - revision observed before issuing the command.
+   * @param expectedRevision - observed global revision, optionally checking only the named project and Session selection.
    * @param input - complete command used to detect changed retries.
    * @param produce - validate against the latest snapshot and produce changed records.
    * @returns the committed snapshot; exact retries do not execute produce again.
    */
   commit(
     operationId: string,
-    expectedRevision: number | undefined,
+    expectedRevision: number | { revision: number; projectId: string; sessionId: string } | undefined,
     input: unknown,
     produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[],
   ): Promise<WorkbenchView>
@@ -79,6 +79,8 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
   const listeners = new Map<string, Set<() => void>>()
   const allListeners = new Set<() => void>()
   const selections = new Map<string, Set<() => void>>()
+  const projectRevisions = new Map<string, number>()
+  const selectionRevisions = new Map<string, number>()
   let revision = 0
   let chain = Promise.resolve()
   let closing: Promise<void> | undefined
@@ -86,6 +88,8 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
     for (const item of items) {
       const key = item.kind === 'binding' ? item.value.sessionId : item.value.id
       records.set(item.kind + ':' + key, item)
+      projectRevisions.set(item.kind === 'engagement' ? item.value.id : item.value.engagementId, revision)
+      if (item.kind === 'binding') selectionRevisions.set(item.value.sessionId, revision)
     }
   }
   const projectOf = (item: SecurityRecord) => item.kind === 'engagement' ? item.value.id : item.value.engagementId
@@ -152,8 +156,14 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
           if (previous !== fingerprint) throw new Error('operationId was already used for different input')
           return view()
         }
-        if (expectedRevision !== undefined && revision !== expectedRevision)
-          throw new Error('Security state changed; reload before retrying')
+        if (expectedRevision !== undefined) {
+          const observed = typeof expectedRevision === 'number' ? expectedRevision : expectedRevision.revision
+          const changedAt = typeof expectedRevision === 'number' ? revision
+            : Math.max(projectRevisions.get(expectedRevision.projectId) ?? 0,
+              selectionRevisions.get(expectedRevision.sessionId) ?? 0)
+          if (observed < changedAt || observed > revision)
+            throw new Error('Security state changed; reload before retrying')
+        }
         const changed = z
           .array(recordSchema)
           .min(1)

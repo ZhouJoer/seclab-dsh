@@ -11620,6 +11620,109 @@
       }
     },
     {
+      "key": "event:helper/codex-trace",
+      "kind": "event",
+      "event": "helper/codex-trace",
+      "surface": false,
+      "digest": "f12574b201f3c42fb53289c254bcdb9c66ef94a9810094ebae794679f8be6f17",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 5,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 6,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 7,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "union",
+            "types": [
+              2,
+              4
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "callId",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "childSessionId",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "rootCallId",
+                "type": 3,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "childSessionId",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "consultationId",
+                "type": 3,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "helper/codex-trace"
+          }
+        ]
+      }
+    },
+    {
       "key": "event:helper/end",
       "kind": "event",
       "event": "helper/end",
@@ -17748,6 +17851,125 @@
           {
             "kind": "literal",
             "value": "step/start"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:subagent-codex/tool",
+      "kind": "event",
+      "event": "subagent-codex/tool",
+      "surface": false,
+      "digest": "f027250e1441d585d0155fab972fbe39e7bda9bb22d0c7cf3d01a93a3eb6874d",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 8,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "childSessionId",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "itemId",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "name",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "originalBytes",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "phase",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "record",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "truncated",
+                "type": 7,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "union",
+            "types": [
+              5,
+              6
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "completed"
+          },
+          {
+            "kind": "literal",
+            "value": "started"
+          },
+          {
+            "kind": "primitive",
+            "type": "boolean"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "subagent-codex/tool"
           }
         ]
       }
@@ -25235,6 +25457,11 @@
       "sources": []
     },
     {
+      "digest": "09a029550c7212e755ff096418b3b3c1bf2daa80a675fa15c872d74535f6c6c8",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "09f3f8dc417f278257202714132f98ba7b52957d7b558c4a04456603890eb363",
       "names": [
         "packages/llm/llm/src/message.ts#SystemMessage"
@@ -25344,6 +25571,11 @@
       ]
     },
     {
+      "digest": "0f613a5c77dcbbcd17e0eee4f1110aeb09557af4383c905e58b959d6120de622",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "0f8512903d94f57a4748fa1a2092e64342856796684e6b8343db685b192745ce",
       "names": [],
       "sources": []
@@ -25362,7 +25594,7 @@
       "digest": "10c718f140b61d60b8d2f0ea3618b280a5d4e8cdfd2e1aa973107e5b21f5f006",
       "names": [],
       "sources": [
-        "packages/subagent/helper/src/types.ts:80"
+        "packages/subagent/helper/src/types.ts:82"
       ]
     },
     {
@@ -25546,6 +25778,11 @@
     },
     {
       "digest": "1ab2ef1296f157ba96998f179bb5daa9d21a82480da2901127aeab2730797c92",
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "1adb97a2d855de72f33226781629b63eb29b881ed3337a4e407ce33b19bfc74e",
       "names": [],
       "sources": []
     },
@@ -25802,6 +26039,11 @@
       "sources": []
     },
     {
+      "digest": "2a61353dac681235a73ae42a56ba58941ec5db792b25a0435c0b438291ed5f25",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "2aad1179f957631477b582e57cd8f538cb82618fc3fb816bde1171154235b065",
       "names": [],
       "sources": []
@@ -26009,6 +26251,11 @@
       "sources": [
         "packages/llm/llm/src/assistant-stream.ts:35"
       ]
+    },
+    {
+      "digest": "3909966410ff7817f3e88c003f9a4440ba04768cea46d6ebe536776d502dd526",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "390eed1028aba02774f14408647acec10ec5516e97d4f15ecde2b9989d5a69f2",
@@ -26431,7 +26678,7 @@
       "digest": "509f1a030cb3b0e9295b35249bc40540af8408c07fea9e4fa1bc447b3b597649",
       "names": [],
       "sources": [
-        "packages/experimental/security-analysis/src/index.ts:107"
+        "packages/experimental/security-analysis/src/index.ts:109"
       ]
     },
     {
@@ -26802,6 +27049,15 @@
       ],
       "sources": [
         "packages/llm/llm/src/types.ts:491"
+      ]
+    },
+    {
+      "digest": "66bddfee4b75a7ab634caa9841b5065a5fe9d3dd8c2837a39bddf997051c3039",
+      "names": [
+        "packages/subagent/subagent-codex/src/tool-records.ts#CodexToolRecord"
+      ],
+      "sources": [
+        "packages/subagent/subagent-codex/src/tool-records.ts:13"
       ]
     },
     {
@@ -28081,6 +28337,11 @@
       "sources": []
     },
     {
+      "digest": "b2ac19292a9b16eb7a3ab376f02b376e84e780b174e96b01dea2c8e505c6ef5e",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "b2d2a01e51341a3bfec809198952c8c830a7899f4cb6ecd3c1dc0b5d9a2af943",
       "names": [
         "packages/experimental/agent-team/src/types.ts#TeamTaskStatus"
@@ -28313,6 +28574,11 @@
       "sources": [
         "packages/llm/llm-retry/src/types.ts:16"
       ]
+    },
+    {
+      "digest": "c1e1622166f57c10c79f9f47b5f300a3b2f42e4fd198ebb4a2290f223c0cf4ac",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "c1f0f17b6493b85db6453bb30e01b208d703731b25bc1e68e5d4fc72eea9cdea",
@@ -28950,6 +29216,11 @@
       "sources": []
     },
     {
+      "digest": "f027250e1441d585d0155fab972fbe39e7bda9bb22d0c7cf3d01a93a3eb6874d",
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "f05fb85e715af4ab4de0b6ba111166dd0435bd8bb74a0fa0f32b9d174113fc7c",
       "names": [],
       "sources": []
@@ -28962,6 +29233,11 @@
       "sources": [
         "packages/api/session-controller/src/types.ts:101"
       ]
+    },
+    {
+      "digest": "f12574b201f3c42fb53289c254bcdb9c66ef94a9810094ebae794679f8be6f17",
+      "names": [],
+      "sources": []
     },
     {
       "digest": "f1687f982fa3d41ef29e159feed154ecd13af4dd209acaee16038f223f2e9402",

@@ -26,7 +26,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 const READ_TOOLS = new Set(['read', 'glob', 'grep', 'read_image'])
-const CONSULTATION_CHECKPOINT = 'Before another attempt or a blocked final answer, assess progress on the current obstacle. After roughly three materially different approaches produce no actionable evidence or progress, consult advisor before continuing to retry, asking the user for more information, or declaring the task blocked. Assess approaches by strategy, grouping related searches or variations together. Repeated errors, more guesses, or a larger search with no new lead do not establish progress. Consult even if you believe the adviser may also be unable to solve the problem. After advice, verify the smallest recommended step and continue; consult again only when new evidence or a new question warrants it.'
+const CONSULTATION_CHECKPOINT = 'Before another attempt or a blocked final answer, assess progress on the current obstacle. Use the task-specific review threshold when supplied. Otherwise, after roughly three materially different approaches produce no actionable evidence or progress, consult advisor before continuing to retry, asking the user for more information, or declaring the task blocked. Assess approaches by strategy, grouping related searches or variations together. Repeated errors, more guesses, or a larger search with no new lead do not establish progress. Consult even if you believe the adviser may also be unable to solve the problem. After advice, verify the smallest recommended step and continue; consult again only when new evidence or a new question warrants it.'
 const PERSONA = 'You are a read-only expert adviser. Diagnose the submitted problem using the supplied evidence and available read-only tools. Explain findings, uncertainty, and concrete next steps. Do not modify files, execute programs, delegate, or claim to have applied changes. The parent agent performs implementation.'
 const CODEX_PERSONA = 'You are a read-only expert adviser running in an enforced read-only sandbox with network access and permission elevation disabled. Diagnose the submitted problem and return evidence, uncertainty, and concrete advice. You may inspect local files using native read-only shell commands. Do not modify files, run builds or tests, access the network, delegate, or claim to have applied changes. Native Codex uses shell commands for file reading; DSH read/glob/grep tool names are not required. The parent agent performs implementation.'
 
@@ -74,15 +74,22 @@ export class Helper extends TypertRemoteService {
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'helper', { namespace: 'helper' })
     ctx.sessionProjections.register(helperProjection)
+    const reminded = new Set<SessionId>()
+    ctx.on('session/event', (session, event) => {
+      if (event.type === 'turn/start' || event.type === 'turn/end' || event.type === 'helper/policy') reminded.delete(session.id)
+    })
+    ctx.on('agent/disposed', ({ agent }) => { reminded.delete(agent.id) })
+    ctx.effect(() => () => { reminded.clear() }, 'helper reminder lifetime')
     ctx.on('tools/post-execute', async (exec, _result, next): Promise<PostToolDecision> => {
       const decision = await next()
       const agent = exec.agent
       if (exec.name === 'advisor' || exec.parent !== undefined || agent === undefined
         || agent.session.header.origin === 'subagent') return decision
       const state = this.state(agent)
-      if (!state.enabled || state.mode !== 'proactive') return decision
+      if (!state.enabled || state.mode !== 'proactive' || reminded.has(agent.id)) return decision
+      reminded.add(agent.id)
       const reminder = createUserMessage({
-        content: [{ type: 'text', text: 'Advisor checkpoint: Complete initial reconnaissance yourself without consulting advisor. After reconnaissance, if roughly three different strategies for the same obstacle produced no actionable evidence or progress, consult before further retries or reporting blocked. Group related searches and variations as one strategy.' }],
+        content: [{ type: 'text', text: 'Advisor checkpoint: Complete initial reconnaissance yourself without consulting advisor. Use the task-specific review threshold when supplied. Otherwise, after reconnaissance, if roughly three different strategies for the same obstacle produced no actionable evidence or progress, consult before further retries or reporting blocked. Group related searches and variations as one strategy.' }],
         source: { kind: 'helper-checkpoint', form: 'notice', summary: 'Assess progress before continuing' },
       })
       return { ...decision, additionalContexts: [...decision.additionalContexts ?? [], reminder] }
@@ -282,6 +289,7 @@ export class Helper extends TypertRemoteService {
           ...api ? { maxDepth: 1 } : {},
         },
       })
+      if (!api) agent.session.append('helper/codex-trace', { ...identity, childSessionId: run.childId })
       signal.addEventListener('abort', cancel, { once: true })
       if (signal.aborted) cancel()
       result = await run.result

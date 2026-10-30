@@ -1,6 +1,18 @@
 /** Bounded model discovery of packaged scripts, without probing their dependencies. @module */
 import { fileURLToPath } from 'node:url'
 import { analysisScripts } from './analysis-scripts.ts'
+import type { AnalysisScript } from './analysis-script-types.ts'
+
+interface ScriptDiscovery {
+  id: string
+  description: string
+  toolIds: string[]
+  skill: string
+  invocation: string
+  path?: string
+  example?: string
+  parameters?: AnalysisScript['parameters']
+}
 
 /** Search script purposes and identifiers; guides and paths are loaded only for selected entries.
  * @param query - free text, or an empty string for all entries.
@@ -8,7 +20,7 @@ import { analysisScripts } from './analysis-scripts.ts'
  * @param details - include invocation parameters and package paths when true.
  * @returns matching script descriptions, without granting execution permission.
  */
-export function discoverScripts(query: string, ids: readonly string[] | undefined, details: boolean) {
+export function discoverScripts(query: string, ids: readonly string[] | undefined, details: boolean): ScriptDiscovery[] {
   const scripts = analysisScripts().map(script => ({ id: String(script.id), path: script.path,
     description: [script.kind, script.category, script.skill].join(' '), toolIds: script.toolIds,
     skill: script.skill, example: script.example, parameters: script.parameters,

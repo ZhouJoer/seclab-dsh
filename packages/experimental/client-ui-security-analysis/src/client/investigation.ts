@@ -2,7 +2,7 @@
 import type { SecurityRecord, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import type { SecurityKey } from './locales.ts'
 
-type GraphRecord = Extract<SecurityRecord, { kind: 'asset' | 'check' | 'checkpoint' | 'delegation' | 'evidence' | 'finding' | 'plan' | 'review' }>
+type GraphRecord = Extract<SecurityRecord, { kind: 'engagement' | 'asset' | 'check' | 'checkpoint' | 'delegation' | 'evidence' | 'finding' | 'plan' | 'review' | 'report' }>
 /** A readable domain record; its stable identity is never used as display text. */
 export interface InvestigationNode {
   id: string
@@ -43,6 +43,13 @@ export function investigation(view: WorkbenchView): Investigation {
     let running = false
     let attention = false
     switch (record.kind) {
+      case 'engagement': {
+        const outcome = record.value.completion
+        if (!outcome) continue
+        title = record.value.title; summary = outcome.summary ?? outcome.results.map(result => result.result).join('\n')
+        state = 'completed'
+        break
+      }
       case 'asset': title = record.value.label; summary = 'kind' in record.value && (record.value.kind === 'web' || record.value.kind === 'external-web') ? record.value.origin : ''; break
       case 'checkpoint': title = record.value.title; summary = record.value.summary; break
       case 'check': {
@@ -70,6 +77,7 @@ export function investigation(view: WorkbenchView): Investigation {
       }
       case 'finding': title = record.value.title; summary = record.value.explanation; state = record.value.status; attention = state === 'inconclusive'; break
       case 'plan': title = record.value.hypothesis; summary = record.value.expectedObservation; state = record.value.status; attention = state === 'draft'; break
+      case 'report': title = ''; summary = ''; state = 'reportDelivered'; break
       case 'review': {
         const finding = view.records.find(item => item.kind === 'finding' && item.value.id === record.value.findingId)
         title = finding?.kind === 'finding' ? finding.value.title : ''
@@ -94,6 +102,14 @@ export function investigation(view: WorkbenchView): Investigation {
     const from = (kind: string, id: string, relation: SecurityKey) =>{  link(node.id, key(kind, id), node.id, relation) }
     const to = (kind: string, id: string, relation: SecurityKey) =>{  link(node.id, node.id, key(kind, id), relation) }
     switch (record.kind) {
+      case 'engagement': {
+        const outcome = record.value.completion
+        if (!outcome) break
+        if (outcome.checkpointId) from('checkpoint', outcome.checkpointId, 'graphFollowup')
+        for (const id of new Set(outcome.results.flatMap(result => result.evidenceIds))) from('evidence', id, 'graphBasis')
+        if (outcome.reportId) to('report', outcome.reportId, 'graphFollowup')
+        break
+      }
       case 'asset': if ('parentId' in record.value && record.value.parentId) from('asset', record.value.parentId, 'graphContains'); break
       case 'check':
         from('asset', record.value.assetId, 'graphExamines')
@@ -125,6 +141,10 @@ export function investigation(view: WorkbenchView): Investigation {
         for (const id of record.value.evidenceIds) from('evidence', id, 'graphBasis')
         break
       case 'plan': from('check', record.value.checkId, 'graphValidation'); break
+      case 'report':
+        if (record.value.checkpointId) from('checkpoint', record.value.checkpointId, 'graphFollowup')
+        for (const id of record.value.evidenceIds ?? []) from('evidence', id, 'graphBasis')
+        break
       case 'review':
         from('finding', record.value.findingId, 'graphReviewRelation')
         for (const id of record.value.supportingEvidenceIds) from('evidence', id, 'graphSupports')

@@ -77,3 +77,11 @@ it('captures exact Playwright call/result pairs including failures, but rejects 
   const text = [call(0, 'snapshot', 'mcp__playwright-mcp__browser_snapshot'), result(1, 'snapshot', 'started background job untrusted-page')]
   expect(analysisLog(text, 0, ['snapshot'])).toEqual(text)
 })
+
+
+it.each(['read', 'read_image', 'glob', 'grep'])('retains committed %s observations without rereading files', (tool) => {
+  const events = [call(0, 'observed', tool), result(1, 'observed', 'Recorded observation')]
+  expect(analysisLog(events, 0, ['observed'])).toEqual(events)
+  expect(analysisCallPage(events, 0, 0, 4096).calls).toMatchObject([{ callId: 'observed', tool }])
+  expect(() => analysisLog(events, 2, ['observed'])).toThrow('committed')
+})

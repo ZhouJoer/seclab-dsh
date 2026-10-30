@@ -144,6 +144,7 @@ export async function apply(ctx) {
     securityCtx.securityWorkbench.importToolPack(pack, preview.revision, false)
     securityCtx.on('tools/execute', async (exec, next) => {
       if (exec.callId === 'save-research-progress') return commandIO.run({ identifier: 0 }, next)
+      if (exec.callId === 'save-native-progress') return commandIO.run({ identifier: 100 }, next)
       if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
         const service = securityCtx.securityWorkbench
         if (exec.callId === 'native-source-read') {
@@ -160,16 +161,26 @@ export async function apply(ctx) {
           const result = await commandIO.run({ identifier: 0 }, next)
           assert.notEqual(result.isError, true, JSON.stringify(result))
           assert.equal(modelRequests, requests, 'report publication requests no model')
+          const submitted = await service.view(exec.agent)
+          assert.equal(submitted.records.find(record => record.kind === 'engagement').value.completion.status, 'saved')
+          assert.equal(submitted.records.some(record => record.kind === 'report'), false)
+          const controller = await service.ready
+          await commandIO.run({ identifier: 200 }, () => controller.command(exec.agent.id, {
+            operationId: 'operator-report', expectedRevision: submitted.revision, action: { kind: 'report' },
+          }, true))
           const view = await service.view(exec.agent)
           const evidence = view.records.filter(record => record.kind === 'evidence')
           assert.equal(evidence.length, 1)
-          assert.equal(evidence[0].value.citation.text, 'export const read = request => request.query;')
-          assert.equal(evidence[0].value.incomplete, false)
+          assert.equal(evidence[0].value.provider, 'session-tool')
+          assert.equal(evidence[0].value.source.callId, 'native-source-read')
+          assert((await controller.artifacts.read(evidence[0].value.artifact)).toString().includes('export const read = request => request.query;'))
+          assert.equal(evidence[0].value.incomplete, true)
           const report = view.records.find(record => record.kind === 'report')
           assert(report)
+          assert.equal(report.value.checkpointId, view.records.find(record => record.kind === 'checkpoint').value.id)
+          assert.deepEqual(report.value.evidenceIds, [evidence[0].value.id])
           const markdown = await service.report(report.value.engagementId, report.value.id, 'markdown')
-          assert(markdown.includes('export const read = request => request.query;'))
-          const controller = await service.ready
+          assert(markdown.includes('函数直接返回请求的 query 字段。'))
           const response = await controller.exportReport(report.value.engagementId, report.value.id, 1024 * 1024,
             new Request('http://localhost/report.zip'))
           assert.equal(response.status, 200)
