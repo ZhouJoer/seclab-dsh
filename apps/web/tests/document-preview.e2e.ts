@@ -1,6 +1,6 @@
 /** Keyless document-preview smoke through a real Session, Files tab, shipped renderers, and the default-application controls. */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { EOL, tmpdir } from 'node:os'
 import { nativeFileManager } from '@deepseek-ai/dsh-native-command'
 import { delimiter, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1245,7 +1245,8 @@ else process.exit(1);
     await copyCode.hover()
     await page.getByRole('tooltip', { name: 'Copy', exact: true }).waitFor()
     await copyCode.click()
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codeLines.join('\n'))
+    // Chromium exposes the native clipboard's line endings, including CRLF on Windows.
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codeLines.join(EOL))
     sections.push([
       '## Code paging', '',
       `- Viewer: ${await viewer.innerText()}`,
@@ -1288,21 +1289,21 @@ else process.exit(1);
     await sheetOverlay.click({ position: { x: 500, y: 110 } })
     await expect.poll(() => formulaInput.innerText()).toBe('=C3/B3')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('80.0%\n')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`80.0%${EOL}`)
     await sheetTabs.getByText('公式与格式', { exact: true }).click()
     await expect.poll(() => excel.locator('.fortune-name-box').innerText()).toBe('A1')
     await sheetOverlay.click({ position: { x: 140, y: 30 } })
     await expect.poll(() => formulaInput.innerText()).toBe('46281')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('2026-09-16\n')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`2026-09-16${EOL}`)
     await sheetOverlay.click({ position: { x: 70, y: 30 } })
     await expect.poll(() => formulaInput.innerText()).toBe('=_xlfn.XLOOKUP(1,{1},{42})')
     expect(await formulaInput.getAttribute('contenteditable')).toBe('false')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('42\n')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`42${EOL}`)
     await page.keyboard.type('999')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('42\n')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`42${EOL}`)
     await successShot(page, 'excel-cached-formula')
     await openFile('chart-budget.xlsx')
     await sheetTabs.getByText('季度预算', { exact: true }).waitFor({ state: 'visible' })
@@ -1312,7 +1313,7 @@ else process.exit(1);
     await sheetOverlay.click({ position: { x: 500, y: 110 } })
     await expect.poll(() => formulaInput.innerText()).toBe('=C3/B3')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('80.0%\n')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`80.0%${EOL}`)
     await successShot(page, 'excel-chart-notice')
     await openFile('meeting.xlsx')
     await sheetTabs.getByText('会议信息', { exact: true }).waitFor({ state: 'visible' })
@@ -1346,7 +1347,7 @@ else process.exit(1);
       expect(await formulaInput.locator('img').count()).toBe(0)
       await excel.locator('.fortune-sheet-overlay').click({ position: { x: 70, y: 30 } })
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`${copied}\n`)
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`${copied}${EOL}`)
       const clipboardTable = excel.locator('#fortune-copy-content table')
       expect(await clipboardTable.locator('td').textContent()).toBe(copied)
       expect(await clipboardTable.locator('img').count()).toBe(0)
@@ -1379,11 +1380,11 @@ else process.exit(1);
       await excel.locator('.fortune-sheet-overlay').click({ position: { x: 70, y: 30 } })
       await expect.poll(() => excel.locator('.fortune-fx-input').innerText()).toBe('00123')
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('00123\n')
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`00123${EOL}`)
       await page.keyboard.press('ArrowRight')
       await page.keyboard.press('ArrowRight')
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('=SUM(1,2)\n')
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`=SUM(1,2)${EOL}`)
       await viewer.click()
       await page.getByRole('menuitem', { name: 'Plain text', exact: true }).click()
       await expect.poll(() => preview.locator('[data-textpreview-line]').count()).toBe(2)
@@ -1396,7 +1397,7 @@ else process.exit(1);
       await expect.poll(() => excel.locator('.fortune-fx-input').innerText()).toBe('00999')
       await excel.locator('.fortune-sheet-overlay').click({ position: { x: 70, y: 30 } })
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('00999\n')
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`00999${EOL}`)
       await successShot(page, `excel-${extension}`)
     }
     sections.push(['## Delimited spreadsheets', '',

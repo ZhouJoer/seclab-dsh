@@ -23,7 +23,7 @@ Preview files in the right Sidebar and choose among registered renderers. Markdo
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
-The root-scoped `document.pdf` Factory renders complete PDF bytes with an owner-supplied revision identity. It reuses the lazy PDF reader and zoom controls without requiring a Session or resolving a filesystem path; unmounting releases its rendering resources.
+The root-scoped `document.pdf` Factory renders complete PDF bytes with an owner-supplied revision identity. It shares the sidebar PDF body’s deferred module loader, reader and zoom controls without requiring a Session or resolving a filesystem path; unmounting releases its rendering resources.
 
 -----
 

@@ -3,8 +3,9 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import type { TerminalBodyProps } from './terminal.tsx'
 import type { TerminalViewportProps } from './terminal.tsx'
 
-const LoadedTerminalBody = lazy(async () => ({ default: (await import('./terminal.tsx')).TerminalBody }))
-const LoadedTerminalViewport = lazy(async () => ({ default: (await import('./terminal.tsx')).TerminalViewport }))
+const loadTerminal = () => import('./terminal.tsx')
+const LoadedTerminalBody = lazy(async () => ({ default: (await loadTerminal()).TerminalBody }))
+const LoadedTerminalViewport = lazy(async () => ({ default: (await loadTerminal()).TerminalViewport }))
 
 /** Load the shared terminal screen on demand for a non-sidebar owner.
  * @param props - existing model and framework-derived values.

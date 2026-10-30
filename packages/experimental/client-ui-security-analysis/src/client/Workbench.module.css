@@ -317,7 +317,7 @@
 .taskContextPanel > summary { cursor: pointer; color: var(--dsw-alias-label-primary); font-weight: 500; padding: 4px 0; }
 .taskContextPanel > summary small { display: inline-block; margin-left: 12px; color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 400; }
 .taskContextPanel > summary:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 3px; }
-.resourceForm details > summary, .resourceSummary > summary, .secondaryDetails > summary, .taskContextPanel > summary { display: list-item; list-style: disclosure-closed inside; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.resourceForm details > summary, .resourceSummary > summary, .secondaryDetails > summary, .taskContextPanel > summary { display: list-item; list-style: disclosure-closed inside; padding: 10px 12px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
 .resourceForm details[open] > summary, .resourceSummary[open] > summary, .secondaryDetails[open] > summary, .taskContextPanel[open] > summary { list-style-type: disclosure-open; margin-bottom: 12px; }
 .resourceForm summary::marker, .resourceSummary > summary::marker, .secondaryDetails > summary::marker, .taskContextPanel > summary::marker { color: var(--dsw-alias-link); }
 .resourceForm summary:focus-visible, .resourceSummary > summary:focus-visible, .secondaryDetails > summary:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 2px; }

@@ -4,6 +4,7 @@ import type { FactoryComponentPropsOf } from '@deepseek-ai/dsh-client-ui-slots'
 import { ZoomViewport, zoomSurfaceClass } from '../zoom/ZoomViewport.tsx'
 import type { PdfView } from './store.ts'
 import type { ZoomPreference } from '../zoom/types.ts'
+import { loadPdf } from './load.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotFactoryMap {
@@ -12,7 +13,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-const Content = lazy(() => import('./pdf.tsx').then(module => ({ default: module.PdfContent })))
+const Content = lazy(() => loadPdf().then(module => ({ default: module.PdfContent })))
 
 /** Framework-derived inputs for the Session-independent PDF Factory. */
 export type PdfViewportProps = FactoryComponentPropsOf<'document.pdf'>

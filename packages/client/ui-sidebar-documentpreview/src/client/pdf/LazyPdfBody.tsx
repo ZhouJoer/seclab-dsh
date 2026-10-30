@@ -2,8 +2,9 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { LoadingIndicator } from '../LoadingIndicator.tsx'
 import type { PdfBodyProps } from './pdf.tsx'
+import { loadPdf } from './load.ts'
 
-const LoadedPdfBody = lazy(async () => ({ default: (await import('./pdf.tsx')).PdfBody }))
+const LoadedPdfBody = lazy(async () => ({ default: (await loadPdf()).PdfBody }))
 
 /**
  * Suspend while the package-local PDF chunk arrives.
