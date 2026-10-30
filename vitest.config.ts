@@ -184,7 +184,9 @@ export default defineConfig({
   resolve: { alias: claudeCodeTestingAliases },
   test: {
     ...localWorkerBudget,
-    setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-dom-environment.ts'],
+    setupFiles: [
+      './scripts/test-proxy-environment.ts', './scripts/test-dom-environment.ts', './scripts/test-official-listing-guard.ts',
+    ],
     // .tsx: client component specs (jsdom via per-file @vitest-environment pragma).
     include: testIncludes,
     exclude: platformUnsupportedTests,
@@ -202,7 +204,9 @@ export default defineConfig({
           // Linux, and Windows. Forked workers avoid that shared thread path.
           pool: 'forks',
           ...laneTestBudget,
-          setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-dom-environment.ts'],
+          setupFiles: [
+            './scripts/test-proxy-environment.ts', './scripts/test-dom-environment.ts', './scripts/test-official-listing-guard.ts',
+          ],
           include: testIncludes,
           exclude: [
             ...platformUnsupportedTests,
@@ -219,7 +223,9 @@ export default defineConfig({
           execArgv: vitestExecArgv,
           pool: 'forks',
           ...laneTestBudget,
-          setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-dom-environment.ts'],
+          setupFiles: [
+            './scripts/test-proxy-environment.ts', './scripts/test-dom-environment.ts', './scripts/test-official-listing-guard.ts',
+          ],
           include: processBoundTests,
           exclude: [
             ...platformUnsupportedTests,

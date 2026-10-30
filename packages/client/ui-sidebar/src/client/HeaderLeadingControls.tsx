@@ -24,7 +24,9 @@ export type HeaderLeadingControlsProps =
  * @param props - Injected sidebar actions plus the sidebar locale seat.
  * @returns sidebar visibility and conversation creation controls.
  */
-export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcuts, t, renderFactorySlot }: HeaderLeadingControlsProps) {
+export function HeaderLeadingControls({
+  toggleSidebar, startSession, trackEntryClick, useShortcuts, t, renderFactorySlot,
+}: HeaderLeadingControlsProps) {
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   return (
@@ -46,7 +48,10 @@ export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcut
           className={css.iconButton}
           aria-label={t('session.new.label')}
           aria-keyshortcuts={newShortcut?.aria}
-          onClick={() => { startSession() }}
+          onClick={() => {
+            trackEntryClick({ menu_name: 'new_session', position: 'titlebar' })
+            startSession()
+          }}
         >
           <IconNewChatOutlineRegular size={16} />
         </button>

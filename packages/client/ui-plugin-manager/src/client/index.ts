@@ -46,6 +46,8 @@ declare module '@deepseek-ai/cordis' {
        * @param id - Registration id in `plugins.item`.
        */
       openItem(id: string): void
+      /** Open the Plugins main list without opening a dialog or changing the current Session. */
+      openList(): void
     }
   }
 }
@@ -139,6 +141,11 @@ export function apply(ctx: ClientContext): void {
       if (ctx.layout.panelInfo.getSnapshot().activePanelId !== PANEL_ID) instance.actions.setView({ kind: 'list' })
     })
     const disposeNavigation = ctx.reflect.provide('pluginNavigation', {
+      openList: () => {
+        ctx.layout.selectPanel(PANEL_ID)
+        instance.actions.setTab('installed')
+        instance.actions.setView({ kind: 'list' })
+      },
       openBundle: (packageName: string) => {
         ctx.layout.selectPanel(PANEL_ID)
         instance.actions.setTab('installed')

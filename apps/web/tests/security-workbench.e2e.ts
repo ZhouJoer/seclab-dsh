@@ -590,6 +590,7 @@ describe('web e2e: Security workbench', () => {
     const assignment = await controller.admitDelegation(agent.id, 'web-delegation', {
       assetId: asset.id, role: 'reviewer', task: 'review', question: 'Check the ownership evidence',
       criterion: 'Identify what the saved observation establishes', reason: 'Independent evidence assessment',
+      inputEvidenceIds: [observed.value.id],
     })
     const childWork = activity.getByRole('article', { name: 'Check the ownership evidence' })
     await childWork.getByText('Awaiting start', { exact: true }).waitFor()

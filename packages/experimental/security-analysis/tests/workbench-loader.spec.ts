@@ -1510,6 +1510,7 @@ else if (args.includes('--output')) {
     for (const role of ['reconnaissance', 'reviewer'] as const) {
       const result = await execute(ctx, agent, 'security_delegate', {
         assetId: asset.value.id, role, question: 'Inspect the assigned scope.', criterion: 'Return a scoped structured report.',
+        inputEvidenceIds: [evidence.value.id],
       }, 'delegation-' + role)
       expect(result.isError, JSON.stringify(result)).toBe(false)
       const { jobId } = JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join('')) as { jobId: string }
@@ -2262,8 +2263,9 @@ it('continues native exploration without requiring progress bookkeeping', async 
   for (let index = 0; index < 30; index++) await controller.activity!.start({ projectId, sessionId: agent.id,
     callId: 'progress-' + String(index), checkpointId: '', tools: ['script'], verified: false, parameters: '' })
   const search = vi.fn(async () => true)
-  independentTool(ctx, 'web_search', search)
-  expect((await execute(ctx, agent, 'web_search')).isError).toBe(false)
+  independentTool(agent.ctx, 'web_search', search)
+  const result = await execute(ctx, agent, 'web_search')
+  expect(result.isError, JSON.stringify(result)).toBe(false)
   expect(search).toHaveBeenCalledOnce()
 })
 

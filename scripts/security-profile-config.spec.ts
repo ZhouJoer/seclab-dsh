@@ -15,6 +15,7 @@ it('adds security as editable bundle layers and preserves user configuration acr
     await prepareSecurityProfile(directory)
     expect(await readFile(join(directory, 'package.json'), 'utf8')).toBe(before)
     expect(readProfileManifest('dsh', directory).dsh?.profile?.bundles).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-experimental-research-workbench-bundle',
       '@deepseek-ai/dsh-experimental-security-profile', '@deepseek-ai/dsh-experimental-security-web-profile'])
     expect(await readFile(join(directory, 'cordis.patch.yml'), 'utf8')).toBe(patch)
   } finally { await rm(directory, { recursive: true, force: true }) }
