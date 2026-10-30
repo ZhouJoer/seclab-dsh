@@ -1249,7 +1249,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:114`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:117`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
@@ -1746,7 +1746,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `subagents` · `llm` · `systemPrompt` · `sessionProjections`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/subagent/helper/src/index.ts:35`](../packages/subagent/helper/src/index.ts)
+- `source`: [`packages/subagent/helper/src/index.ts:34`](../packages/subagent/helper/src/index.ts)
 
 ```ts config-catalog
 /** Live settings; each consultation captures one complete selection. */
