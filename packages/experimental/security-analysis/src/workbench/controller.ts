@@ -533,12 +533,38 @@ export class SecurityController {
       .records.filter(item => item.kind === 'engagement').filter(item => includeArchived || !item.value.archived)
       .map(item => item.value)
   }
+  /** Resolve a primary coordinator without granting execution authority.
+   * @param projectId - retained project identity.
+   * @returns primary Session if it still belongs to this project.
+   */
+  mainSession(projectId: string): string | undefined {
+    const project = this.project(this.journal.view(), projectId)
+    const id = project.mainSessionId ?? this.journal.mainSession(projectId)
+    const binding = this.journal.view().records.find(item => item.kind === 'binding' && item.value.sessionId === id)
+    if (binding?.kind === 'binding' && binding.value.engagementId !== projectId) throw new Error('Primary conversation belongs to another task')
+    return id
+  }
+
+  /** Read a retained primary task for restart retries without activating its binding.
+   * @param sessionId - original primary coordinator.
+   * @returns retained task records or an empty view.
+   */
+  restartView(sessionId: string): WorkbenchView {
+    const view = this.journal.view()
+    const binding = view.records.find(item => item.kind === 'binding' && item.value.sessionId === sessionId)
+    const project = this.projects(true).find(project => binding?.kind === 'binding' && binding.value.engagementId === project.id
+      && (project.mainSessionId ?? this.journal.mainSession(project.id)) === sessionId)
+    return { revision: view.revision, records: project ? view.records.filter(item =>
+      (item.kind === 'engagement' ? item.value.id : item.value.engagementId) === project.id) : [] }
+  }
+
   /** Edit or remove a project from an authenticated operator gesture.
    * @param projectId - existing project identity.
      * @param input - revision-checked management request; omitted task context preserves it, null clears it.
+   * @param deferSettlement - owner retaining cancellation settlement outside a registry mutation.
    * @returns committed project list, including archived entries for recovery.
    */
-  async manageProject(projectId: string, input: unknown): Promise<Engagement[]> {
+  async manageProject(projectId: string, input: unknown, deferSettlement?: (settled: Promise<void>) => void): Promise<Engagement[]> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       action: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal('rename'), title: text }).strict(),
@@ -581,7 +607,11 @@ export class SecurityController {
         ...view.records.filter(item => item.kind === 'binding').filter(item => item.value.engagementId === projectId)
           .map(item => ({ kind: 'binding' as const, value: { ...item.value, active: false } }))]
     })
-    if (request.action.kind === 'archive') await this.cancelExecutions(projectId)
+    if (request.action.kind === 'archive') {
+      const settled = this.cancelExecutions(projectId)
+      if (deferSettlement) deferSettlement(settled)
+      else await settled
+    }
     return this.projects(true)
   }
 
@@ -607,9 +637,9 @@ export class SecurityController {
     const completed = this.binding(destination)
     if (completed) return this.view(destination)
     return this.withArtifactWrite(async () => {
-      const view = this.view(sessionId)
+      const view = this.restartView(sessionId)
       const project = view.records.find(item => item.kind === 'engagement')?.value
-      if (!project || this.binding(sessionId)?.role !== 'coordinator') throw new Error('Select a coordinator task before restarting')
+      if (!project) throw new Error('Select a coordinator task before restarting')
       if (project.environmentIds.some(id => !this.options.environments.some(environment => environment.id === id)))
         throw new Error('Restore the task analysis environments before restarting')
       const samples = view.records.filter(item => item.kind === 'asset')
@@ -731,10 +761,11 @@ export class SecurityController {
   }
 
   private async cancelExecutions(project: string, plan?: string): Promise<void> {
-    if (!plan) await this.cancelImprovements?.(project)
+    const improvements = !plan ? this.cancelImprovements?.(project) : undefined
     const cancelled = [...this.active.values(), ...[...this.delegated].map(([controller, job]) => ({ ...job, controller, plan: '' }))]
       .filter(run => run.project === project && (plan === undefined || run.plan === plan))
     for (const run of cancelled) run.controller.abort(new Error('Operator revoked execution'))
+    await improvements
     await Promise.allSettled(cancelled.map(run => run.done))
     await this.activity?.flush()
   }
@@ -824,6 +855,7 @@ export class SecurityController {
       maxAttempts: action.maxAttempts,
       id: randomUUID(),
       stopped: false,
+      mainSessionId: sessionId,
       ...(taskContext ? { taskContext } : {}),
       ...(action.moduleSelection ? { moduleSelection: action.moduleSelection } : {}),
       ...(action.unsealed !== undefined ? { unsealed: action.unsealed } : {}),

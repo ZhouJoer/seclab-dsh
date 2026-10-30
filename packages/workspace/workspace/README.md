@@ -20,6 +20,8 @@ Use this package to keep an ordered, persistent list of project directories and 
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+The `workspace/session-archive-change` waterfall coordinates dependent state after existence and activity checks, including repeated requests. Listeners call `next()` without reentering registry mutations or awaiting running work. Failure may leave dependent state committed; retry the same target to finish synchronization.
+
 -----
 
 <a id="use-this-package"></a>

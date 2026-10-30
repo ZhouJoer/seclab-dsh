@@ -13,7 +13,7 @@ import { ArchiveToastEntry, ToastEntry, WorkspaceToast } from './Toast.tsx'
 export function registerToasts(
   ctx: Context,
   viewStore: WorkspaceViewStoreHandle,
-  actions: Pick<RowToastActions, 'undoArchive' | 'showArchived' | 'openForkSource'>,
+  actions: Pick<RowToastActions, 'undoArchive' | 'showArchived' | 'openForkSource' | 'retryArchive'>,
 ): void {
   const archiveFilterAction: ArchiveToastInjected['filterAction'] = (t, dismiss) => ({
     prefix: t('toast.archivedOr'), label: t('toast.archivedFilter'),
@@ -21,6 +21,18 @@ export function registerToasts(
   })
   ctx.slots.registerFactory({ name: 'workspace.toast.content', scope: 'root' }, WorkspaceToast)
   ctx.slots.inject('workspace.toast', function* () {
+    yield ctx.slots.register({
+      name: 'workspace.toast', key: 'archiveFailed', locale: 'workspace',
+      inject: (): ToastDisplayInjected<'archiveFailed'> => ({
+        display: (notice, t, dismiss) => ({
+          text: t('toast.archiveFailed'), tone: 'warning', holdMs: 6000,
+          actions: [{ label: t('toast.archiveRetry'), onClick: () => {
+            dismiss(); actions.retryArchive(notice.sessionId, notice.archived)
+          } }],
+        }),
+      }),
+    }, ToastEntry<PropsRuntime<'workspace.toast', 'archiveFailed'>>)
+
     yield ctx.slots.register({
       name: 'workspace.toast', key: 'sessionIdCopied', locale: 'workspace',
       inject: (): ToastDisplayInjected<'sessionIdCopied'> => ({

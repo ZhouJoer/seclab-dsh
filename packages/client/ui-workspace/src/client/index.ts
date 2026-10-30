@@ -169,6 +169,7 @@ export function apply(ctx: Context): void {
   const unarchiveSession = (sessionId: SessionId): void => {
     uiWorkspace.unarchiveSession(sessionId).catch((reason: unknown) => {
       console.warn('session unarchive rejected:', reason)
+      notify({ kind: 'archiveFailed', sessionId, archived: false })
     })
   }
   const renameSession: SessionRenameDialogInjected['renameSession'] = async (sessionId, title) => {
@@ -204,6 +205,7 @@ export function apply(ctx: Context): void {
         const activity = activeSessionRefusal(reason)
         if (activity === undefined) {
           console.warn('session archive rejected:', reason)
+          notify({ kind: 'archiveFailed', sessionId, archived: true })
           return
         }
         const displayTitle = sessions.list.getSnapshot().byId[sessionId]?.displayTitle ?? sessionId
@@ -247,6 +249,10 @@ export function apply(ctx: Context): void {
     renameSession,
   })
   const toastActions = {
+    retryArchive: (sessionId: SessionId, archived: boolean) => {
+      if (archived) archiveInjected().archiveSession(sessionId)
+      else unarchiveSession(sessionId)
+    },
     undoArchive: unarchiveSession,
     showArchived: () => { viewInstance.actions.setArchivedFilter('show') },
     openForkSource: (sessionId: SessionId) => {

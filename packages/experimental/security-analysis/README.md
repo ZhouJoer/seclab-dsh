@@ -31,6 +31,8 @@ The operator `skillUsage` read folds committed skill catalogs, successful model 
 
 `projectMaterialDocument` authorizes a project asset and its exact snapshot member, returning immutable text, raster, PDF or binary-prefix content with its artifact digest. Office conversion uses the optional `officeToPdf` service with deferred bounded reads. It accepts no Host path, exposes no write operation and does not create a Session.
 
+Archiving a primary conversation reversibly deletes its security task; deleting or restoring a task also archives or unarchives that conversation. Child archives do not delete the task. Restoration leaves analysis paused. Cross-store failures report committed state and permit retry; superseded requests cannot override newer actions. Historical differences are not reconciled at startup.
+
 -----
 
 <a id="use-this-package"></a>

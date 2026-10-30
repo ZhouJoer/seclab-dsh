@@ -580,7 +580,7 @@ insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly Workspac
  * `agent/pre-step` gate reads, so every wake the stops induce is already
  * blocked. Archiving drops the session's pin in the same durable write
  * (pinning and archival are mutually exclusive). An already archived id
- * resolves without writing, asking, or stopping.
+ * resolves without writing, asking, or stopping; archive-change listeners still run.
  * @param sessionId - The session to archive.
  * @param options - Whether running work is stopped instead of refusing.
  * @returns resolution after durability and, with `stopActivity`, after every stop request was issued.
@@ -655,6 +655,27 @@ Ask the composed providers what still runs for a session before it is archived. 
  */
 'workspace/session-activity'( request: SessionActivityRequest, next: () => Promise<readonly SessionActivity[]>, ): Promise<readonly SessionActivity[]>
 ```
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-archive-change--waterfall"></a>
+
+#### `workspace/session-archive-change` — waterfall
+
+Coordinate dependent state after preflight, including repeated requests. Listeners delegate without reentering registry mutations or waiting for running work to settle. Rejection may leave dependent state committed; retry the same target to finish synchronization.
+
+```ts cordis-catalog
+/** Coordinate dependent state after preflight, including repeated requests.
+ * Listeners delegate without reentering registry mutations or waiting for running work to settle.
+ * Rejection may leave dependent state committed; retry the same target to finish synchronization.
+ * @param request - requested archive state.
+ * @param next - commit native state and issue stop requests.
+ * @mode waterfall
+ */
+'workspace/session-archive-change'(request: { sessionId: SessionId; archived: boolean }, next: () => Promise<void>): Promise<void>
+```
+
+Types: [SessionId](core.zh.md)
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
 

@@ -1054,6 +1054,26 @@ describe('workspace mutation and status', () => {
 })
 
 describe('registry-global session archive', () => {
+  it('coordinates repeated archive targets and leaves native state untouched when a participant rejects', async () => {
+    const result = await harness({ sessions: [header('task')] })
+    const observed: boolean[] = []
+    let reject = true
+    result.ctx.on('workspace/session-archive-change', async ({ archived }, next) => {
+      observed.push(archived)
+      if (reject) throw new Error('dependent storage failed')
+      await next()
+    })
+    await expect(result.registry.archiveSession(SessionId('task'))).rejects.toThrow('dependent storage failed')
+    expect(result.registry.archivedSessionIds).toEqual([])
+    reject = false
+    await result.registry.archiveSession(SessionId('task'))
+    await result.registry.archiveSession(SessionId('task'))
+    await result.registry.unarchiveSession(SessionId('task'))
+    await result.registry.unarchiveSession(SessionId('task'))
+    expect(observed).toEqual([true, true, true, false, false])
+    expect(result.registry.archivedSessionIds).toEqual([])
+  })
+
   it('archives durably in order, idempotently skips repeats, and leaves accounting untouched', async () => {
     const dir = await makeDir('archive-home')
     const result = await harness({ sessions: [header('kept', dir, 100), header('gone', dir, 200)] })

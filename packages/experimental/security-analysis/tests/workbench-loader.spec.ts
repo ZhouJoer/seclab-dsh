@@ -3372,6 +3372,13 @@ it.each(['normal', 'proactive', 'off'] as const)('retains task settings and Advi
     expect(controller.projects()[0]!.archived).not.toBe(true)
     expect(controller.projects()[0]!.stopped).toBe(false)
   }
+  if (mode === 'normal') {
+    const off = ctx.on('workspace/session-archive-change', async () => { throw new Error('archive interruption') })
+    await expect(ctx.securityWorkbench.restartTask(agent, '{}')).rejects.toThrow('synchronization failed')
+    off()
+    expect(controller.projects(true)[0]?.archived).toBe(true)
+    expect(controller.binding(agent.id)).toBeUndefined()
+  }
   const restarted = await ctx.securityWorkbench.restartTask(agent, '{}')
   const destination = ctx.agents.get(restarted.sessionId)!
   expect(ctx.sessionProjections.stateOf(destination.session, 'helper')).toMatchObject({
@@ -3405,4 +3412,47 @@ it('saves verified native results without generating a report or requiring a che
   expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint')).toHaveLength(0)
   expect(controller.view(agent.id).records.filter(record => record.kind === 'report')).toHaveLength(0)
   expect(model.requests).toHaveLength(3)
+})
+
+
+it('synchronizes primary task deletion and native archive in both directions without resuming analysis', async () => {
+  const { ctx, agent, controller, model } = await load(false, 0, { advisor: true })
+  await ctx.plugin(WorkspaceRegistry)
+  await operator(controller, agent)({ kind: 'create', title: 'Archive task', objective: 'Inspect source',
+    environmentIds: ['local'], maxAttempts: 4 })
+  const project = controller.projects()[0]!
+  const manage = (kind: 'archive' | 'restore') => ctx.securityWorkbench.manageProject(project.id,
+    JSON.stringify({ operationId: randomUUID(), expectedRevision: controller.projectView(project.id).revision, action: { kind } }))
+  const { agent: child } = await ctx.agents.create({ sessionId: SessionId('archive-child'), parentAgent: agent,
+    meta: { origin: 'subagent' } })
+  await ctx.workspaceRegistry.archiveSession(child.id)
+  expect(controller.projects()[0]?.id).toBe(project.id)
+  await expect(ctx.securityWorkbench.manageProject(project.id, JSON.stringify({ operationId: randomUUID(),
+    expectedRevision: 0, action: { kind: 'archive' } }))).rejects.toThrow('state changed')
+  expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
+  await ctx.workspaceRegistry.archiveSession(agent.id)
+  expect(controller.projects(true)[0]).toMatchObject({ archived: true, stopped: true })
+  expect(controller.binding(agent.id)).toBeUndefined()
+  await ctx.workspaceRegistry.unarchiveSession(agent.id)
+  expect(controller.projects()[0]).toMatchObject({ archived: false, stopped: true })
+  const request = JSON.stringify({ operationId: randomUUID(), expectedRevision: controller.projectView(project.id).revision,
+    action: { kind: 'archive' } })
+  const off = ctx.on('workspace/session-archive-change', async () => { throw new Error('native write unavailable') })
+  await expect(ctx.securityWorkbench.manageProject(project.id, request)).rejects.toMatchObject({
+    code: 'security/archive-sync-incomplete',
+  })
+  expect(controller.projects(true)[0]?.archived).toBe(true)
+  expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
+  off()
+  await ctx.securityWorkbench.manageProject(project.id, request)
+  await ctx.securityWorkbench.manageProject(project.id, request)
+  expect(ctx.workspaceRegistry.archivedSessionIds).toContain(agent.id)
+  await manage('restore')
+  expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
+  await expect(ctx.securityWorkbench.manageProject(project.id, request)).rejects.toThrow('newer task action')
+  expect(controller.projects()[0]).toMatchObject({ archived: false, stopped: true })
+  await Promise.all([ctx.workspaceRegistry.archiveSession(agent.id), ctx.workspaceRegistry.unarchiveSession(agent.id)])
+  expect(controller.projects()[0]).toMatchObject({ archived: false, stopped: true })
+  expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
+  expect(model.requests).toHaveLength(0)
 })

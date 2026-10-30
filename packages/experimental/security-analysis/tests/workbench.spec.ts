@@ -636,6 +636,10 @@ describe('security workbench', () => {
     const id = controller.binding('parent')!.engagementId
     const manage = (action: unknown) => controller.manageProject(id,
       { operationId: randomUUID(), expectedRevision: journal.view().revision, action })
+    const original = controller.projects()[0]!
+    const { mainSessionId: _primary, ...legacy } = original
+    await journal.commit(randomUUID(), undefined, { legacy: id }, () => [{ kind: 'engagement', value: legacy }])
+    expect(controller.mainSession(id)).toBe('parent')
     await manage({ kind: 'rename', title: 'Short name' })
     expect(controller.projects()[0]!.title).toBe('Short name')
     await manage({ kind: 'archive' })

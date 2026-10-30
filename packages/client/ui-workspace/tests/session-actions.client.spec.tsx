@@ -550,6 +550,7 @@ describe('RowActionToast', () => {
     else state.archivedFilter = viewState.archivedFilter
     const view = createSnapshotStore(state)
     const dismissToast = vi.fn(() => { toast.set(null) })
+    const retryArchive = vi.fn()
     const undoArchive = vi.fn()
     const showArchived = vi.fn()
     const openForkSource = vi.fn()
@@ -569,7 +570,7 @@ describe('RowActionToast', () => {
         subscribe: listener => view.subscribe(listener),
       }),
     }, {
-      undoArchive, showArchived, openForkSource,
+      undoArchive, showArchived, openForkSource, retryArchive,
     })
     runtime.slots.register({
       name: 'shell.overlay', id: 'workspace.row-toast',
@@ -581,7 +582,7 @@ describe('RowActionToast', () => {
     const notify = (notice: RowToast): void => {
       act(() => { toast.set({ ...notice, seq: ++seq }) })
     }
-    return { dismissToast, undoArchive, showArchived, openForkSource, notify, locale, view }
+    return { dismissToast, undoArchive, showArchived, openForkSource, retryArchive, notify, locale, view }
   }
 
   it('updates locale and archive actions without restarting the same notice', async () => {
@@ -602,6 +603,15 @@ describe('RowActionToast', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('retries the exact failed archive target from its warning', async () => {
+    const { notify, retryArchive, dismissToast } = await toastSurface()
+    notify({ kind: 'archiveFailed', sessionId: sid('one'), archived: false })
+    expect(screen.getByRole('alert').textContent).toContain('归档状态未完全同步')
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(retryArchive).toHaveBeenCalledWith(sid('one'), false)
+    expect(dismissToast).toHaveBeenCalledOnce()
   })
 
   it('renders nothing without a notice', async () => {

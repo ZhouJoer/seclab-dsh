@@ -21,6 +21,10 @@ export interface SecurityJournal {
   view(): WorkbenchView
   /** Read historical task bindings without reviving or granting authority to Sessions. */
   sessionProjects(): Map<string, Set<string>>
+  /** Read the coordinator recorded at project creation.
+   * @param projectId - project identity.
+   * @returns original coordinator, including inactive bindings. */
+  mainSession(projectId: string): string | undefined
   /** Subscribe to any committed task change; disposal removes the listener. */
   subscribeAll(listener: () => void): () => void
   /** Subscribe to successful project commits; the returned disposer removes the listener. */
@@ -120,6 +124,16 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
   const fingerprintOf = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex')
   return {
     view,
+    mainSession(projectId) {
+      const commits = [...table.entries()].map(([, commit]) => commit).sort((a, b) => a.revision - b.revision)
+      for (const commit of commits) {
+        if (!commit.records.some(record => record.kind === 'engagement' && record.value.id === projectId)) continue
+        const binding = commit.records.find(record => record.kind === 'binding'
+          && record.value.engagementId === projectId && record.value.role === 'coordinator')
+        if (binding?.kind === 'binding') return binding.value.sessionId
+      }
+      return undefined
+    },
     sessionProjects() {
       const result = new Map<string, Set<string>>()
       for (const [, commit] of table.entries()) for (const record of commit.records) {

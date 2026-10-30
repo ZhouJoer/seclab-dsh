@@ -4412,7 +4412,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'archiveSession(sessionId: SessionId, options: ArchiveSessionOptions = {}): Promise<void>',
-        description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. Without `stopActivity` the session must also be inactive: the `workspace/session-activity` waterfall is asked once, and any reported activity rejects with WorkspaceActiveSessionError before anything is written. With `stopActivity` the archive is written without an activity check, and the `workspace/session-stop` providers are then asked to stop the session\'s work: the durable archive set is what a provider\'s `agent/pre-step` gate reads, so every wake the stops induce is already blocked. Archiving drops the session\'s pin in the same durable write (pinning and archival are mutually exclusive). An already archived id resolves without writing, asking, or stopping.',
+        description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. Without `stopActivity` the session must also be inactive: the `workspace/session-activity` waterfall is asked once, and any reported activity rejects with WorkspaceActiveSessionError before anything is written. With `stopActivity` the archive is written without an activity check, and the `workspace/session-stop` providers are then asked to stop the session\'s work: the durable archive set is what a provider\'s `agent/pre-step` gate reads, so every wake the stops induce is already blocked. Archiving drops the session\'s pin in the same durable write (pinning and archival are mutually exclusive). An already archived id resolves without writing, asking, or stopping; archive-change listeners still run.',
         parameters: [{ name: 'sessionId', description: 'The session to archive.' }, { name: 'options', description: 'Whether running work is stopped instead of refusing.' }],
         returns: 'resolution after durability and, with `stopActivity`, after every stop request was issued.',
       },
@@ -5114,6 +5114,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Ask the composed providers what still runs for a session before it is archived.',
     description: 'Ask the composed providers what still runs for a session before it is archived. A listener prepends its own SessionActivity entries to the result of `next()`; the registry\'s innermost callback returns an empty list, so a composition without providers archives freely. Any non-empty result refuses the archive without a write.',
     parameters: [{ name: 'request', description: 'the session about to be archived.' }, { name: 'next', description: 'delegate to the remaining providers.' }],
+  },
+  {
+    name: 'workspace/session-archive-change',
+    mode: 'waterfall',
+    signature: '\'workspace/session-archive-change\'(request: { sessionId: SessionId; archived: boolean }, next: () => Promise<void>): Promise<void>',
+    summary: 'Coordinate dependent state after preflight, including repeated requests.',
+    description: 'Coordinate dependent state after preflight, including repeated requests. Listeners delegate without reentering registry mutations or waiting for running work to settle. Rejection may leave dependent state committed; retry the same target to finish synchronization.',
+    parameters: [{ name: 'request', description: 'requested archive state.' }, { name: 'next', description: 'commit native state and issue stop requests.' }],
   },
   {
     name: 'workspace/session-stop',
@@ -7665,7 +7673,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityJournal',
-    declaration: 'export interface SecurityJournal {\n    view(): WorkbenchView;\n    sessionProjects(): Map<string, Set<string>>;\n    subscribeAll(listener: () => void): () => void;\n    subscribe(project: string, listener: () => void): () => void;\n    subscribeSelection(session: string, listener: () => void): () => void;\n    replay(operationId: string, input: unknown): WorkbenchView | undefined;\n    commit(operationId: string, expectedRevision: number | {\n        revision: number;\n        projectId: string;\n        sessionId: string;\n    } | undefined, input: unknown, produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[]): Promise<WorkbenchView>;\n    purge(operationId: string, expectedRevision: number, projectId: string, plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<WorkbenchView>;\n    pendingPurges(): {\n        projectId: string;\n        artifacts: string[];\n    }[];\n    finishPurge(projectId: string): Promise<void>;\n    close(): Promise<void>;\n}',
+    declaration: 'export interface SecurityJournal {\n    view(): WorkbenchView;\n    sessionProjects(): Map<string, Set<string>>;\n    mainSession(projectId: string): string | undefined;\n    subscribeAll(listener: () => void): () => void;\n    subscribe(project: string, listener: () => void): () => void;\n    subscribeSelection(session: string, listener: () => void): () => void;\n    replay(operationId: string, input: unknown): WorkbenchView | undefined;\n    commit(operationId: string, expectedRevision: number | {\n        revision: number;\n        projectId: string;\n        sessionId: string;\n    } | undefined, input: unknown, produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[]): Promise<WorkbenchView>;\n    purge(operationId: string, expectedRevision: number, projectId: string, plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<WorkbenchView>;\n    pendingPurges(): {\n        projectId: string;\n        artifacts: string[];\n    }[];\n    finishPurge(projectId: string): Promise<void>;\n    close(): Promise<void>;\n}',
   },
   {
     name: 'SecurityProjectSummary',
