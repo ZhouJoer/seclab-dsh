@@ -1,5 +1,6 @@
 /** Fixed external-tool queries over immutable project artifacts. @module */
 import type { Context } from '@deepseek-ai/cordis'
+import assert from 'node:assert/strict'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { apkInventory } from './workbench/apk.ts'
@@ -30,7 +31,13 @@ export interface ToolAdapterLimits {
 }
 const address = z.string().regex(/^0x[0-9a-fA-F]{1,16}$/u)
 const count = z.number().int().positive()
+const batchQuery = z.object({
+  operation: z.enum(['identity', 'functions', 'imports', 'exports', 'symbols', 'strings', 'xrefs-to', 'xrefs-from', 'disassemble']),
+  address: address.optional(), count: count.optional(),
+  offset: z.number().int().nonnegative().optional(), limit: count.optional(), filter: z.string().max(4096).optional(),
+}).strict()
 const argsSchema = z.object({ seed: z.string().min(1).max(1024).optional(), direction: z.enum(['callers', 'callees']).optional(), maxDepth: count.optional(), address: address.optional(), startAddress: address.optional(), endAddress: address.optional(),
+  queries: z.array(batchQuery).min(1).optional(),
   count: count.optional(), filter: z.string().max(4096).optional(),
   fields: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_.-]*$/u)).min(1).max(64).optional(),
   className: z.string().regex(/^[a-zA-Z0-9_.$]+$/u).optional(), minLength: count.max(1024).optional(),
@@ -51,6 +58,7 @@ const operationParts = (operation: string) => {
 export function parseAdapterParameters(operation: string, parameters: unknown): z.infer<typeof argsSchema> {
   operationParts(operation)
   const fields: Record<string, readonly string[]> = {
+    'radare2.batch': ['queries'],
     'radare2.xrefs-to': ['address'], 'radare2.xrefs-from': ['address'],
     'radare2.disassemble': ['address', 'count'], 'r2ghidra.decompile': ['address'],
     'tshark.summary': ['filter', 'fields', 'count'], 'tshark.packets': ['filter', 'fields', 'count'],
@@ -62,6 +70,11 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
     'objdump.disassemble': ['startAddress', 'endAddress'],
   }
   const args = argsSchema.parse(parameters)
+  if (operation === 'radare2.batch') {
+    if (!args.queries) throw new Error('Batch requires queries')
+    for (const { operation: action, offset: _offset, limit: _limit, filter: _filter, ...inputs } of args.queries)
+      parseAdapterParameters('radare2.' + action, inputs)
+  }
   if (operation.startsWith('analysis.') && !args.evidenceIds) throw new Error('Analysis requires evidenceIds')
   if (['analysis.native-xref-paths', 'analysis.android-callchain'].includes(operation) && (!args.seed || !args.direction || !args.maxDepth))
     throw new Error('Graph analysis requires seed, direction and maxDepth')
@@ -86,6 +99,17 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
       return ['-N', '-q', '-e', 'scr.color=0', '-c', 'aa;s ' + args.address + ';af;pdgj', path]
     }
     case 'radare2': {
+      if (action === 'batch' && args.queries) {
+        const commands = args.queries.map(({ operation: query, address, count }) => {
+          const command = adapterArguments('radare2.' + query, { ...(address === undefined ? {} : { address }),
+            ...(count === undefined ? {} : { count }) }, path)[5]
+          assert(command, 'A fixed radare2 query includes a command')
+          return command
+        })
+        const analyze = commands.some(command => command.startsWith('aa;'))
+        return ['-N', '-q', '-e', 'scr.color=0', '-c', (analyze ? 'aa;' : '')
+          + '?e [;' + commands.map(command => command.replace(/^aa;/u, '')).join(';?e ,;') + ';?e ]', path]
+      }
       const queries: Record<string, string> = { identity: 'ij', functions: 'aflj', imports: 'iij', exports: 'iEj', symbols: 'isj',
         strings: 'izj', 'xrefs-to': 'axtj', 'xrefs-from': 'axfj', disassemble: 'pdj' }
       const targeted = ['xrefs-to', 'xrefs-from', 'disassemble'].includes(action)
@@ -119,9 +143,10 @@ class DecompilerFailure extends Error {}
 /** Decode native tool output, rejecting reported decompiler failures even on exit code zero.
  * @param operation - declared tool and operation.
  * @param stdout - complete collected stdout.
+ * @param parameters - Resolved batch queries when selecting filtered collection pages.
  * @returns semantic records, retaining source addresses or line locations.
  */
-export function decodeAdapterOutput(operation: string, stdout: string): JsonValue[] {
+export function decodeAdapterOutput(operation: string, stdout: string, parameters: unknown = {}): JsonValue[] {
   const { adapter, action } = operationParts(operation)
   if (adapter.id === 'radare2' || adapter.id === 'r2ghidra') {
     const value = z.json().parse(JSON.parse(stdout))
@@ -130,6 +155,25 @@ export function decodeAdapterOutput(operation: string, stdout: string): JsonValu
       const diagnostics = [...output.errors ?? [], output.error].filter(Boolean)
       if (diagnostics.length) throw new DecompilerFailure(diagnostics.join('\n'))
       return [z.object({ code: z.string().regex(/\S/u) }).catchall(z.json()).parse(value)]
+    }
+    if (action === 'batch') {
+      const queries = parseAdapterParameters(operation, parameters).queries
+      assert(queries, 'A parsed batch requires queries')
+      const outputs = z.array(z.json()).length(queries.length).parse(value)
+      return queries.map((query, index) => {
+        try {
+          const records = decodeAdapterOutput('radare2.' + query.operation, JSON.stringify(outputs[index]))
+            .filter(item => !query.filter || JSON.stringify(item).includes(query.filter))
+          const offset = query.offset ?? 0
+          if (offset > records.length) throw new Error('Collection offset exceeds filtered results')
+          const items = records.slice(offset, offset + (query.limit ?? records.length))
+          const nextOffset = offset + items.length < records.length ? offset + items.length : null
+          return { queryIndex: index, operation: query.operation, offset, total: records.length, nextOffset, items,
+            incomplete: nextOffset !== null, filter: query.filter ?? null }
+        } catch (error) {
+          return { queryIndex: index, operation: query.operation, incomplete: true, failure: String(error), items: [] }
+        }
+      })
     }
     if (action === 'identity') return [z.object({ core: z.record(z.string(), z.json()) }).catchall(z.json()).parse(value)]
     return z.array(z.record(z.string(), z.json())).parse(value)
@@ -209,6 +253,15 @@ export class ToolAdapterProvider implements AnalysisProvider {
     if (adapter.id === 'analysis' && !(action.startsWith('native-') ? ['pe', 'elf'] : ['apk', 'dex', 'jar']).includes(asset.format))
       throw new Error('Asset format does not support this analysis operation')
     const parameters = parseAdapterParameters(request.operation, request.parameters)
+    if (parameters.queries) {
+      if (parameters.queries.length > this.limits.maxItems) throw new Error('Batch query count exceeds maxItems')
+      const perQuery = Math.max(1, Math.floor(this.limits.maxItems / parameters.queries.length))
+      for (const query of parameters.queries) {
+        query.offset ??= 0
+        query.limit = Math.min(query.limit ?? perQuery, perQuery)
+        if (query.operation === 'disassemble') query.count = Math.min(query.count ?? this.limits.maxInstructions, this.limits.maxInstructions)
+      }
+    }
     if (parameters.maxDepth) parameters.maxDepth = Math.min(parameters.maxDepth, this.limits.maxItems)
     if (adapter.id === 'radare2' && action === 'disassemble') parameters.count = Math.min(parameters.count ?? this.limits.maxInstructions, this.limits.maxInstructions)
     if (adapter.id === 'tshark') {
@@ -276,7 +329,13 @@ export class ToolAdapterProvider implements AnalysisProvider {
         failure = adapterProcessFailure(process)
         if (!failure && !process.truncated) {
           try {
-            items = decodeAdapterOutput(request.operation, process.stdout)
+            items = decodeAdapterOutput(request.operation, process.stdout, request.parameters)
+            if (request.operation === 'radare2.batch') {
+              const pages = z.array(z.object({ incomplete: z.boolean(), failure: z.string().optional() })).parse(items)
+              incomplete ||= pages.some(page => page.incomplete)
+              const failures = pages.flatMap((page, index) => page.failure ? ['Query ' + String(index) + ': ' + page.failure] : [])
+              if (failures.length) failure = failures.join('\n')
+            }
             if (['radare2.functions', 'radare2.xrefs-to', 'radare2.xrefs-from'].includes(request.operation)) {
               items = items.map((item) => {
                 const value = z.record(z.string(), z.json()).parse(item)

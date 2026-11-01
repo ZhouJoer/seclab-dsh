@@ -73,3 +73,15 @@ it('blocks dirty or pending tool choices and releases them when leaving security
   await state.run(id)
   expect(prepare).toHaveBeenCalledOnce()
 })
+
+it('admits follow-up messages after the first-send editor disappears with pending tool checks', () => {
+  const state = new FirstMessagePreparation(async () => ({ ok: true, value: undefined }), code => code)
+  const id = SessionId('follow-up')
+  state.tools(id, { toolsBusy: true })
+  expect(() => { state.requireReady(id, true) }).toThrow('tools-busy')
+  expect(() => { state.requireReady(id, false) }).not.toThrow()
+  state.edited(id)
+  state.tools(id, { toolsDirty: true })
+  expect(() => { state.requireReady(id, true) }).toThrow('unsaved')
+  expect(() => { state.requireReady(id, false) }).not.toThrow()
+})

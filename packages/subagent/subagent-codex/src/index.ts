@@ -38,6 +38,8 @@ const DEFAULT_PROVIDER_NAME = 'codex'
 export interface Config {
   /** Expose native account/model controls and the read-only helper-codex provider. */
   consultation?: boolean
+  /** Maximum UTF-8 bytes retained per native consultation tool item. */
+  consultationToolRecordBytes?: number
   /** Provider name on `ctx.subagents` (default `codex`). */
   providerName?: string
   /** Native Codex model fixed for this instance; omitted to inherit Codex settings. */
@@ -57,6 +59,7 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   consultation: z.boolean().default(false),
+  consultationToolRecordBytes: z.number().step(1).min(256).default(65536),
   providerName: z.string().min(1).default(DEFAULT_PROVIDER_NAME),
   model: z.string().min(1),
   reasoningEffort: z.string().min(1),
@@ -116,6 +119,7 @@ class CodexProvider implements SubagentProvider {
 export function apply(ctx: Context, config: Config): void {
   const resolved: ResolvedConfig = {
     consultation: config.consultation ?? false,
+    consultationToolRecordBytes: config.consultationToolRecordBytes as number,
     providerName: config.providerName ?? DEFAULT_PROVIDER_NAME,
     ...config.model === undefined ? {} : { model: config.model },
     ...config.reasoningEffort === undefined ? {} : { reasoningEffort: config.reasoningEffort },
@@ -138,5 +142,5 @@ export function apply(ctx: Context, config: Config): void {
     ctx,
     resolved,
   ))
-  if (resolved.consultation) ctx.plugin(CodexConsultation)
+  if (resolved.consultation) ctx.plugin(CodexConsultation, { toolRecordBytes: resolved.consultationToolRecordBytes })
 }

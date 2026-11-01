@@ -1423,13 +1423,18 @@ describe('headless recorded-session snapshots', () => {
               const results = parseSessionLog(actualLogs[0]!.content)
                 .flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
               const failed = results.filter(result => result.isError).map(result => result.toolCallId)
-              expect(failed, 'security fixture assertions must not become accepted error snapshots').toEqual(
+              expect(failed, 'security fixture assertions must not become accepted error snapshots: ' + JSON.stringify(results.filter(result => result.isError))).toEqual(
                 scenario.name === 'security-observation-failure' ? ['observe-outside-sample', 'identity-invalid-path'] : [],
               )
               if (scenario.name === 'security-native-citations') {
                 expect(actualLogs, 'publishing a report creates no model Session').toHaveLength(1)
-                expect(results.map(result => result.toolCallId)).toEqual(['native-source-read', 'complete-native-investigation'])
+                expect(results.map(result => result.toolCallId)).toEqual(['native-source-read', 'save-native-progress', 'complete-native-investigation'])
               }
+            }
+            if (scenario.name === 'helper') {
+              const events = parseSessionLog(actualLogs[0]!.content)
+              expect(events.filter(event => event.type === 'tool/result' && event.data.message.toolCallId.startsWith('call_probe'))).toHaveLength(2)
+              expect(events.filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-checkpoint')).toHaveLength(1)
             }
             if (scenario.name === 'advanced-toolchain') verifyAdvancedToolchain(actualLogs)
             if (scenario.name === 'session-query-spill') {

@@ -141,8 +141,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     refreshHints()
     scoped.on('conversation/before-send', async (id, signal) => {
       signal?.throwIfAborted()
-      if (scoped.sessions.list.getSnapshot().byId[id]?.projectionValues?.agentPreset !== 'security') return
-      preparation.requireReady(id)
+      const session = scoped.sessions.list.getSnapshot().byId[id]
+      if (session?.projectionValues?.agentPreset !== 'security') return
+      preparation.requireReady(id, session.blank)
       if (associated(id)) return
       await preparation.run(id)
     })

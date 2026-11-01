@@ -43,6 +43,6 @@ export function projectDirectory(view: WorkbenchView, agents: ReadonlyMap<string
     return { project, sessions: records.filter(item => item.kind === 'binding').map(({ value }) => ({
       sessionId: value.sessionId, role: value.role, active: value.active !== false,
     })), runningAgentCount, runningInvocationCount, pendingPlanIds, blockedCheckIds, interruptedCheckIds, state,
-    next: records.filter(item => item.kind === 'checkpoint').at(-1)?.value.next ?? '' }
+    next: project.completion ? '' : records.filter(item => item.kind === 'checkpoint').at(-1)?.value.next ?? '' }
   })
 }

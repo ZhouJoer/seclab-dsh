@@ -1,17 +1,21 @@
 /** Per-turn investigation reviews and budget wrap-up for bound security Sessions. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { z } from 'zod'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { WorkbenchConfig } from './index.ts'
 import type { SecurityRole } from './workbench/roles.ts'
 import type { WorkbenchView } from './workbench/model.ts'
 
-type BudgetConfig = Pick<WorkbenchConfig, 'analysisTurnTokens' | 'analysisCountCacheReads' | 'analysisReviewSteps'>
+type BudgetConfig = Pick<WorkbenchConfig, 'analysisTurnTokens' | 'analysisCountCacheReads' | 'analysisReviewSteps' | 'analysisWrapUpSteps'>
 interface TurnBudget {
   used: number
   last: number
   closing: boolean
+  steps: number
+  saved?: boolean
+  finalizing?: boolean
   stepsSinceReview: number
   previousBatchFailed: boolean
   review: 'initial' | 'requested' | 'checkpoint'
@@ -46,6 +50,20 @@ function hasProgress(current: InvestigationProgress, baseline: InvestigationProg
     || [...current.supported].some(id => !baseline?.supported.has(id))
 }
 
+const closingTools = new Set(['structured_output', 'security_scope', 'security_evidence', 'security_help', 'security_command', 'security_checkpoint', 'security_complete'])
+const closingCommand = z.object({ action: z.object({ kind: z.enum(['checkpoint', 'complete-task', 'report']) }) })
+
+function allowsClosingCall(name: string, args: unknown): boolean {
+  if (!closingTools.has(name)) return false
+  if (name !== 'security_command') return true
+  const envelope = z.object({ command: z.string() }).safeParse(args)
+  if (!envelope.success) return false
+  let command: unknown
+  try { command = JSON.parse(envelope.data.command) }
+  catch (_error) { return false /* Malformed commands cannot authorize a closing action. */ }
+  return closingCommand.safeParse(command).success
+}
+
 /** Install per-Session accounting without changing provider usage or billing totals.
  * @param ctx - security plugin context owning the listeners and tool guard.
  * @param config - resolved exploration limit and cache accounting policy.
@@ -57,7 +75,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
   const turns = new Map<SessionId, TurnBudget>()
   const progress = (id: SessionId) => investigationProgress(viewOf(id))
   const reviewTools = new Set(['security_scope', 'security_help', 'security_evidence', 'security_capture_analysis',
-    'security_command', 'read', 'read_image', 'grep', 'glob', 'job_list', 'job_output', 'job_kill', 'advisor', 'structured_output', 'run_code'])
+    'security_command', 'security_checkpoint', 'security_complete', 'read', 'read_image', 'grep', 'glob', 'job_list', 'job_output', 'job_kill', 'advisor', 'structured_output', 'run_code'])
   const checkpointInstruction = 'No new complete observation has been linked to a finished check since the last scheduled review. If existing evidence resolves a planned criterion, finish that check with its evidence. Otherwise save a security_command checkpoint: cite the last observation or failed control in summary, distinguish the remaining explanations in reason, and give a test with different predicted outcomes in next. Treat advice as a hypothesis until verified. If the objective is met, submit the result; if the required observation is unavailable, report that limit. Use security_scope for the current revision and security_help for action fields.'
   function needsCheckpoint(agent: Agent, predictNext = false): boolean {
     const state = turns.get(agent.id)
@@ -69,14 +87,14 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
   function stateFor(id: SessionId): TurnBudget {
     let state = turns.get(id)
     if (!state) {
-      state = { used: 0, last: 0, closing: false, stepsSinceReview: 0, previousBatchFailed: false, review: 'initial' }
+      state = { used: 0, last: 0, closing: false, steps: 0, stepsSinceReview: 0, previousBatchFailed: false, review: 'initial' }
       turns.set(id, state)
     }
     return state
   }
   const closingState = (agent: Agent): TurnBudget | undefined => {
     const state = turns.get(agent.id)
-    return roleOf(agent.id) !== undefined && state !== undefined
+    return config.analysisTurnTokens > 0 && roleOf(agent.id) !== undefined && state !== undefined
       && (state.closing || state.used + state.last >= config.analysisTurnTokens) ? state : undefined
   }
   ctx.on('session/event', (session, event) => {
@@ -98,16 +116,30 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
   ctx.on('agent/disposed', ({ agent }) => { turns.delete(agent.id) })
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembly = await next()
-    if (context.agent && closingState(context.agent)) return { ...assembly, tools: assembly.tools.filter(tool => tool.name === 'structured_output') }
+    if (context.agent && closingState(context.agent)) {
+      const state = turns.get(context.agent.id)
+      return { ...assembly, tools: assembly.tools.filter(tool => state?.saved || state?.finalizing
+        || (state?.closing && state.steps >= config.analysisWrapUpSteps)
+        ? tool.name === 'structured_output' : closingTools.has(tool.name)) }
+    }
     if (context.agent && needsCheckpoint(context.agent, true))
       return { ...assembly, tools: assembly.tools.filter(tool => reviewTools.has(tool.name)) }
     return assembly
   }, { prepend: true })
   ctx.tools.guard((exec) => {
-    if (!exec.agent) return
-    if (turns.get(exec.agent.id)?.closing && exec.name !== 'structured_output')
-      return 'Analysis budget wrap-up allows only the final response; continue exploration in a follow-up turn.'
-    if (needsCheckpoint(exec.agent) && !reviewTools.has(exec.name)) return checkpointInstruction
+    const state = exec.agent && turns.get(exec.agent.id)
+    if (!state?.closing) {
+      if (exec.agent && needsCheckpoint(exec.agent) && !reviewTools.has(exec.name)) return checkpointInstruction
+      return undefined
+    }
+    if (state.saved || state.finalizing ? exec.name !== 'structured_output' : !allowsClosingCall(exec.name, exec.arguments))
+      return 'Analysis budget wrap-up allows only the final response or bounded saved-evidence reads and checkpoint, complete-task or report actions; continue exploration in a follow-up turn.'
+    return undefined
+  })
+  ctx.on('tools/result', (exec, result) => {
+    const state = exec.agent && turns.get(exec.agent.id)
+    if (state?.closing && (exec.name === 'security_command' || exec.name === 'security_checkpoint' || exec.name === 'security_complete') && !result.isError
+      && allowsClosingCall(exec.name, exec.arguments)) state.saved = true
   })
   ctx.on('agent/pre-step', async ({ agent, signal, turn, step }, next) => {
     const decision = await next()
@@ -158,9 +190,21 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
       for (const message of decision.messages) {
         if (message.source.kind === 'user') agent.send(message, 'next-turn', false)
       }
-      return { kind: 'reject' }
+      if (state.finalizing) return { kind: 'reject' }
+      if (state.saved || state.steps >= config.analysisWrapUpSteps) {
+        state.finalizing = true
+        return { ...decision, messages: [...decision.messages.filter(message => message.source.kind !== 'user'),
+          createUserMessage({ source: { kind: 'plugin:security-analysis-budget' }, content: [{ type: 'text',
+            text: 'The analysis wrap-up tool allowance has ended. Give the final response now in Simplified Chinese: current conclusion, limitation, and next action. '
+              + (state.saved ? 'A permitted save action succeeded; describe only what its receipt confirms. '
+                : 'No successful checkpoint or report save was observed during wrap-up. State that progress was not saved by those actions and include the last error or remaining blocker. ')
+              + 'Do not retry any tool or print tool-call markup such as DSML. Removed tools are unavailable, not text commands. Do not claim the investigation is complete unless the objective was already verified.' }] })] }
+      }
+      state.steps++
+      return { ...decision, messages: decision.messages.filter(message => message.source.kind !== 'user') }
     }
     state.closing = true
+    state.steps = 1
     const accounting = config.analysisCountCacheReads ? 'including cache reads' : 'excluding cache reads'
     return {
       ...decision,
@@ -172,7 +216,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
           + 'Write three concise lines in Simplified Chinese for the next turn. Cite the last independently verified observation and its evidence or file location. '
           + 'Identify the unverified assumption or failed control and any conclusions that depend on it. Give the smallest next check and the outcome that would change direction. '
           + 'Explain that analysis can continue from these results in a follow-up; do not claim the investigation is complete. '
-          + 'Do not call exploration tools. If structured_output is available, return the assigned report with uncertainty and nextSteps.' }],
+          + 'You have at most ' + String(config.analysisWrapUpSteps) + ' tool-bearing steps for security_scope, security_evidence or security_help reads, security_checkpoint, security_complete, and security_command report actions. If the objective is already verified, use security_complete to save results; otherwise use security_checkpoint for unfinished progress. Generate a report only on explicit user request; the Host supplies its revision and operation identity. For security_command, read the latest revision if needed and use a fresh operationId for changed input. A failed save is not a saved checkpoint. After a successful save or exhaustion of these steps, give the final response without further tool calls or tool-call markup. Only complete a task when its objective is already verified. Do not call exploration tools. If structured_output is available, return the assigned report with uncertainty and nextSteps.' }],
       })],
     }
   })

@@ -86,7 +86,8 @@ export const taskOutcomeSchema = z.object({
 /** Saved outcomes survive report failure; a report ID exists only after publication. */
 export const taskCompletionSchema = taskOutcomeSchema.extend({
   operationId: text.optional(),
-  status: z.enum(['running', 'completed', 'failed', 'interrupted']),
+  status: z.enum(['saved', 'running', 'completed', 'failed', 'interrupted']),
+  checkpointId: id.transform(brandString<SecurityCheckpointId>).optional(),
   detail: z.string(), reportId: id.optional(), updatedAt: z.number().int().nonnegative(),
 }).strict()
 /** An operator's project scope and limits. */
@@ -218,6 +219,8 @@ export const reviewSchema = z.object({
 export const reportSchema = z.object({
   id, engagementId: id, revision: z.number().int().nonnegative(),
   sourceHash: digest.optional(),
+  checkpointId: id.transform(brandString<SecurityCheckpointId>).optional(),
+  evidenceIds: z.array(id.transform(brandString<EvidenceId>)).optional(),
   markdown: artifactSchema, json: artifactSchema, findingsMarkdown: artifactSchema.optional(),
   recommendationsMarkdown: artifactSchema.optional(), createdAt: z.number().int().nonnegative(),
 }).strict()

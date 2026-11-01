@@ -20,7 +20,7 @@ def interrupt(signum, frame):
 
 
 def process_identity(device, pid):
-    matches = [p for p in device.enumerate_processes(scope="full") if p.pid == pid]
+    matches = [p for p in device.enumerate_processes(pids=[pid], scope="full") if p.pid == pid]
     if len(matches) != 1:
         raise RuntimeError("Target process no longer exists")
     process = matches[0]
@@ -71,7 +71,7 @@ def verify_sample(device, pid, request):
 
 
 def main():
-    request = json.load(sys.stdin)
+    request = json.load(sys.stdin.buffer)
     if not isinstance(request, dict) or not isinstance(request.get("durationMs"), int) or request["durationMs"] <= 0:
         raise ValueError("Invalid observation duration")
     if not isinstance(request.get("maxOutputBytes"), int) or request["maxOutputBytes"] < 4096:

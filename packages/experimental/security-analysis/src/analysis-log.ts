@@ -7,6 +7,8 @@ import { isSecurityBrowserTool } from './browser-tools.ts'
 
 class UncapturableAnalysisCall extends Error {}
 
+const capturableTools = new Set(['bash', 'pwsh', 'job_output', 'read', 'read_image', 'glob', 'grep'])
+
 /** Metadata for one caller-owned interaction that can be captured by itself. */
 interface AnalysisCall {
   callId: ToolCallId
@@ -29,7 +31,7 @@ export function analysisCallPage(events: readonly SessionEvent[], inherited: num
   const calls: AnalysisCall[] = []
   for (const event of events) {
     if (event.type !== 'tool/call' || event.seq < inherited ||
-      !(['bash', 'pwsh', 'job_output'].includes(event.data.name) || isSecurityBrowserTool(event.data.name))) continue
+      !(capturableTools.has(event.data.name) || isSecurityBrowserTool(event.data.name))) continue
     const result = events.find(item => item.type === 'tool/result' && item.seq >= inherited
       && item.seq > event.seq && item.data.message.toolCallId === event.data.callId)
     if (result?.type !== 'tool/result') continue
@@ -74,8 +76,8 @@ export function analysisLog(events: readonly SessionEvent[], inherited: number, 
     const call = calls.find(event => event.data.callId === id)
     const result = results.find(event => event.data.message.toolCallId === id)
     if (!call || !result || result.seq <= call.seq) throw new UncapturableAnalysisCall('Analysis call must have a committed result in this Session; omit callIds to list capturable call IDs. Background job IDs are not call IDs')
-    if (!(['bash', 'pwsh', 'job_output'].includes(call.data.name) || isSecurityBrowserTool(call.data.name)))
-      throw new Error('Only native shell, job output and admitted Playwright calls can be captured')
+    if (!(capturableTools.has(call.data.name) || isSecurityBrowserTool(call.data.name)))
+      throw new Error('Only native read, shell, job output and admitted Playwright calls can be captured')
     selected.add(call.seq); selected.add(result.seq)
     return { call, result }
   }

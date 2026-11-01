@@ -25,6 +25,8 @@ Install `@deepseek-ai/dsh-subagent-codex` into a Profile when delegated work sho
 <a id="use-this-package"></a>
 ## Use this package
 
+Read-only consultations persist native command, dynamic-tool, MCP, web-search, image-view and file-change item start/completion notifications in the parent Session. Records include the native item payload, child thread, item ID, phase, original byte count and truncation flag. `consultationToolRecordBytes` limits each payload to 65536 UTF-8 bytes by default (minimum 256); truncated text is not necessarily valid JSON. Reasoning and assistant messages are excluded. Records already saved survive cancellation; a missing completion is not inferred. Storage failure fails the consultation. The native app-server controls which fields are available; these records do not add tools or change consultation permissions.
+
 Enable **Codex subagent** in the Web or Desktop Plugins page when a task needs a fresh native Codex session in the parent workspace.
 
 ### Installing the Bundle

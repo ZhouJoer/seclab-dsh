@@ -9,6 +9,7 @@ import { operationSchema } from './workbench/model.ts'
 import { toolAdapters } from './tool-adapter-catalog.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
 import { parseAdapterParameters } from './tool-adapter-provider.ts'
+import { analysisFailure } from './analysis-failure.ts'
 
 /** Register dedicated tools while keeping execution inside the existing observation owner.
  * @param ctx - scoped registry owner.
@@ -24,7 +25,8 @@ export function registerToolAdapters(ctx: Context, options: {
 }): void {
   for (const adapter of toolAdapters) {
     const parameters: ParameterSchemaSpec = { assetId: { type: 'string', required: true, description: 'Imported file asset ID.' },
-      operation: { type: 'string', required: true, enum: [...adapter.operations] }, ...adapter.parameters }
+      operation: { type: 'string', required: true, enum: [...adapter.operations] },
+      environmentId: { type: 'string', description: 'Task-authorized environment for this call; cannot override a fixed binding.' }, ...adapter.parameters }
     ctx.effect(() => ctx.tools.register(defineTool({ name: adapter.toolName,
       description: adapter.description + ' Uses operator configuration and saves evidence. '
         + (adapter.provider === 'tool-adapter'
@@ -37,7 +39,9 @@ export function registerToolAdapters(ctx: Context, options: {
         const sessionId = exec.agent.id
         const run = async () => {
           const controller = await options.ready
-          const { assetId, operation, ...parameters } = z.looseObject({ assetId: z.string().min(1), operation: z.string() }).parse(args)
+          const { assetId, operation, environmentId, ...parameters } = z.looseObject({
+            assetId: z.string().min(1), operation: z.string(), environmentId: z.string().min(1).optional(),
+          }).parse(args)
           if (!adapter.operations.some(candidate => candidate === operation)) throw new Error('Unsupported operation for ' + adapter.toolName)
           if (adapter.provider === 'tool-adapter') parseAdapterParameters(adapter.id + '.' + operation, parameters)
           const settings = options.settings
@@ -49,7 +53,7 @@ export function registerToolAdapters(ctx: Context, options: {
           const request = operationSchema.parse({ provider: adapter.provider,
             operation: adapter.provider === 'tool-adapter' ? adapter.id + '.' + operation : operation,
             assetId, environmentId: admitted?.success ? admitted.data.environmentId
-              : settings.route(adapter.id, project.value.environmentIds), parameters, impact: 'observe' })
+              : settings.route(adapter.id, project.value.environmentIds, environmentId), parameters, impact: 'observe' })
           const evidence = await controller.observe(sessionId, request, exec.callId, AbortSignal.any([exec.signal, options.signal]))
             .catch((error: unknown) => {
               const saved = controller.view(sessionId).records.find(record => record.kind === 'evidence'
@@ -76,7 +80,9 @@ export function registerToolAdapters(ctx: Context, options: {
         }
         const pending = run()
         options.pending.add(pending)
-        try { return await pending } finally { options.pending.delete(pending) }
+        try { return await pending }
+        catch (error) { throw analysisFailure(error) }
+        finally { options.pending.delete(pending) }
       },
     })))
   }

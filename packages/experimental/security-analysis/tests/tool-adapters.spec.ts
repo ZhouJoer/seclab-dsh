@@ -49,6 +49,29 @@ it('keeps values out of Shell and radare2 command syntax and retains exact input
   expect(adapterArguments('tshark.packets', { filter: 'tcp.port == 443', fields: ['frame.number'], count: 3 }, path))
     .toEqual(['-n', '-r', path, '-c', '3', '-Y', 'tcp.port == 443', '-T', 'json', '-e', 'frame.number'])
 })
+it('collects related queries in one process and exposes filtered continuations without hiding failed members', async () => {
+  const { provider, request, context } = await fixture()
+  const resolved = provider.resolve({ ...request, operation: 'radare2.batch', parameters: { queries: [
+    { operation: 'functions', filter: 'main', offset: 0, limit: 1 },
+    { operation: 'xrefs-to', address: '0x1000' },
+  ] } }, context)
+  expect(adapterArguments(resolved.operation, resolved.parameters, 'sample')[5])
+    .toBe('aa;?e [;aflj;?e ,;axtj @ 0x1000;?e ]')
+  vi.mocked(runProcess).mockResolvedValue({ ...success, stdout: '[[{"offset":1,"name":"main"},{"offset":2,"name":"main2"},{"offset":3,"name":"other"}],{"error":"failed"}]' })
+  const result = await provider.run(resolved, context)
+  const saved = adapterResultSchema.parse(JSON.parse(Buffer.from(result.bytes).toString()))
+  expect(saved.items[0]).toMatchObject({ total: 2, nextOffset: 1, incomplete: true, items: [{ offset: 1, name: 'main' }] })
+  expect(saved.items[1]).toHaveProperty('incomplete', true)
+  expect(saved.items[1]).toHaveProperty('failure')
+  expect(result.failure).toContain('Query 1')
+  expect(runProcess).toHaveBeenCalledOnce()
+  expect(decodeAdapterOutput('radare2.batch', '[[{"offset":1,"name":"main"},{"offset":2,"name":"main2"}]]',
+    { queries: [{ operation: 'functions', filter: 'main', offset: 1, limit: 1 }] })[0])
+    .toMatchObject({ total: 2, nextOffset: null, items: [{ offset: 2, name: 'main2' }] })
+  expect(() => provider.resolve({ ...request, operation: 'radare2.batch', parameters: {
+    queries: [{ operation: 'xrefs-to', address: '0x1;!id' }],
+  } }, context)).toThrow()
+})
 it('enforces role and fixed-operation admission, including calls bypassing discovery', async () => {
   const { provider, request, context } = await fixture()
   expect(() => provider.resolve({ ...request, parameters: { command: '!whoami' } }, context)).toThrow()

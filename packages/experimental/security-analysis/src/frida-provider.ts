@@ -11,6 +11,7 @@ import type {} from './workbench/index.ts'
 import { runProcess, requireProcessSuccess, environmentPath } from './workbench/process.ts'
 import type { AnalysisProvider, AnalysisContext } from './workbench/providers.ts'
 import { operationSchema, type AnalysisOperation } from './workbench/model.ts'
+import { fridaTraceScript, traceSchema } from './frida-trace.ts'
 
 /** Runner cleanup grace and fixed observation window. */
 export interface Config {
@@ -58,6 +59,7 @@ const parameters = z
     target: targetSchema.optional(),
     module: z.string().min(1).optional(),
     symbol: z.string().min(1).optional(),
+    capture: traceSchema.optional(),
   })
   .strict()
 const responseSchema = z
@@ -73,7 +75,7 @@ const responseSchema = z
 /** Python bindings retain Frida Device, Session and Script ownership in one process. */
 export class FridaProvider implements AnalysisProvider {
   readonly id = 'frida'
-  readonly inputGuide = 'All operations run through a validation plan. processes accepts {}. Other operations require target {mode: attach, pid, name, started} from enumeration or approved {mode: spawn, argv: [...]}. exports and trace require module; trace also requires symbol. Android additionally requires packageName and a matching APK. script requires immutable script content prepared in the plan; javaBridge: true requires the configured bundled bridge. bridgeHash and bridgeVersion are provider-owned. Configure python with official Frida bindings; execution cannot install them.'
+  readonly inputGuide = 'All operations run through a validation plan. processes accepts {}. Other operations require target {mode: attach, pid, name, started} from enumeration or approved {mode: spawn, argv: [...]}. exports and trace require module; trace also requires symbol. Optional capture: {arguments: [ABI argument indexes], returnValue: boolean, memory: [{argument, length, when: enter|leave}], maxCalls} records fixed byte lengths including zero bytes; inspect incomplete and read errors. Android additionally requires packageName and a matching APK. script requires immutable script content prepared in the plan; javaBridge: true requires the configured bundled bridge. bridgeHash and bridgeVersion are provider-owned. Configure python with official Frida bindings; execution cannot install them.'
   readonly operations = ['processes', 'modules', 'exports', 'trace', 'script'] as const
   constructor(
     private readonly ctx: Context,
@@ -111,6 +113,10 @@ export class FridaProvider implements AnalysisProvider {
       throw new Error('Frida observation requires an exact process or spawn target')
     if (['exports', 'trace'].includes(request.operation) && !args.module) throw new Error('Select a module')
     if (request.operation === 'trace' && !args.symbol) throw new Error('Select an exported symbol')
+    if (args.capture) {
+      if (request.operation !== 'trace' || !args.module || !args.symbol) throw new Error('capture requires a trace module and symbol')
+      fridaTraceScript(args.module, args.symbol, args.capture, context.maxOutputBytes)
+    }
     if (request.operation === 'script' && !request.script)
       throw new Error('Save the script before preparing its validation plan')
     if (context.environment.kind === 'android' && !context.environment.deviceId)
@@ -136,6 +142,8 @@ export class FridaProvider implements AnalysisProvider {
         'send(Process.enumerateModules().map(m => ({name:m.name,path:m.path,base:m.base.toString(),size:m.size})));'
     else if (request.operation === 'exports')
       script = 'send(Process.getModuleByName(' + JSON.stringify(args.module) + ').enumerateExports());'
+    else if (request.operation === 'trace' && args.capture && args.module && args.symbol)
+      script = fridaTraceScript(args.module, args.symbol, args.capture, context.maxOutputBytes)
     else if (request.operation === 'trace')
       script =
         'const m=Process.getModuleByName(' +

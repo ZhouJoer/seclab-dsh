@@ -28,7 +28,7 @@ it('keeps historical tasks automatic and exposes only common capabilities before
 it('combines Android and native skills without enabling unrelated provider paths', () => {
   const selection = moduleSelectionSchema.parse({ mode: 'manual', modules: ['reverse.android', 'reverse.native'], reason: 'JNI' })
   expect(moduleSkills(selection)).toContain('security-native')
-  for (const [provider, operation] of [['android', 'decompile'], ['tool-adapter', 'analysis.android-api'], ['tool-adapter', 'analysis.native-triage'], ['ghidra', 'decompile']])
+  for (const [provider, operation] of [['android', 'decompile'], ['tool-adapter', 'analysis.android-api'], ['tool-adapter', 'analysis.native-triage'], ['ghidra', 'decompile'], ['debugger', 'run']])
     expect(moduleAllowsOperation(provider!, operation!, selection)).toBe(true)
   for (const [provider, operation] of [['packet-capture', 'summary'], ['tool-adapter', 'tshark.summary'], ['web', 'request']])
     expect(moduleAllowsOperation(provider!, operation!, selection)).toBe(false)
@@ -43,7 +43,7 @@ it('routes the pentest module to Kali and Web skills without enabling reverse ca
   expect(moduleSkills(selection)).toEqual(['security-kali', 'security-web'])
   for (const name of ['security_jadx', 'security_ghidra', 'security_radare2', 'security_analysis'])
     expect(moduleAllowsTool(name, selection)).toBe(false)
-  for (const [provider, operation] of [['android', 'decompile'], ['tool-adapter', 'analysis.native-triage'], ['ghidra', 'decompile'], ['packet-capture', 'summary'], ['frida', 'script']])
+  for (const [provider, operation] of [['android', 'decompile'], ['tool-adapter', 'analysis.native-triage'], ['ghidra', 'decompile'], ['packet-capture', 'summary'], ['frida', 'script'], ['debugger', 'run']])
     expect(moduleAllowsOperation(provider!, operation!, selection)).toBe(false)
   expect(moduleAllowsTool('security_file', selection)).toBe(true)
 })

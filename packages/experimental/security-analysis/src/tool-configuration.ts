@@ -110,16 +110,21 @@ export class LocalToolConfiguration {
   /** Resolve an explicit binding or the task's unique compatible environment, without availability fallback.
    * @param tool - catalog identity.
    * @param environmentIds - environments already authorized by the task.
+   * @param requestedEnvironmentId - single-call selection; omission inherits a binding or unique candidate. Cannot override a binding.
    * @returns configured environment identity.
    */
-  route(tool: string, environmentIds: readonly string[] = []): string {
+  route(tool: string, environmentIds: readonly string[] = [], requestedEnvironmentId?: string): string {
     const adapter = toolAdapters.find(adapter => adapter.id === tool)
     if (!adapter) throw new Error('Unknown tool adapter: ' + tool)
     const document = this.document()
     this.apply(document)
     const binding = document.bindings[adapter.bindingId] ?? this.defaultBindings[adapter.bindingId]
     const candidates = this.environments.filter(item => environmentIds.includes(item.id) && supportsAdapterEnvironment(adapter, item))
-    const id = binding ?? (candidates.length === 1 ? candidates[0]?.id : undefined)
+    if (requestedEnvironmentId && binding && requestedEnvironmentId !== binding)
+      throw new Error('Requested environment conflicts with the fixed binding for ' + adapter.bindingId + ': ' + binding)
+    if (requestedEnvironmentId && !environmentIds.includes(requestedEnvironmentId))
+      throw new Error('Requested environment is outside the task environments: ' + requestedEnvironmentId)
+    const id = binding ?? requestedEnvironmentId ?? (candidates.length === 1 ? candidates[0]?.id : undefined)
     if (!id) throw new Error('Configure a default execution environment for ' + adapter.bindingId
       + '; the task must authorize exactly one compatible environment to inherit it. Do not retry until configuration changes.')
     if (environmentIds.length && !environmentIds.includes(id))

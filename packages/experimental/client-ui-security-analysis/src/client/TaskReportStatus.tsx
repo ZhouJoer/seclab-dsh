@@ -15,10 +15,11 @@ export function TaskReportStatus({ completion, disabled, retry, t }: PropsLocale
   retry: () => void
 }) {
   if (!completion) return null
-  const labels = { running: 'reportPreparing', completed: 'reportDelivered', failed: 'reportFailed', interrupted: 'reportInterrupted' } as const
+  const labels = { saved: 'reportSaved', running: 'reportPreparing', completed: 'reportDelivered', failed: 'reportFailed', interrupted: 'reportInterrupted' } as const
   const failed = completion.status === 'failed' || completion.status === 'interrupted'
   return <section aria-label={t('reports')}>
     <p role="status">{t(labels[completion.status])}</p>
+    {completion.status === 'saved' && <Button variant="primary" size="sm" disabled={disabled} onClick={retry}>{t('generateReport')}</Button>}
     {failed && <Button variant="primary" size="sm" disabled={disabled} onClick={retry}>{t('reportRetry')}</Button>}
     {completion.detail && <details><summary>{t('evoRunDetail')}</summary><p>{completion.detail}</p></details>}
   </section>

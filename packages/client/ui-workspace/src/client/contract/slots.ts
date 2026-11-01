@@ -293,6 +293,7 @@ export type SessionRowActionProps<Injected extends object = object> =
 
 /** One transient Workspace notice rendered by the overlay toast entry. */
 export type RowToast =
+  | { kind: 'archiveFailed'; sessionId: SessionId; archived: boolean }
   | { kind: 'archived'; sessionId: SessionId }
   | { kind: 'stoppedAndArchived'; sessionId: SessionId }
   | { kind: 'sessionIdCopied' }
@@ -437,6 +438,8 @@ export interface RowToastInjected {
 
 /** Business callbacks injected into their keyed Toast presentations. */
 export interface RowToastActions {
+  /** Retry an incomplete archive state change. */
+  retryArchive: (sessionId: SessionId, archived: boolean) => void
   /** Undo an archive from its notice. */
   undoArchive: (sessionId: SessionId) => void
   /** Switch the archived filter to "show" so the archived row is back in view. */

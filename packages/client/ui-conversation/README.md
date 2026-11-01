@@ -64,6 +64,8 @@ Queue previews enable whitespace collapsing and document-edge trimming, retain e
 <a id="shell-and-standard-props"></a>
 ## Shell and standard props
 
+The empty-conversation layout centers content while it fits; expanded content taller than the viewport starts at the top and remains scrollable.
+
 Before a normal send creates its local echo, `conversation/before-send` lets plugins prepare Session-owned state. Rejection preserves the draft and attachments through the existing submission recovery. A Session presentation may supply a composer placeholder; a blocked input keeps its blocking explanation.
 
 The shared image slot props keep display choices separate from durable references: `thumbnail` requests a contained attachment-list thumbnail, while `compact` requests a cropped gallery tile. An optional per-image `label` supplies the accessible display name; loading and cache identity still use the original attachment reference. `MessageImagesContentInput` adds optional complete `MessageImageLabels` for the root-scoped `conversation.images.content` Factory. Message, tool, and Factory inputs carry the view's authorized `loadImage` callback explicitly; loading and URL caching remain with the resource owner. [ui-attachment](../ui-attachment/README.md) provides this Factory and owns rendering and the lightbox.

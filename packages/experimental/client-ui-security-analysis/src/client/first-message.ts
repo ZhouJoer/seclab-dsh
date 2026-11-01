@@ -74,9 +74,11 @@ export class FirstMessagePreparation {
     this.presentations.set(new Map(ids.map(id => [id, { composerPlaceholder: placeholder }])))
   }
 
-  /** Reject a send while task or checked-tool edits are unsaved or being checked.
-   * @param id - composer whose current editor state controls admission. */
-  requireReady(id: SessionId): void {
+  /** Reject first sends while task or checked-tool edits are unsaved or being checked.
+   * @param id - composer whose current editor state controls admission.
+   * @param blank - whether the first-send editor still applies to this conversation. */
+  requireReady(id: SessionId, blank: boolean): void {
+    if (!blank) return
     const state = this.state.getSnapshot()[id]
     if (state?.needsSave || state?.toolsDirty) throw new Error(this.failure('unsaved'))
     if (state?.toolsBusy) throw new Error(this.failure('tools-busy'))
@@ -87,7 +89,7 @@ export class FirstMessagePreparation {
    * @returns completion after its task association exists.
    */
   run(id: SessionId): Promise<void> {
-    try { this.requireReady(id) } catch (error) {
+    try { this.requireReady(id, true) } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)))
     }
     const existing = this.pending.get(id)

@@ -31,10 +31,16 @@ kind: "package-reference"
 
 `projectMaterialDocument` 校验项目资产及其确切的快照成员，返回不可变的文本、光栅图片、PDF 或二进制前缀及制品摘要。Office 转换使用可选的 `officeToPdf` 服务，按队列调度延迟读取并限制字节数。接口不接受宿主路径、不提供写入操作，也不创建 Session。
 
+归档主会话会软删除安全任务；删除或恢复任务也会同步主会话的归档状态。归档子会话不会删除任务。恢复后分析保持暂停。跨存储失败会报告已提交状态并允许重试；已被取代的请求不能覆盖较新的操作。启动时不自动修正历史状态差异。
+
 -----
 
 <a id="use-this-package"></a>
 ## 使用
+
+`security_complete` 通过 `summary`、`results`（标题、精确结果、`toolCallIds`、`evidenceIds`）和 `limitations` 保存已验证结果。宿主提供版本与操作标识，并固定引用证据。提交不要求已有检查点或发现。保存结论即可收尾调查，不会生成报告，也不追加模型收尾步骤。用户可在报告区生成报告，或在对话中明确要求生成。发布失败保留结果以便重试。结论与报告保留检查点和证据引用；仅写入本地 Markdown 文件不算提交结果。
+
+通过 `security_capabilities kind:scripts` 发现内置脚本；使用 `scriptIds` 和 `details` 获取调用参考。工具发现保留未启用模块中的候选并说明模块前置条件，不会开启执行权限。适配器接受任务环境内的单次 `environmentId` 选择，并保留固定绑定。`security_environment cached:true` 读取已有观察而不进行探测；未检查项仍保持未检查状态。操作员可通过 `manageProject` 的 `add-environments` 为已有项目追加已配置环境。
 
 `environmentConfigurationPath` 是可选的操作员 JSON 文件绝对路径。文件中的环境替换同 ID 的部署声明，其他环境保留。相对 `cwd` 以 JSON 所在目录解析。文件不存在时不添加配置，声明无效时启动失败。可选的 `defaultEnvironmentIds` 仅在配置了 `taskIntake` 时替换接入默认值。文件不改变预算、演进设置、数据根或工具安装文件。环境 provider 热重载会停止自身操作并清理自有容器，工作台、报告和其他环境继续可用。完整工作台卸载会取消自有 Job，并在关闭存储前保存最终活动状态。只读 `followSessionView` Remote 接收已授权的 `sessionId`，不会激活 Agent。
 
@@ -64,7 +70,7 @@ kind: "package-reference"
 
 首次发送配置按 Session 与工作区保存在 `security_workspace_intake_v2`，独立于工作区默认值。配置保存和首次创建按 Session 串行执行，关联后拒绝修改首次配置。空覆盖值恢复工作区默认值，不切换模式。创建复制选中的模式、模块和上下文；重新开始复制当前任务。旧工作区配置域不自动导入。
 
-工作区任务保留固定来源目录、轻量工作区目标和主 Session 身份。创建、打开和恢复任务均不扫描或复制源码树。原生 read、glob、grep 和 shell 工具遵守已有 DSH 权限。显式导入和历史源码快照保留不可变字节。任务浏览入口打开原生工作区文件页，不创建后台材料监听器。
+工作区任务保留固定来源目录、轻量工作区目标和主 Session 身份。创建、打开和恢复任务均不扫描或复制源码树。原生 read、glob、grep 和 shell 工具遵守已有 DSH 权限。`import-member` 接受工作区目标和精确的文件相对路径，按需导入单个文件供适配器分析；路径越界及指向工作区外的链接均被拒绝。已导入源码的成员使用保存的字节。任务浏览入口打开原生工作区文件页，不创建后台材料监听器。
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
@@ -89,6 +95,20 @@ toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分�
 <a id="configure-analysis-providers"></a>
 ### 配置分析 provider
 
+调查指导区分结构识别、独立行为验证和目标完成。`analysisReviewFailures` 默认为连续 2 次同类失败且没有新增证据时咨询可用顾问。输入或环境改变可以支持重测；这是模型指导，不是程序自动认定工具结果产生了新证据。
+
+命令、静态观察和适配器失败保留系统错误码。ENOENT 表示路径不存在，EACCES/EPERM 表示权限拒绝，ENOEXEC 表示可执行格式不支持；恢复建议不会根据文字猜测杀软或网络原因。未知失败按原样传播。`security_help` 说明已保存证据 ID 与原生工具／源码引用；失败和不完整观察不等同于分析完成。
+
+`security_radare2` 支持 `operation: batch`，`queries` 包含固定操作及可选的 address/count、JSON 字面子串 filter、offset 和 limit。一次调用只初始化一次 r2，并只执行一次所需分析。各查询保留 total、nextOffset、选中记录和独立错误；原始输出仍保存在证据中。offset 在过滤后生效。读取已存证据分页不会重新运行 r2；采集截断仍需缩小查询，有续页不代表结果完整。
+
+可选插件 `@deepseek-ai/dsh-experimental-security-analysis/debugger` 注册 `debugger/run`，通过批准的计划在单次断点采集观察：本机 Windows PE 使用 CDB，托管 Linux Docker 的 ELF 使用 GDB/MI。参数选择 engine、breakpoint、argv 和定长 memory 区域，同时保留寄存器。执行使用不可变的已导入样本，并复用计划、审批、超时、证据和子进程归属管理。不支持任意命令或附加已有进程。CDB 架构须匹配样本，本机调试使用宿主用户权限。Frida trace 可用 capture 指定 ABI 参数索引、returnValue、带 enter/leave 时机的 memory 区域及 maxCalls；读取失败和事件上限会标记输出不完整。
+
+将可选的[调试器工具包](resources/debugger-tools.json)导入操作者维护的目录，可显示 CDB 和 GDB 的发现指导。工具包将两种安装关联至 debugger provider，不选择执行环境，也不授予执行权限。
+
+GDB 保持对 fork 子进程的调试控制并调度全部被调试进程，使调试器退出时能够终止所观察的进程族。调试时序仍可能影响并发程序，需要检查停止原因和原始进程事件。Linux 冒烟测试在实际 fork 后检查是否仍有样本进程运行，包括可执行文件已被删除的进程。
+
+[Kali 调试镜像配方](resources/kali-debug.Dockerfile) 固定官方 amd64 基础镜像及直接依赖版本。显式构建后保留完整包清单，并把测得的不可变镜像 ID 配置为单独的托管环境。传递依赖由镜像和清单标识；滚动仓库后续重建不保证完全相同。现有外部容器不受影响。为任务启用调试前，先在管理器的网络、文件系统和能力限制下验证无害样本；能力可用不代表分析质量已经提升。
+
 包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./ghidra`、`./frida`、`./android`、`./mining` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
 
 Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测、原生 Shell 调用和 `external-web` 请求；需要传输 Host 制品的 provider 会拒绝它们。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。项目注册了回环 HTTP 靶机时，就绪的 docker 清单附带 `targetChecks`：每个靶机一条实测观察，当某个运行时推导的候选地址（原 origin、host 网关名、容器实测默认网关，均从容器内探测）有响应时记录可用的 `reachableAs` origin，否则如实标注 `unreachable` 或 `unknown`，绝不猜测地址。local 环境可声明 `discovery: { searchDirs }` 指定绝对宿主目录，清单检测时未显式声明的目录工具也会在这些目录中查找。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
@@ -112,7 +132,8 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 |---|---|---|---|
 | 内置二进制检查 | 实测身份、有界十六进制和 ASCII/UTF-16LE 字符串 | 读取不可变制品；限制输出，不执行目标 | PE/ELF 头与字节分页 fixture |
 | GhidraMCP 1.4 | 绑定程序查询；数据库写操作需要计划 | 认证回环 HTTP、有界响应；不重放数据库修改 | 已针对 Ghidra 11.3.2 构建扩展并完成独立 ARM ELF 导入；GUI 关闭后的 DSH 查询被阻塞 |
-| Frida 17.18.0 | 进程、模块、导出枚举，trace，经批准的自定义脚本及 spawn | Python helper；配置时限及输出限额；卸载、detach、停止本任务创建的进程 | Windows 本机自有 Python 可执行文件：正常完成与取消 |
+| Frida 17.24.3 | 进程、模块、导出枚举，trace，经批准的自定义脚本及 spawn | Python helper；配置时限及输出限额；卸载、detach、停止本任务创建的进程 | Windows 自有 Python：正常结束、取消、含 NUL 的定长内存与 UTF-8 runner 路径 |
+| CDB / GDB | 单次断点、寄存器与定长内存 | 已批准的导入样本、有界子进程与自有目标终止 | Windows CDB x86 与托管 Kali GDB 18.1：无害样本、断点及超时；Windows x64 未验证 |
 | radare2 / r2ghidra / TShark | 固定静态查询与离线抓包 | 有界子进程输出及已保存的语义证据 | Windows 本机微型 ELF 的身份/反汇编/反编译及空 PCAP；容器组合未验证 |
 | JADX | APK/DEX 反编译、源码及资源提取 | 受管理子进程；限制输出并清理临时目录 | Windows 本机 CLI 读取有效空 DEX/APK；部分源码失败由 fixture 覆盖 |
 | Docker 29.7.2 | 启动、检查、停止本任务拥有的环境 | 固定镜像摘要、资源限制、无网络、移除自有容器 | 本机 Docker Desktop 与已有离线镜像：并发启动互斥、ELF 的 strings/readelf/objdump/nm 查询、暂存文件清理和容器移除 |
@@ -159,7 +180,7 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 
 <a id="recorded-citations"></a>
 
-`finding`、`revise-finding` 和 `complete-task` 接受 `citations`，也兼容已有 `evidenceIds`。源码引用提供 `kind: "source"`、`path`、`startLine` 和 `endLine`；可选 `sessionId` 选择授权 Session，可选 `callId` 选择较早的读取。Host 匹配最后一次成功且单次完整覆盖范围的 `read`，只保存记录中的所选片段，不重新读文件、不拼接不同读取版本。缺失范围和截断行会被拒绝；缺少截断元数据的旧读取明确保留不完整标记。协调者可引用同任务、同工作区的授权子 Session；子代理只能引用自身观察。`kind: "tool"` 引用提供 `callId` 和可选 `sessionId`，保留已提交工具输出及失败或限制，不将其认定为运行验证。显式捕获仍可用于高级证据管理。
+`finding`、`revise-finding` 和 `complete-task` 接受 `citations`，也兼容已有 `evidenceIds`。源码引用提供 `kind: "source"`、`path`、`startLine` 和 `endLine`；可选 `sessionId` 选择授权 Session，可选 `callId` 选择较早的读取。Host 匹配最后一次成功且单次完整覆盖范围的 `read`，只保存记录中的所选片段，不重新读文件、不拼接不同读取版本。缺失范围和截断行会被拒绝；缺少截断元数据的旧读取明确保留不完整标记。协调者可引用同任务、同工作区的授权子 Session；子代理只能引用自身观察。`kind: "tool"` 引用为原生读取、搜索、Shell／任务输出或已接纳的 Playwright 观察提供 `callId` 和可选 `sessionId`，保留已提交工具输出及失败或限制，不将其认定为运行验证。显式捕获仍可用于高级证据管理。
 
 报告引用使用带编号的 Markdown 脚注，包含证据 ID、提供者操作、会话及调用 ID、工件 SHA-256 和已保存的失败信息。源码片段保留记录的行范围。分次读取的页面应分别引用，或重新单次读取完整范围；拒绝信息会指出该范围。原生工具引用应选择支持各项结果的具体调用。补充发现文件包含独立的引用定义。Web 渲染器显示脚注编号与内容，不提供页内跳转；导出的 Markdown 遵循阅读器的脚注支持。
 
@@ -295,7 +316,7 @@ flowchart LR
 
 独立复核绑定发现内容、同目标证据和复核子 Session。完整的静态实现材料可支持独立复核后的确认或反驳；身份、版本及字符串线索不能单独确认。运行验证结论仍须具备已完成的批准计划。当前分析代理撰写报告提交，Host 校验和排版，不再请求模型。主报告包含已保存的目标、总判断、方法、分析、结果、当前发现裁决、限制和[固定引用片段](#recorded-citations)。可选修复建议关联正式发现，并单独导出为 `recommendations.md`；超出的发现进入可选附表，JSON 保留项目记录。`reportMaxFindings` 默认五条。发布失败或超限时保留已保存提交以供重试。
 
-使用 `security_command` 的 `checkpoint` 动作保存简短的方向标题、阶段、转向原因、结论、下一步及证据或发现引用。同一问题的多轮研究按 ID 更新当前段；问题或阶段改变时新建一段。保存第一个检查点时，会关联该项目中同一协调会话此前未归类的调用；其他会话及已有阶段的调用保持原归属。子任务调用保留委派时的进展归属。Provider 请求及原生 Shell/PTC 后台任务根据实际执行记录计数，活动独立持久化，不改变审批修订号。命令文本只能识别待确认的工具候选，安装检测不计分析次数。失败、中断、重启后的未知结果及不完整输出与安全结论分别显示。协调者回合结束时将有长度上限的可见回复简报保存到当前方向，预算收尾也适用。`activityPageSize` 默认为 20，每页可配置 1–100 条调用详情。
+使用 `security_checkpoint` 保存简短的方向标题（最多 100 字符）、阶段、转向原因、结论、下一步（后三项各最多 300 字符）及证据或发现引用。Host 提供修订号和操作标识。保持相同标题与阶段会更新当前方向；任一改变会新建方向。既有 `security_command` 的 `checkpoint` 动作仍可用。检查点会拒绝观察修订号之后所属项目或当前 Session 选择发生变化的保存；无关项目的提交不会造成冲突。其他命令保留原有修订检查。保存第一个检查点时，会关联该项目中同一协调会话此前未归类的调用；其他会话及已有阶段的调用保持原归属。子任务调用保留委派时的进展归属。Provider 请求及原生 Shell/PTC 后台任务根据实际执行记录计数，活动独立持久化，不改变审批修订号。命令文本只能识别待确认的工具候选，安装检测不计分析次数。失败、中断、重启后的未知结果及不完整输出与安全结论分别显示。协调者回合结束时将有长度上限的可见回复简报保存到当前方向，预算收尾也适用。`activityPageSize` 默认为 20，每页可配置 1–100 条调用详情。
 
 研究检查点是可选的进度记录。已记录调用不会以补充登记为条件阻止继续探索。已有检查点保留证据关联和调用游标。发现与最终成果接受源码引用或已保存证据，单独捕获证据为可选操作。
 
@@ -316,7 +337,7 @@ flowchart LR
 
 <a id="model-experience"></a>
 
-协调者以 `complete-task` 收尾已实现的目标，提交 `summary`、可选 `methods` 和 `analysis`、含标题、准确成果值及引用的 `results`、`limitations`，以及可选的关联发现的 `recommendations`。Host 先保存校验后的提交和固定证据，再写入报告产物。普通回合结束、预算耗尽及等待均不表示任务完成。解题成果无需创建漏洞发现。`report` 发布已保存提交，不重新读取文件、匹配引用或请求模型；材料相同则复用已保存报告。发布期间发现或复核变化会拒绝发布，取消会停止发布，重启将未完成交付标为中断。失败时保留成果以供重试。旧提交缺少可选正文时根据已保存结果生成基础报告。回执提供经身份验证的 `/api/security.report` 链接；仅在用户明确要求时另写 Markdown 文件。
+普通回答与恢复出的值无需先生成正式报告。持久化失败不否定已独立验证的结果，应说明哪些内容未保存。需要保存任务报告时，协调者以 `security_complete` 或详细的 `complete-task` 命令收尾已实现的目标，提交 `summary`、可选 `methods` 和 `analysis`、含标题、准确成果值及引用的 `results`、`limitations`，以及可选的关联发现的 `recommendations`。Host 保存校验后的提交和固定证据，报告状态为 `saved`。单独由用户触发的 `report` 动作才写入报告产物。普通回合结束、预算耗尽及等待均不表示任务完成。解题成果无需创建漏洞发现。`report` 发布已保存提交，不重新读取文件、匹配引用或请求模型；材料相同则复用已保存报告。发布期间发现或复核变化会拒绝发布，取消会停止发布，重启将未完成交付标为中断。失败时保留成果以供重试。旧提交缺少可选正文时根据已保存结果生成基础报告。回执提供经身份验证的 `/api/security.report` 链接；仅在用户明确要求时另写 Markdown 文件。
 
 ## 模型体验
 
@@ -324,11 +345,11 @@ flowchart LR
 
 #### 模型看到的内容
 
-协调者使用 `security_scope` 等领域工具分解检查、检索证据、准备计划并汇总结论。skill 目录提供方法摘要；`skill` 工具加载所选方法的完整指令。子 agent 只看到分配的资产，返回摘要、证据引用、不确定性和建议。外部输出、共享经验与子报告是待核对数据，不能扩大权限。
+协调者使用 `security_scope` 等领域工具分解检查、检索证据、准备计划并汇总结论。skill 目录提供方法摘要；`skill` 工具加载所选方法的完整指令。子 agent 只看到分配的资产，返回摘要、证据引用、不确定性和建议。外部输出、共享经验与子报告是待核对数据，不能扩大权限。 达到 `analysisProgressCalls` 次未汇总的分析调用（默认 12 次）后，日志上下文会建议在合适的停顿点更新检查点，不推迟有效实验或用户需要的回答。协调者根据证据选择阶段，调用次数不会自动推进阶段。上下文复用已持久化的活动游标，检查点覆盖这些调用后提示清除。运行时上下文直接提供 analysisDirectory；原生工作区读取、计算和脚本不要求先查询目录。专用方法细节仍通过技能和能力详情按需获取。
 
 #### Token 影响
 
-skill 摘要占用目录上下文，方法正文在加载时增加上下文。领域工具响应使用 `modelResultBytes`，原始采集使用 `maxOutputBytes`。`analysisTurnTokens` 默认允许每个 Session 分析轮次使用 120,000 个探索 token，计入未缓存输入、缓存写入和输出。`analysisCountCacheReads: true` 还会计入重复的缓存读取；两种模式均保留完整的模型用量日志。如果再执行一次与上次消耗相当的步骤会达到限额，模型会收到已记录的阶段总结指令，并在既有输出上限内执行一次总结步骤。探索工具从列表中隐藏，执行端也会阻止调用；委派任务仍可使用 `structured_output`。单次请求超出剩余预算时也进入收尾。总结后的额外模型步骤会被拒绝，不会抛出预算异常。阶段总结说明已确认结果、保存的证据、缺口及下一步，不把调查标记为完成。用户后续提问会获得新的轮次预算并恢复正常工具。
+skill 摘要占用目录上下文，方法正文在加载时增加上下文。领域工具响应使用 `modelResultBytes`，原始采集使用 `maxOutputBytes`。`analysisTurnTokens` 默认允许每个 Session 分析轮次使用 120,000 个探索 token，计入未缓存输入、缓存写入和输出。`analysisTurnTokens: 0` 关闭这层额外探索限制，不改变 provider 或 agent 的限制。`analysisCountCacheReads: true` 还会计入重复的缓存读取；两种模式均保留完整的模型用量日志。如果再执行一次与上次消耗相当的步骤会达到限额，模型会收到已记录的收尾指令，并沿用既有输出上限。探索工具从列表中隐藏，执行端也会阻止调用。`analysisWrapUpSteps` 默认允许最多三个含工具调用的步骤，供已有证据读取（`security_scope`、`security_evidence`、`security_help`）、`security_checkpoint`、`security_complete` 及 `security_command` 的 `checkpoint`、`complete-task` 或 `report` 动作使用。读取和失败的保存不算持久化成功。保存成功或额度用尽后移除这些工具，并明确指示生成最终回复，说明未保存进展等限制。执行端检查命令动作；完成任务仍要求目标已实现。委派任务仍可使用 `structured_output`。单次请求超出剩余预算时也进入收尾。总结后的额外模型步骤会被拒绝，不会抛出预算异常。阶段总结说明已确认结果、保存的证据、缺口及下一步，不把调查标记为完成。用户后续提问会获得新的轮次预算并恢复正常工具。
 
 #### KV Cache effect
 

@@ -12,6 +12,7 @@ import type { ContentBlock, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol'
 import type { CodexPermissionMode } from './run.ts'
+import type { CodexToolObservation } from './tool-records.ts'
 
 type JsonObject = Record<string, unknown>
 
@@ -237,6 +238,7 @@ export class CodexAppServerWire {
     private readonly permissionMode: CodexPermissionMode,
     private readonly model?: string,
     private readonly reasoningEffort?: string,
+    private readonly onTool?: (observation: CodexToolObservation) => void,
   ) {
     this.transport = new JsonRpcLineTransport(input, output)
     // Fatal protocol state can arrive after the current guarded operation has
@@ -781,7 +783,7 @@ export class CodexAppServerWire {
       }
       return
     }
-    if (method === 'item/completed') {
+    if (method === 'item/completed' || method === 'item/started') {
       const threadId = string(params.threadId, 'item/completed thread id')
       if (threadId !== this.threadId) return
       const id = string(params.turnId, 'item/completed turn id')
@@ -798,6 +800,10 @@ export class CodexAppServerWire {
       }
       if (id !== this.turnId) return
       const item = object(params.item, 'item/completed item')
+      if (this.onTool && ['commandExecution', 'dynamicToolCall', 'mcpToolCall', 'webSearch', 'imageView', 'fileChange'].includes(String(item.type))) {
+        this.onTool({ threadId, phase: method === 'item/started' ? 'started' : 'completed', item })
+      }
+      if (method === 'item/started') return
       if (this.recordDeclinedItem(item, order)) return
       if (item.type !== 'agentMessage') return
       const text = typeof item.text === 'string'

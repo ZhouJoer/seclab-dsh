@@ -16,7 +16,7 @@ import type { ConsultationId, HelperState } from '../src/types.ts'
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
 
-async function setup(script: ConstructorParameters<typeof MockAdapter>[0], enabled = true, effort = 'high') {
+async function setup(script: ConstructorParameters<typeof MockAdapter>[0], enabled = true, effort = 'high', backend: 'api' | 'codex' = 'api') {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
@@ -25,7 +25,7 @@ async function setup(script: ConstructorParameters<typeof MockAdapter>[0], enabl
   await ctx.plugin(SubagentRuntime)
   const adapter = new MockAdapter(script, { efforts: [{ id: ReasoningEffortId('high'), name: 'High' }] })
   ctx.llm.registerAdapter(['mock'], adapter)
-  const helper = await ctx.plugin(Helper, { enabled, backend: 'api', provider: 'mock', model: 'expert', reasoningEffort: effort })
+  const helper = await ctx.plugin(Helper, { enabled, backend, provider: 'mock', model: 'expert', reasoningEffort: effort })
   const parent = await ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'flash' }, { cwd: process.cwd() })
   const invoke = (signal = new AbortController().signal, callId = ToolCallId('helper-1')) => parent.ctx.tools.execute({ name: 'advisor',
     callId, arguments: { reason: 'uncertain', question: 'Inspect evidence', attempts: 'read logs', context: 'README.md' }, agent: parent, signal })
@@ -78,6 +78,7 @@ describe('Helper consultations', () => {
     expect(reminded.additionalContexts).toMatchObject([
       { source: { kind: 'helper-checkpoint' } },
     ])
+    expect((await probe()).additionalContexts).toBeUndefined()
     await ctx.commands.execute(parent, '/advisor normal', [], new AbortController().signal)
     expect((await probe()).additionalContexts).toBeUndefined()
     expect(parent.ctx.tools.get('advisor', parent)?.description).toBe(normalDescription)
@@ -86,9 +87,28 @@ describe('Helper consultations', () => {
     expect((await probe()).additionalContexts).toBeUndefined()
     expect(ctx.sessionProjections.stateOf(parent.session, 'helper')?.enabled).toBe(false)
     await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
+    expect((await probe()).additionalContexts).toHaveLength(1)
     await helper.dispose()
     expect(parent.ctx.tools.get('advisor', parent)).toBeUndefined()
     expect((await probe()).additionalContexts).toBeUndefined()
+  })
+
+  it('logs one reminder per turn across repeated tool calls', async () => {
+    const { ctx, parent } = await setup([
+      toolCallResponse('read-one', 'probe', {}), toolCallResponse('read-two', 'probe', {}), textResponse('Partial observation'),
+      toolCallResponse('read-three', 'probe', {}), textResponse('Next observation'),
+    ])
+    await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
+    parent.ctx.tools.register(defineContentToolFixture({ name: 'probe', description: 'Read one observation', parameters: {},
+      execute: async () => [{ type: 'text', text: 'Observation' }] }))
+    const ask = () => { parent.followup(createUserMessage({ content: [{ type: 'text', text: 'Inspect another observation' }], source: { kind: 'user' } })) }
+    const reminders = () => parent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-checkpoint')
+    ask()
+    await parent.whenIdle()
+    expect(reminders()).toHaveLength(1)
+    ask()
+    await parent.whenIdle()
+    expect(reminders()).toHaveLength(2)
   })
 
   it('uses a fresh high-effort expert, records usage and disposes the child', async () => {
@@ -189,4 +209,22 @@ describe('Helper consultations', () => {
     for (const event of session.snapshotEvents()) state = helperProjection.apply(state, event)
     expect(state).toMatchObject({ enabled: true, mode: 'normal' })
   })
+})
+
+
+it('links the native advisor thread to its parent call without adding model messages', async () => {
+  const { ctx, parent, invoke } = await setup([], true, 'high', 'codex')
+  ctx.effect(() => ctx.subagents.registerProvider({ name: 'helper-codex', inheritsParentContext: false,
+    capabilities: { agentOptions: true, agentPreset: false, outputSchema: false, depthLimit: false },
+    start: async () => ({ id: SessionId('native-thread'),
+      result: Promise.resolve({ output: [{ type: 'text', text: 'Inspect the observed input.' }], structured: undefined, stopReason: 'completed' }),
+      dispose: async () => {},
+    }),
+  }))
+  const before = parent.session.deriveMessages()
+  expect((await invoke()).isError).not.toBe(true)
+  const records = parent.session.snapshotEvents().filter(record => record?.type === 'helper/codex-trace')
+  expect(records).toHaveLength(1)
+  expect(records[0]?.data).toMatchObject({ callId: 'helper-1', childSessionId: 'native-thread' })
+  expect(parent.session.deriveMessages()).toEqual(before)
 })

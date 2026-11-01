@@ -76,6 +76,8 @@ declare module '@deepseek-ai/dsh-llm' {
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
+    /** Exact native trace identity associated with a model or automatic consultation. */
+    'helper/codex-trace': (Pick<HelperCall, 'callId' | 'rootCallId'> | { consultationId: ConsultationId }) & { childSessionId: SessionId }
     /** User-selected availability; log-only, applied before tool assembly. */
     'helper/policy': { enabled: boolean; mode?: HelperMode }
     /** Accepted consultation, including its exact selected route. */

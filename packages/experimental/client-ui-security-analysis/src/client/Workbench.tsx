@@ -607,7 +607,8 @@ export function Workbench(props: WorkbenchProps) {
                 {tab === 'reports' && <>
                   <TaskReportStatus completion={project?.value.completion} t={t} disabled={busy > 0 || !project || project.value.stopped}
                     retry={() => void perform(() => command({ kind: 'report' }))} />
-                  <button disabled={busy > 0 || !project} onClick={() => void perform(() => command({ kind: 'report' }))}>{t('generateReport')}</button>
+                  {(!project?.value.completion || project.value.completion.status === 'completed') &&
+                    <button disabled={busy > 0 || !project || project.value.stopped} onClick={() => void perform(() => command({ kind: 'report' }))}>{t('generateReport')}</button>}
                   {view.records.filter(item => item.kind === 'report').map(item => <article key={item.value.id} className={css.card}>
                     <strong>{t('revision')} {item.value.revision}</strong>
                     <button onClick={() => void perform(() => preview(props.report(item.value.engagementId, item.value.id, 'markdown'), 'markdown'))}>{t('markdownReport')}</button>

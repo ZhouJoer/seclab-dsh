@@ -4,6 +4,8 @@ import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 import { NO_START_CAPABILITIES, type SubagentRun, type ResolvedSubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import { codexAppServerArgv, DEFAULT_DISPOSE_GRACE_MS, disposeCodexChild, startCodexRun } from './run.ts'
 import { CodexAppServerWire } from './wire.ts'
+import { recordCodexTool } from './tool-records.ts'
+import Schema from '@deepseek-ai/schemastery'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -15,13 +17,15 @@ declare module '@deepseek-ai/cordis' {
 /** Safe native metadata; authentication secrets remain owned by Codex. */
 export class CodexConsultation extends Service {
   static inject = ['subprocess', 'subagents']
+  static Config = Schema.object({ toolRecordBytes: Schema.number().step(1).min(256).default(65536) })
   private connection: Promise<{ wire: CodexAppServerWire; child: SubprocessHandle }> | undefined
   private readonly lifetime = new AbortController()
 
   /**
    * @param ctx Host subprocess and subagent services.
+   * @param config Per-item native tool record limit.
    */
-  constructor(ctx: Context) {
+  constructor(ctx: Context, private readonly config: { toolRecordBytes: number }) {
     super(ctx, 'codexConsultation')
     ctx.effect(() => ctx.subagents.registerProvider({
       name: 'helper-codex', inheritsParentContext: false,
@@ -119,6 +123,7 @@ export class CodexConsultation extends Service {
       cwd, model, ...effort === undefined ? {} : { reasoningEffort: effort },
       permissionMode: 'read-only', env: {}, disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
       spawn: spec => this.ctx.subprocess.spawn(spec),
+      onTool: observation => recordCodexTool(request.parent.session, observation, this.config.toolRecordBytes),
     })
   }
 }

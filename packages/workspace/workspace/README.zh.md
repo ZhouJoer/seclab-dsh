@@ -20,6 +20,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+`workspace/session-archive-change` waterfall 在存在性和活动检查后协调依赖状态，重复请求也会触发。监听器调用 `next()`，不得重入注册表修改或等待运行任务结算。失败可能保留已提交的依赖状态；重试相同目标可补完同步。
+
 -----
 
 <a id="use-this-package"></a>

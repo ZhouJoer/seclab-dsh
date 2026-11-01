@@ -101,6 +101,10 @@ it('shows the actual environment and editable preferences in an associated blank
   }] })
   render(<FirstMessageSetup {...api} />)
   expect(screen.getByText('Environment: mining')).toBeTruthy()
+  const setup = screen.getByText(en.startupTaskSettings).closest('details')!
+  expect(setup.open).toBe(false)
+  fireEvent.click(screen.getByText(en.startupConfigure))
+  expect(setup.open).toBe(true)
   await screen.findByText(en.toolPreferenceAutomatic, { exact: false })
   const details = screen.getByText(en.toolPreferenceTitle).closest('details')!
   details.open = true; fireEvent(details, new Event('toggle'))
@@ -113,4 +117,5 @@ it('shows the actual environment and editable preferences in an associated blank
   expect(api.toolPreferenceOptions).toHaveBeenCalledOnce()
   expect(api.saveSetup).not.toHaveBeenCalled()
   expect(api.saveDefaults).not.toHaveBeenCalled()
+  expect(setup.outerHTML).toMatchSnapshot()
 })

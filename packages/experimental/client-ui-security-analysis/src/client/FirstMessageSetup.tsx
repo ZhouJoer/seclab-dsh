@@ -136,11 +136,21 @@ function SetupDetails(props: Props) {
 function AssociatedSetup(props: Props & { project: SecurityProjectSummary['project'] }) {
   const { t, sessionId, project } = props
   return <section className={css.setup} aria-label={t('startupTitle')}>
-    <strong>{t('startupTaskSettings')}</strong>
-    <p>{t('environment')}: {project.environmentIds.join('、')}</p>
-    <ToolPreferences {...props} compact eager
-      onDirtyChange={(dirty) => { props.editTools(sessionId, dirty) }}
-      onReadyChange={(ready) => { props.toolsReady(sessionId, ready) }} />
+    <details>
+      <summary>
+        <IconShieldOutlineRegular size={16} />
+        <span className={css.summary}>
+          <strong>{t('startupTaskSettings')}</strong>
+          <span>{t('environment')}: {project.environmentIds.join('、')}</span>
+        </span>
+        <span className={css.configure}>{t('startupConfigure')}<IconChevronDownOutlineRegular className={css.chevron} size={16} /></span>
+      </summary>
+      <div className={css.fields}>
+        <ToolPreferences {...props} compact eager
+          onDirtyChange={(dirty) => { props.editTools(sessionId, dirty) }}
+          onReadyChange={(ready) => { props.toolsReady(sessionId, ready) }} />
+      </div>
+    </details>
   </section>
 }
 

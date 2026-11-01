@@ -116,6 +116,16 @@ declare module '@deepseek-ai/cordis' {
   }
 
   interface Events {
+    /** Coordinate dependent state after preflight, including repeated requests.
+     * Listeners delegate without reentering registry mutations or waiting for running work to settle.
+     * Rejection may leave dependent state committed; retry the same target to finish synchronization.
+     * @param request - requested archive state.
+     * @param next - commit native state and issue stop requests.
+     * @mode waterfall
+     */
+    'workspace/session-archive-change'(request: { sessionId: SessionId; archived: boolean },
+      next: () => Promise<void>): Promise<void>
+
     /**
      * Ask the composed providers what still runs for a session before it is
      * archived. A listener prepends its own {@link SessionActivity} entries to
@@ -357,7 +367,7 @@ export class WorkspaceRegistry extends Service {
    * `agent/pre-step` gate reads, so every wake the stops induce is already
    * blocked. Archiving drops the session's pin in the same durable write
    * (pinning and archival are mutually exclusive). An already archived id
-   * resolves without writing, asking, or stopping.
+   * resolves without writing, asking, or stopping; archive-change listeners still run.
    * @param sessionId - The session to archive.
    * @param options - Whether running work is stopped instead of refusing.
    * @returns resolution after durability and, with `stopActivity`, after every stop request was issued.
@@ -366,7 +376,10 @@ export class WorkspaceRegistry extends Service {
     return this.enqueueOperation(async () => {
       // The chain slot serializes against every other registry write, so this
       // check-then-write pair cannot interleave with another archive.
-      if (this.requireState().archivedSessionIds.includes(sessionId)) return
+      if (this.requireState().archivedSessionIds.includes(sessionId)) {
+        await this.ctx.waterfall('workspace/session-archive-change', { sessionId, archived: true }, async () => {})
+        return
+      }
       if (!(await this.sessionKnown(sessionId))) {
         throw new WorkspaceUnknownSessionError(sessionId, 'archive')
       }
@@ -376,13 +389,15 @@ export class WorkspaceRegistry extends Service {
         )
         if (activity.length > 0) throw new WorkspaceActiveSessionError(sessionId, activity)
       }
-      const state = this.requireState()
-      await this.setState({
-        ...state,
-        archivedSessionIds: [...state.archivedSessionIds, sessionId],
-        pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
+      await this.ctx.waterfall('workspace/session-archive-change', { sessionId, archived: true }, async () => {
+        const state = this.requireState()
+        await this.setState({
+          ...state,
+          archivedSessionIds: [...state.archivedSessionIds, sessionId],
+          pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
+        })
+        if (options.stopActivity === true) await this.stopSessionActivity(sessionId)
       })
-      if (options.stopActivity === true) await this.stopSessionActivity(sessionId)
     })
   }
 
@@ -400,11 +415,13 @@ export class WorkspaceRegistry extends Service {
     return this.enqueueOperation(async () => {
       // The chain slot serializes against every other registry write, so this
       // check-then-write pair cannot interleave with a concurrent archive.
-      const state = this.requireState()
-      if (!state.archivedSessionIds.includes(sessionId)) return
-      await this.setState({
-        ...state,
-        archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+      await this.ctx.waterfall('workspace/session-archive-change', { sessionId, archived: false }, async () => {
+        const state = this.requireState()
+        if (!state.archivedSessionIds.includes(sessionId)) return
+        await this.setState({
+          ...state,
+          archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+        })
       })
     })
   }

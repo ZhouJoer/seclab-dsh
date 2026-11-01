@@ -92,7 +92,7 @@ export function moduleAllowsOperation(provider: string, operation: string, selec
     return moduleAllowsTool('security_' + tool, selection)
   }
   if (provider === 'android') return enabled('reverse.android')
-  if (provider === 'ghidra' || provider === 'frida') return enabled('reverse.native')
+  if (provider === 'ghidra' || provider === 'frida' || provider === 'debugger') return enabled('reverse.native')
   if (provider === 'web' || provider === 'external-web') return enabled('web')
   if (provider === 'packet-capture' || provider === 'offline') return enabled('iot')
   return true
