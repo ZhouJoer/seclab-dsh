@@ -101,7 +101,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
-    /** Security analysis reached its exploration allowance and requested a final summary.
+    /** Security analysis requested a direction review or a final budget summary.
      * @persistenceAttribution
      */
     'plugin:security-analysis-budget': { kind: 'plugin:security-analysis-budget' }
@@ -154,6 +154,8 @@ export interface WorkbenchConfig {
   activityPageSize: number
   /** Exploration token allowance per analysis turn, followed by one summary step under existing model limits. */
   analysisTurnTokens: number
+  /** Maximum completed tool steps between logged investigation reviews in one turn. */
+  analysisReviewSteps: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
   /** Maximum target findings in the main report body. */
@@ -191,6 +193,8 @@ declare module '@deepseek-ai/dsh-jobs' {
 const GUIDANCE = `Task delivery applies to every assigned objective, including material verification, reverse engineering and challenge solving without vulnerabilities. Use native read, glob, grep and shell tools to investigate the selected workspace directly. When the requested objective is achieved, you MUST submit security_command action complete-task before your final answer; a chat answer alone is not task delivery. Submit exact results with source citations or existing evidence references and actual validation limitations. If evidence or report generation fails, state that delivery remains incomplete and use report to retry saved outcomes. Pausing, asking a question or exhausting a budget does not require complete-task.
 
 Write human-facing analysis summaries, research-direction titles, reasons, conclusions, next actions and reports in Simplified Chinese. Preserve code identifiers, tool names, paths and quoted source text in their original form. Resolve the assigned task objective without inventing vulnerability findings. Choose questions, tools, exploration depth and delegation according to what the current evidence can resolve. Reconnaissance and failed experiments are useful when they inform the next security question. Keep observations, hypotheses and conclusions distinct; check contrary evidence before concluding.
+
+Start from the requested deliverable and the observable result that would establish it. Work on the unresolved claim that most affects that result. Separate observations from interpretations, including advice and results from earlier attempts. Before an expensive search or delegation, identify a competing explanation and a small observation for which their predictions differ. Validate custom measurements against the source and known positive and negative controls. If a control fails, revisit every exclusion that used it. Continue when a result narrows the remaining possibilities, change direction on contradictory evidence, or report the missing prerequisite. Verify the deliverable against the original criterion before submitting it.
 
 A security project is the saved analysis task containing materials, evidence and reports. When no task is selected, ask the user to start an analysis with their material. An empty project-scoped environment list does not establish whether the Host has configured tools.
 
@@ -239,6 +243,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     modelResultBytes: Schema.number().step(1).min(1024).default(16384),
     activityPageSize: Schema.number().step(1).min(1).max(100).default(20),
     analysisTurnTokens: Schema.number().step(1).min(1000).default(120000),
+    analysisReviewSteps: Schema.number().step(1).min(1).default(12),
     analysisCountCacheReads: Schema.boolean().default(false),
     reportMaxFindings: Schema.number().step(1).min(1).default(5),
     knowledgeProvider: Schema.string().pattern(/\S/u),
@@ -879,7 +884,10 @@ export default class SecurityWorkbench extends TypertRemoteService {
       await controller.admitTask(exec.agent.id, `task-intake:${exec.agent.id}:${candidate.message.id}`, candidate.action, exec.signal)
       return next()
     })
-    installAnalysisBudget(ctx, config, id => this.controller?.binding(id) !== undefined)
+    installAnalysisBudget(ctx, config, id => this.controller?.binding(id)?.role, (id) => {
+      assert(this.controller, 'Investigation progress requires a bound security task')
+      return this.controller.view(id)
+    })
     const projectTaskContext = installTaskContext(ctx, (agent) => {
       const binding = this.controller?.binding(agent.id)
       if (binding) {

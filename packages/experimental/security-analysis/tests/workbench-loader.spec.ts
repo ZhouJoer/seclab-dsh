@@ -207,7 +207,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { advisor?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { advisor?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -301,6 +301,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
                     ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
                       ...(options.evolution ? { evolution: options.evolution } : {}),
                       ...(options.analysisTurnTokens === undefined ? {} : { analysisTurnTokens: options.analysisTurnTokens }),
+                      ...(options.analysisReviewSteps === undefined ? {} : { analysisReviewSteps: options.analysisReviewSteps }),
                       ...(options.maxConcurrentDelegations === undefined ? {}
                         : { maxConcurrentDelegations: options.maxConcurrentDelegations }),
                       ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
@@ -2267,6 +2268,95 @@ it('continues native exploration without requiring progress bookkeeping', async 
   const result = await execute(ctx, agent, 'web_search')
   expect(result.isError, JSON.stringify(result)).toBe(false)
   expect(search).toHaveBeenCalledOnce()
+})
+
+it('reviews consecutive failed steps and successful-looking long investigations with tools still available', async () => {
+  const { agent, controller, model } = await load(false, 0)
+  await operator(controller, agent)({ kind: 'create', title: 'Validate evidence', objective: 'Check the extractor', environmentIds: ['local'], maxAttempts: 1 })
+  const invalid = { name: 'security_scope', args: { kind: 'invalid' } }
+  const valid = { name: 'security_scope', args: { kind: 'asset' } }
+  model.nativeCalls = [invalid, valid, invalid, invalid, ...Array.from({ length: 12 }, () => valid)]
+  agent.followup(webPrompt('Investigate the input.'))
+  await agent.whenIdle()
+  const reviews = agent.session.snapshotEvents().filter(event => event.type === 'user/message'
+    && event.data.source?.kind === 'plugin:security-analysis-budget')
+  expect(reviews).toHaveLength(2)
+  expect(JSON.stringify(model.requests[3]!.messages)).not.toContain('Two consecutive tool steps')
+  expect(JSON.stringify(model.requests[4]!.messages)).toContain('Two consecutive tool steps')
+  expect(JSON.stringify(model.requests[16]!.messages)).toContain('Review the investigation direction.')
+  expect(model.requests[16]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
+})
+
+it('requires a committed checkpoint before further coordinator experiments after two scheduled reviews', async () => {
+  const { agent, controller, model } = await load(false, 0, { analysisReviewSteps: 2 })
+  await operator(controller, agent)({ kind: 'create', title: 'Measure progress', objective: 'Distinguish candidate mechanisms', environmentIds: ['local'], maxAttempts: 1 })
+  const search = independentTool(agent.ctx, 'web_search')
+  const inspect = { name: 'security_scope', args: { kind: 'asset' } }
+  const experiment = { name: 'web_search', args: {} }
+  const checkpoint = { kind: 'checkpoint', phase: 'recon', title: 'Observed values', reason: 'Shared state predicts equal outputs.',
+    summary: 'The two observations differ.', next: 'Compare outputs after resetting the input.', evidenceIds: [], findingIds: [] }
+  const save = (operationId: string, revision: number, reason = checkpoint.reason) => ({ name: 'security_command', args: { command: JSON.stringify({
+    action: { ...checkpoint, reason }, expectedRevision: revision, operationId,
+  }) } })
+  const revision = controller.view(agent.id).revision
+  model.nativeCalls = [...Array.from({ length: 4 }, () => inspect), experiment, save('stale', revision - 1),
+    experiment, save('empty-review', revision, ''), experiment, save('save-review', revision + 1), experiment]
+  agent.followup(webPrompt('Investigate the samples.'))
+  await agent.whenIdle()
+  const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
+  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([true, true, true, false, true, false, false])
+  expect(JSON.stringify(results[4])).toContain('save a security_command checkpoint')
+  for (const index of [4, 6, 8]) expect(model.requests[index]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
+  expect(model.requests[10]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  expect(search).toHaveBeenCalledOnce()
+  agent.followup(webPrompt('Continue from the saved direction.'))
+  await agent.whenIdle()
+  expect(JSON.stringify(model.requests.at(-1)?.messages)).toContain('Saved project data from earlier work')
+  expect(JSON.stringify(model.requests.at(-1)?.messages)).toContain(checkpoint.next)
+})
+
+it('restores experiments when existing evidence resolves an open acceptance criterion without a new checkpoint', async () => {
+  const { agent, controller, model } = await load(false, 0, { analysisReviewSteps: 2 })
+  const send = operator(controller, agent)
+  await send({ kind: 'create', title: 'Configuration review', objective: 'Determine which address is configured.', environmentIds: ['local'], maxAttempts: 1 })
+  const path = join(roots.at(-1)!, 'service.ini')
+  await writeFile(path, '# service settings\nlisten=127.0.0.1\n')
+  await send({ kind: 'import-source', path, label: 'Service configuration' })
+  const asset = controller.view(agent.id).records.find(item => item.kind === 'asset')!
+  await send({ kind: 'check', check: { assetId: asset.value.id, phase: 'recon', title: 'Listen address',
+    criterion: 'Read the listen setting from the supplied configuration.', dependencies: [], evidenceIds: [] } })
+  const check = controller.view(agent.id).records.find(item => item.kind === 'check')!
+  const observation = await controller.observe(agent.id, { provider: 'source', operation: 'read', assetId: asset.value.id,
+    environmentId: 'local', parameters: { path: 'service.ini', startLine: 1, limit: 5 }, impact: 'observe' },
+  'read-listen-address', new AbortController().signal)
+  if (observation.kind !== 'evidence' || observation.value.incomplete) throw new Error('Expected complete configuration evidence')
+  const partial = await controller.observe(agent.id, { provider: 'source', operation: 'read', assetId: asset.value.id,
+    environmentId: 'local', parameters: { path: 'service.ini', startLine: 1, limit: 1 }, impact: 'observe' },
+  'read-config-header', new AbortController().signal)
+  if (partial.kind !== 'evidence' || !partial.value.incomplete) throw new Error('Expected an incomplete configuration read')
+  const search = independentTool(agent.ctx, 'web_search')
+  const experiment = { name: 'web_search', args: {} }
+  const command = (operationId: string, action: Record<string, unknown>) => ({ name: 'security_command', args: () => ({
+    command: JSON.stringify({ operationId, expectedRevision: controller.view(agent.id).revision,
+      action: { ...action, checkId: check.value.id } }),
+  }) })
+  model.nativeCalls = [...Array.from({ length: 4 }, () => ({ name: 'security_scope', args: {} })), experiment,
+    command('finish-partial', { kind: 'finish', evidenceIds: [partial.value.id], rationale: 'Only the header was read.' }), experiment,
+    command('reopen-listen', { kind: 'reopen', rationale: 'The setting was outside the selected range.' }),
+    command('resolve-listen', { kind: 'finish', evidenceIds: [observation.value.id], rationale: 'The listen setting specifies loopback.' }), experiment]
+  agent.followup(webPrompt('Inspect the configured address.'))
+  await agent.whenIdle()
+  expect(model.requests[4]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
+  expect(model.requests[6]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
+  expect(model.requests[9]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  expect(search).toHaveBeenCalledOnce()
+  expect(controller.view(agent.id).records.some(item => item.kind === 'checkpoint')).toBe(false)
+  agent.followup(webPrompt('Which evidence supports the result?'))
+  await agent.whenIdle()
+  const handoff = agent.session.snapshotEvents().filter(event => event.type === 'user/message')
+    .findLast(event => JSON.stringify(event.data.content).includes('Saved project data from earlier work'))
+  expect(JSON.stringify(handoff)).toContain(observation.value.id)
+  expect(JSON.stringify(handoff)).not.toContain(partial.value.id)
 })
 
 it('blocks repeated wrap-up exploration and preserves new user steering for the next turn', async () => {

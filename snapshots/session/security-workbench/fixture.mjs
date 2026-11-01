@@ -143,6 +143,9 @@ export async function apply(ctx) {
     assert.deepEqual(preview.conflicts, [])
     securityCtx.securityWorkbench.importToolPack(pack, preview.revision, false)
     securityCtx.on('tools/execute', async (exec, next) => {
+      // Later replay calls cite these observations regardless of unrelated Session UUID allocations.
+      if (exec.callId === 'observe-outside-sample') return commandIO.run({ identifier: 1000 }, next)
+      if (exec.callId === 'identity-corrected') return commandIO.run({ identifier: 2000 }, next)
       if (exec.callId === 'save-research-progress') return commandIO.run({ identifier: 0 }, next)
       if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
         const service = securityCtx.securityWorkbench

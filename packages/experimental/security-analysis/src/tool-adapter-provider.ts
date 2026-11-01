@@ -81,13 +81,16 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
   const { adapter, action } = operationParts(operation)
   const args = parseAdapterParameters(operation, parameters)
   switch (adapter.id) {
-    case 'radare2':
     case 'r2ghidra': {
+      if (!args.address) throw new Error('Decompilation requires a hexadecimal function entry address')
+      return ['-N', '-q', '-e', 'scr.color=0', '-c', 'aa;s ' + args.address + ';af;pdgj', path]
+    }
+    case 'radare2': {
       const queries: Record<string, string> = { identity: 'ij', functions: 'aflj', imports: 'iij', exports: 'iEj', symbols: 'isj',
-        strings: 'izj', 'xrefs-to': 'axtj', 'xrefs-from': 'axfj', disassemble: 'pdj', decompile: 'pdgj' }
-      const targeted = ['xrefs-to', 'xrefs-from', 'disassemble', 'decompile'].includes(action)
+        strings: 'izj', 'xrefs-to': 'axtj', 'xrefs-from': 'axfj', disassemble: 'pdj' }
+      const targeted = ['xrefs-to', 'xrefs-from', 'disassemble'].includes(action)
       if (targeted && !args.address) throw new Error('This operation requires a hexadecimal virtual address')
-      const analysis = ['functions', 'xrefs-to', 'xrefs-from', 'decompile'].includes(action) ? 'aa;' : ''
+      const analysis = ['functions', 'xrefs-to', 'xrefs-from'].includes(action) ? 'aa;' : ''
       const command = queries[action]
       if (!command) throw new Error('Unsupported radare2 query')
       const query = command + (action === 'disassemble' ? ' ' + String(args.count) : '')
@@ -111,7 +114,9 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
   }
 }
 
-/** Decode native tool output without interpreting diagnostic text as observations.
+class DecompilerFailure extends Error {}
+
+/** Decode native tool output, rejecting reported decompiler failures even on exit code zero.
  * @param operation - declared tool and operation.
  * @param stdout - complete collected stdout.
  * @returns semantic records, retaining source addresses or line locations.
@@ -120,7 +125,12 @@ export function decodeAdapterOutput(operation: string, stdout: string): JsonValu
   const { adapter, action } = operationParts(operation)
   if (adapter.id === 'radare2' || adapter.id === 'r2ghidra') {
     const value = z.json().parse(JSON.parse(stdout))
-    if (adapter.id === 'r2ghidra') return [z.object({ code: z.string() }).catchall(z.json()).parse(value)]
+    if (adapter.id === 'r2ghidra') {
+      const output = z.object({ errors: z.array(z.string()).optional(), error: z.string().optional() }).catchall(z.json()).parse(value)
+      const diagnostics = [...output.errors ?? [], output.error].filter(Boolean)
+      if (diagnostics.length) throw new DecompilerFailure(diagnostics.join('\n'))
+      return [z.object({ code: z.string().regex(/\S/u) }).catchall(z.json()).parse(value)]
+    }
     if (action === 'identity') return [z.object({ core: z.record(z.string(), z.json()) }).catchall(z.json()).parse(value)]
     return z.array(z.record(z.string(), z.json())).parse(value)
   }
@@ -260,7 +270,8 @@ export class ToolAdapterProvider implements AnalysisProvider {
       const path = await context.artifacts.materialize(asset.artifact)
       try {
         const process = await runProcess(this.ctx, environment, adapter.id === 'r2ghidra' ? 'radare2' : adapter.id,
-          adapterArguments(request.operation, request.parameters, path), limits)
+          adapterArguments(request.operation, request.parameters, path),
+          adapter.id === 'r2ghidra' ? { ...limits, maxOutputBytes: context.maxOutputBytes } : limits)
         raw = { ...process, parameters: request.parameters }; diagnostics = process.stderr; incomplete = process.truncated
         failure = adapterProcessFailure(process)
         if (!failure && !process.truncated) {
@@ -279,8 +290,12 @@ export class ToolAdapterProvider implements AnalysisProvider {
               || z.array(z.json()).parse(JSON.parse(process.stdout)).length >= Number(request.parameters.count)))
               incomplete = true
           }
-          catch (error) { failure = 'Cannot decode ' + adapter.id + ' output: ' + String(error) }
-        } else if (!failure) failure = 'Raw tool output exceeded the collection limit; narrow the query'
+          catch (error) {
+            failure = error instanceof DecompilerFailure ? 'r2ghidra: ' + error.message : 'Cannot decode ' + adapter.id + ' output: ' + String(error)
+          }
+        } else if (!failure) failure = adapter.id === 'r2ghidra'
+          ? 'Decompilation exceeded the artifact byte limit. Use security_radare2 disassemble with a bounded instruction count at ' + JSON.stringify(request.parameters.address)
+          : 'Raw tool output exceeded the collection limit; narrow the query'
       } finally { await context.artifacts.release(path) }
     }
     if (items.length > this.limits.maxItems) { items = items.slice(0, this.limits.maxItems); incomplete = true }

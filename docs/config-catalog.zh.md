@@ -1300,6 +1300,8 @@ export interface WorkbenchConfig {
   activityPageSize: number
   /** Exploration token allowance per analysis turn, followed by one summary step under existing model limits. */
   analysisTurnTokens: number
+  /** Maximum completed tool steps between logged investigation reviews in one turn. */
+  analysisReviewSteps: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
   /** Maximum target findings in the main report body. */

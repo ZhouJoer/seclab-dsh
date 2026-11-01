@@ -20,6 +20,18 @@ export type AdapterResult = z.infer<typeof adapterResultSchema>
 export function retainAdapterResult(result: AdapterResult, maxBytes: number): { bytes: Buffer; incomplete: boolean } {
   const retained = structuredClone(result)
   let bytes = Buffer.from(JSON.stringify(retained))
+  if (bytes.length > maxBytes && retained.operation === 'r2ghidra.decompile' && retained.items.length === 1) {
+    const item = retained.items[0]
+    if (item && typeof item === 'object' && !Array.isArray(item) && typeof item.code === 'string') {
+      retained.items = [{ code: item.code }]
+      bytes = Buffer.from(JSON.stringify(retained))
+      if (bytes.length > maxBytes) {
+        retained.raw = { truncated: true }
+        retained.incomplete = true
+        bytes = Buffer.from(JSON.stringify(retained))
+      }
+    }
+  }
   while (bytes.length > maxBytes && retained.items.length) {
     retained.items.pop(); retained.incomplete = true
     bytes = Buffer.from(JSON.stringify(retained))
@@ -35,7 +47,7 @@ export function retainAdapterResult(result: AdapterResult, maxBytes: number): { 
   return { bytes, incomplete: retained.incomplete }
 }
 
-/** Select structured evidence items without executing the tool again.
+/** Select structured evidence items without executing the tool again. A decompiler item can omit annotations to fit its complete code.
  * @param bytes - saved adapter artifact.
  * @param evidenceId - scoped evidence reference.
  * @param offset - first item.
@@ -56,6 +68,11 @@ export function adapterResultPage(bytes: Uint8Array, evidenceId: string, offset:
     page.items.push(item)
     page.nextItemOffset = offset + page.items.length < result.items.length ? offset + page.items.length : null
     if (Buffer.byteLength(JSON.stringify(page)) > maxBytes) {
+      if (result.operation === 'r2ghidra.decompile' && page.items.length === 1
+        && item && typeof item === 'object' && !Array.isArray(item) && typeof item.code === 'string') {
+        const codePage = { ...page, items: [{ code: item.code }], detail: 'Complete pseudocode. Read raw evidence for annotations and diagnostics.' }
+        if (Buffer.byteLength(JSON.stringify(codePage)) <= maxBytes) return codePage
+      }
       page.items.pop(); page.nextItemOffset = offset + page.items.length
       if (!page.items.length) page.detail = 'This item exceeds the response budget. Read raw evidence by byte offset and length.'
       break

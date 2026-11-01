@@ -70,6 +70,8 @@ kind: "package-reference"
 
 专用只读工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色、项目范围、租约和证据。模型不提供可执行文件或环境 ID。security_r2ghidra 跟随 radare2。Ghidra 查询、ADB 设备与包查询、Wi-Fi/BLE 离线分析使用各自既有 provider。配置与环境支持见 [Provider 设计](#provider-design)；Shell 和 security_static 继续可用。
 
+调用 `security_r2ghidra` 时传入函数入口地址。适配器在独立 radare2 进程内分析该入口，将反编译器报告的错误保留为不完整证据。若标注使响应超限，而伪代码本身能完整放入结果页，模型会直接收到完整伪代码。反编译最多可采集制品字节上限允许的输出。重复保留标注会超限时优先保留伪代码，丢弃原始输出会标记证据不完整。函数超过采集上限时需分段反汇编。
+
 对于已适配工具，security_capabilities 提供专用接口及操作。指定 toolIds、details 和 native: true，可加载未覆盖操作或不支持环境的既有高级流程。security_environment 默认省略已适配工具的启动配置；native: true 返回实测启动配置，外部容器库存始终保留该信息。操作员库存保留完整安装信息。导入定义不能替换默认语义接口。既有 Provider 和 Shell 流程继续可用，不会静默切换执行环境。
 
 在工具箱配置安装和可选的固定环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将适配器绑定 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属本机环境；首次保存写入带版本格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。未绑定适配器继承任务唯一的兼容环境。保存比较修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。
@@ -150,6 +152,10 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 工作台在每个插件实例初始化时原样读取一次 [resources/prompts/unsealed.md](resources/prompts/unsealed.md)。发布包包含此 Markdown 资源；修改文件后，重启使用该文件的 Host 即可生效，无需生成步骤。资源无法读取或仅含空白内容时会阻止初始化；不要求任何章节标题或固定文本。组装后的提示词仍对模型可见并写入会话日志。
 
 ### 证据与恢复
+
+连续两个工具步骤全部报错会触发复核；每经过 `analysisReviewSteps` 个工具步骤（默认 12）也会定期复核。两次定期复核之间，若已有新的、完整且成功的观测关联到已完成检查，或调查方向的摘要、理由及下一项实验完整且有实质变化，可继续探索。两者均未改变时，协调者仍可查阅证据、咨询顾问、管理作业和提交命令。用新的合格证据完成检查，或记录变更后的方向，即可在剩余预算内恢复实验。
+
+从用户要求的交付物出发，明确可观测的验收条件。用能区分竞争解释的实验决定下一步，校准自制测量方法，并用满足判据的证据完成检查。后续轮次开始时，协调者会收到已有的调查方向、一个已获支持的检查及其证据引用，以及一个待检查事项 ID（若存在）。先前分析者的解释仍需用引用的观测核验。
 
 <a id="recorded-citations"></a>
 

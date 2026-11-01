@@ -59,6 +59,39 @@ it('enforces role and fixed-operation admission, including calls bypassing disco
   expect(canObserve('reconnaissance', 'tool-adapter', 'r2ghidra.decompile')).toBe(false)
   expect(canObserve('web-analyst', 'tool-adapter', 'tshark.packets')).toBe(true)
 })
+
+it('analyzes the supplied function entry and retains native decompiler failures separately from malformed output', async () => {
+  const { provider, request, context } = await fixture('r2ghidra', 'decompile')
+  const operation = provider.resolve({ ...request, parameters: { address: '0x4010' } }, context)
+  const run = async (stdout: string) => {
+    vi.mocked(runProcess).mockResolvedValue({ ...success, stdout })
+    return provider.run(operation, context)
+  }
+  const ok = await run('{"code":"void entry() {}"}')
+  expect(vi.mocked(runProcess).mock.calls[0]?.[4].maxOutputBytes).toBe(context.maxOutputBytes)
+  expect(vi.mocked(runProcess).mock.calls[0]?.[3]).toContain('aa;s 0x4010;af;pdgj')
+  expect(adapterResultSchema.parse(JSON.parse(Buffer.from(ok.bytes).toString())).items).toEqual([{ code: 'void entry() {}' }])
+  const failed = await run('{"code":"partial","errors":["No function at this offset"]}')
+  expect(failed.failure).toBe('r2ghidra: No function at this offset')
+  expect(adapterResultSchema.parse(JSON.parse(Buffer.from(failed.bytes).toString()))).toMatchObject({
+    incomplete: true, items: [], diagnostics: failed.failure,
+  })
+  expect((await run('{"error":"plugin unavailable"}')).failure).toBe('r2ghidra: plugin unavailable')
+  expect((await run('{}')).failure).toContain('Cannot decode')
+  const verbose = await run(JSON.stringify({ code: 'return 0;', annotations: ['x'.repeat(15500)] }))
+  expect(adapterResultPage(verbose.bytes, 'evidence', 0, 1, 1024)).toMatchObject({ items: [{ code: 'return 0;' }] })
+  expect(verbose.bytes.byteLength).toBeLessThanOrEqual(context.maxOutputBytes)
+  vi.mocked(runProcess).mockResolvedValue({ ...success, stdout: '{"code":"unfinished', truncated: true })
+  const overflow = await provider.run(operation, context)
+  expect(overflow.failure).toContain('bounded instruction count at "0x4010"')
+  expect(overflow.incomplete).toBe(true)
+  const annotated = await run(JSON.stringify({ code: 'return 1;', annotations: ['字'.repeat(1500)] }))
+  expect(adapterResultPage(annotated.bytes, 'evidence', 0, 1, 1024)).toMatchObject({
+    items: [{ code: 'return 1;' }], nextItemOffset: null,
+  })
+  const largeCode = await run(JSON.stringify({ code: '字'.repeat(480) }))
+  expect(adapterResultPage(largeCode.bytes, 'evidence', 0, 1, 1024)).toMatchObject({ items: [], nextItemOffset: 0 })
+})
 it('requires an explicit installation without discovering another executable on PATH', async () => {
   const { provider, request, context } = await fixture()
   context.environment.tools = []
