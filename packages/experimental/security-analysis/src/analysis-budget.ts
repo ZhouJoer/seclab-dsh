@@ -18,6 +18,7 @@ interface TurnBudget {
   finalizing?: boolean
   stepsSinceReview: number
   previousBatchFailed: boolean
+  failedShellExecutions: number
   review: 'initial' | 'requested' | 'checkpoint'
   baseline?: ReturnType<typeof investigationProgress>
   /** Undefined until the current step returns its first tool result. */
@@ -52,6 +53,8 @@ function hasProgress(current: InvestigationProgress, baseline: InvestigationProg
 
 const closingTools = new Set(['structured_output', 'security_scope', 'security_evidence', 'security_help', 'security_command', 'security_checkpoint', 'security_complete'])
 const closingCommand = z.object({ action: z.object({ kind: z.enum(['checkpoint', 'complete-task', 'report']) }) })
+const foregroundShell = z.object({ kind: z.literal('foreground'), exitCode: z.number().nullable(),
+  signal: z.string().nullable(), timedOut: z.boolean(), aborted: z.boolean() })
 
 function allowsClosingCall(name: string, args: unknown): boolean {
   if (!closingTools.has(name)) return false
@@ -74,9 +77,9 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
   viewOf: (id: SessionId) => WorkbenchView): void {
   const turns = new Map<SessionId, TurnBudget>()
   const progress = (id: SessionId) => investigationProgress(viewOf(id))
-  const reviewTools = new Set(['security_scope', 'security_help', 'security_evidence', 'security_capture_analysis',
+  const reviewTools = new Set(['security_scope', 'security_help', 'security_capabilities', 'security_environment', 'skill', 'security_evidence', 'security_capture_analysis',
     'security_command', 'security_checkpoint', 'security_complete', 'read', 'read_image', 'grep', 'glob', 'job_list', 'job_output', 'job_kill', 'advisor', 'structured_output', 'run_code'])
-  const checkpointInstruction = 'No new complete observation has been linked to a finished check since the last scheduled review. If existing evidence resolves a planned criterion, finish that check with its evidence. Otherwise save a security_command checkpoint: cite the last observation or failed control in summary, distinguish the remaining explanations in reason, and give a test with different predicted outcomes in next. Treat advice as a hypothesis until verified. If the objective is met, submit the result; if the required observation is unavailable, report that limit. Use security_scope for the current revision and security_help for action fields.'
+  const checkpointInstruction = 'No new complete observation has been linked to a finished check since the last scheduled review. If existing evidence resolves a planned criterion, finish that check with its evidence. Otherwise save a security_command checkpoint: cite the last observation or failed control in summary, distinguish the remaining explanations in reason, and give a test with different predicted outcomes in next. Treat advice as a hypothesis until verified. If the objective is met, submit the result; if the required observation is unavailable, report that limit. Use security_scope for the current revision and security_help for action fields. Capability discovery, environment inspection and skill loading remain available; selecting a module alone does not establish investigation progress.'
   function needsCheckpoint(agent: Agent, predictNext = false): boolean {
     const state = turns.get(agent.id)
     if (!state || state.review === 'initial' || roleOf(agent.id) !== 'coordinator') return false
@@ -87,7 +90,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
   function stateFor(id: SessionId): TurnBudget {
     let state = turns.get(id)
     if (!state) {
-      state = { used: 0, last: 0, closing: false, steps: 0, stepsSinceReview: 0, previousBatchFailed: false, review: 'initial' }
+      state = { used: 0, last: 0, closing: false, steps: 0, stepsSinceReview: 0, previousBatchFailed: false, failedShellExecutions: 0, review: 'initial' }
       turns.set(id, state)
     }
     return state
@@ -137,6 +140,14 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
     return undefined
   })
   ctx.on('tools/result', (exec, result) => {
+    if (exec.agent && roleOf(exec.agent.id) !== undefined && ['bash', 'pwsh'].includes(exec.name) && !result.isError) {
+      const shell = foregroundShell.safeParse(result.value)
+      if (shell.success) {
+        const state = stateFor(exec.agent.id)
+        const failed = shell.data.exitCode !== 0 || shell.data.signal !== null || shell.data.timedOut || shell.data.aborted
+        state.failedShellExecutions = failed ? state.failedShellExecutions + 1 : 0
+      }
+    }
     const state = exec.agent && turns.get(exec.agent.id)
     if (state?.closing && (exec.name === 'security_command' || exec.name === 'security_checkpoint' || exec.name === 'security_complete') && !result.isError
       && allowsClosingCall(exec.name, exec.arguments)) state.saved = true
@@ -161,7 +172,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
       const review = turns.get(agent.id)
       if (!review || review.batchFailed === undefined || !roleOf(agent.id) || needsCheckpoint(agent)) return decision
       if (review.review === 'checkpoint') review.review = 'initial'
-      const repeatedFailure = review.previousBatchFailed && review.batchFailed
+      const repeatedFailure = (review.previousBatchFailed && review.batchFailed) || review.failedShellExecutions >= 2
       review.previousBatchFailed = review.batchFailed
       delete review.batchFailed
       const scheduled = ++review.stepsSinceReview >= config.analysisReviewSteps
@@ -173,11 +184,14 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
       }
       if (scheduled) review.stepsSinceReview = 0
       review.previousBatchFailed = false
+      review.failedShellExecutions = 0
       return {
         ...decision,
         messages: [...decision.messages, createUserMessage({
           source: { kind: 'plugin:security-analysis-budget' },
-          content: [{ type: 'text', text: review.review === 'checkpoint' ? checkpointInstruction : (repeatedFailure ? 'Two consecutive tool steps returned only errors. ' : 'Review the investigation direction. ')
+          content: [{ type: 'text', text: review.review === 'checkpoint' ? checkpointInstruction : (repeatedFailure ? 'Repeated tool or foreground shell failures require a method review. ' : 'Review the investigation direction. ')
+            + 'Compare the last planned experiment with its actual result; an unperformed experiment or a rewritten summary is not evidence for its prediction. '
+            + 'Before repairing another custom parser or expanding a search, inspect relevant security_capabilities and load its skill. Use security_environment for the selected dependency when needed. These discovery tools remain available during a direction review. '
             + 'Identify the observation supporting the current assumption and one alternative that predicts a different result. '
             + 'Test a different mechanism, not just another parameter value. State a prediction for each mechanism and compare both with the original data before expanding this branch. '
             + 'For a custom extractor, compare source positions, order and lengths with the original artifact. '

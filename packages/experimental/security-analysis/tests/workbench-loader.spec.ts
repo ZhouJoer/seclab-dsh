@@ -2330,10 +2330,52 @@ it('reviews consecutive failed steps and successful-looking long investigations 
   const reviews = agent.session.snapshotEvents().filter(event => event.type === 'user/message'
     && event.data.source?.kind === 'plugin:security-analysis-budget')
   expect(reviews).toHaveLength(2)
-  expect(JSON.stringify(model.requests[3]!.messages)).not.toContain('Two consecutive tool steps')
-  expect(JSON.stringify(model.requests[4]!.messages)).toContain('Two consecutive tool steps')
+  expect(JSON.stringify(model.requests[3]!.messages)).not.toContain('Repeated tool or foreground shell failures')
+  expect(JSON.stringify(model.requests[4]!.messages)).toContain('Repeated tool or foreground shell failures')
   expect(JSON.stringify(model.requests[16]!.messages)).toContain('Review the investigation direction.')
   expect(model.requests[16]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
+})
+
+it('keeps discovery and skill loading available while stalled experiments remain blocked', async () => {
+  const { agent, controller, model } = await load(false, 0, { skills: true, analysisReviewSteps: 2 })
+  await operator(controller, agent)({ kind: 'create', title: 'Inspect material', objective: 'Identify a supported analysis method', environmentIds: ['local'], maxAttempts: 1 })
+  const search = independentTool(agent.ctx, 'web_search')
+  model.nativeCalls = [...Array.from({ length: 4 }, () => ({ name: 'security_scope', args: {} })),
+    { name: 'security_capabilities', args: { query: 'pefile' } },
+    { name: 'security_command', args: () => ({ command: JSON.stringify({ operationId: 'select-native',
+      expectedRevision: controller.view(agent.id).revision,
+      action: { kind: 'modules', selection: { mode: 'auto', modules: ['reverse.native'], reason: 'Inspect native format' } } }) }) },
+    { name: 'skill', args: { name: 'security-native' } },
+    { name: 'security_environment', args: { environmentId: 'local', toolId: 'pefile', cached: true } },
+    { name: 'web_search', args: {} },
+    { name: 'security_checkpoint', args: { phase: 'recon', title: 'Native input', summary: 'The material has conflicting format hints.',
+      reason: 'A structured header read distinguishes the candidate formats.', next: 'Read the supported header fields.', evidenceIds: [], findingIds: [] } },
+    { name: 'web_search', args: {} }]
+  agent.followup(webPrompt('Find the appropriate inspection method.'))
+  await agent.whenIdle()
+  const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
+  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([false, false, false, false, true, false, false])
+  expect(model.requests[4]?.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining(['skill', 'security_capabilities', 'security_environment']))
+  expect(model.requests[8]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
+  expect(model.requests[10]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  expect(search).toHaveBeenCalledOnce()
+})
+
+it('reviews failed shell executions across intervening reads and resets after a successful execution', async () => {
+  const { agent, controller, model } = await load(false, 0, { native: true, analysisReviewSteps: 100 })
+  await operator(controller, agent)({ kind: 'create', title: 'Validate measurement', objective: 'Compare parser behavior', environmentIds: ['local'], maxAttempts: 1 })
+  const name = process.platform === 'win32' ? 'pwsh' : 'bash'
+  const failed = { name, args: { command: 'exit 7', description: 'Controlled failing parser' } }
+  const succeeded = { name, args: { command: 'exit 0', description: 'Successful control' } }
+  const read = { name: 'security_scope', args: {} }
+  model.nativeCalls = [failed, read, succeeded, failed, read, failed]
+  agent.followup(webPrompt('Check the measurement before searching.'))
+  await agent.whenIdle()
+  expect(JSON.stringify(model.requests[5]?.messages)).not.toContain('Repeated tool or foreground shell failures')
+  expect(JSON.stringify(model.requests[6]?.messages)).toContain('Repeated tool or foreground shell failures')
+  expect(JSON.stringify(model.requests[6]?.messages)).toContain('security_capabilities')
+  const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
+  expect(results.every(event => !event.data.message.isError)).toBe(true)
 })
 
 it('requires a committed checkpoint before further coordinator experiments after two scheduled reviews', async () => {
@@ -2552,7 +2594,10 @@ it('validates typed checkpoints and preserves direction identity across updates'
   await operator(controller, agent)({ kind: 'create', title: 'Format investigation', objective: 'Identify input', environmentIds: ['local'], maxAttempts: 1 })
   const args = { phase: 'recon', title: 'Inspect structure', reason: 'Conflicting format hints', summary: 'Candidate format only',
     next: 'Validate lengths', evidenceIds: [], findingIds: [] }
-  expect((await execute(ctx, agent, 'security_checkpoint', { ...args, summary: 'x'.repeat(301) }, 'invalid-progress')).isError).toBe(true)
+  const invalid = await execute(ctx, agent, 'security_checkpoint', { ...args, summary: 'x'.repeat(301) }, 'invalid-progress')
+  expect(invalid.isError).toBe(true)
+  expect(JSON.stringify(invalid.content)).toContain('under 150 characters')
+  expect(JSON.stringify(invalid.content)).toContain('Nothing was saved')
   expect(controller.checkpointId(agent.id)).toBe('')
   expect((await execute(ctx, agent, 'security_checkpoint', args, 'first-progress')).isError).toBe(false)
   const id = controller.checkpointId(agent.id)

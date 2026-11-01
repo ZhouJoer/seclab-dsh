@@ -636,7 +636,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           phase: { type: 'string', enum: phaseSchema.options, required: true },
           title: { type: 'string', required: true, description: 'Research direction, at most 100 characters.' },
           reason: { type: 'string', required: true, description: 'Why this direction is warranted, at most 300 characters.' },
-          summary: { type: 'string', required: true, description: 'Established result, coverage and uncertainty, at most 300 characters.' },
+          summary: { type: 'string', required: true, description: 'One short sentence: established result and uncertainty, at most 300 characters. Keep detailed traces in artifacts.' },
           next: { type: 'string', required: true, description: 'Next distinguishing experiment or blocker, at most 300 characters.' },
           evidenceIds: { type: 'array', items: { type: 'string' }, required: true, description: 'Saved evidence IDs; use [] when none. Paths and tool call IDs are not evidence IDs.' },
           findingIds: { type: 'array', items: { type: 'string' }, required: true, description: 'Saved finding IDs; use [] when none.' },
@@ -645,7 +645,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error('Security tools require a session')
           for (const [field, limit] of [['title', 100], ['reason', 300], ['summary', 300], ['next', 300]] as const) {
-            if (args[field].length > limit) throw new Error(`${field} has ${args[field].length} characters; maximum ${limit}. Keep a concise summary and reference detailed artifacts.`)
+            if (args[field].length > limit) throw new Error(`${field} has ${args[field].length} characters; maximum ${limit}. Rewrite it as one sentence under ${Math.floor(limit / 2)} characters rather than trimming a few characters. Keep detailed traces in an artifact and reference its path. Nothing was saved.`)
           }
           const controller = await this.ready
           const before = controller.view(exec.agent.id)

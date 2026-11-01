@@ -410,7 +410,7 @@
           },
           "summary": {
             "type": "string",
-            "description": "Established result, coverage and uncertainty, at most 300 characters."
+            "description": "One short sentence: established result and uncertainty, at most 300 characters. Keep detailed traces in artifacts."
           },
           "next": {
             "type": "string",
@@ -1587,7 +1587,7 @@
             },
             "summary": {
               "type": "string",
-              "description": "Established result, coverage and uncertainty, at most 300 characters."
+              "description": "One short sentence: established result and uncertainty, at most 300 characters. Keep detailed traces in artifacts."
             },
             "next": {
               "type": "string",
