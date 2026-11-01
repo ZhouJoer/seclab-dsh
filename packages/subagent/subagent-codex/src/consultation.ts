@@ -123,7 +123,7 @@ export class CodexConsultation extends Service {
       cwd, model, ...effort === undefined ? {} : { reasoningEffort: effort },
       permissionMode: 'read-only', env: {}, disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
       spawn: spec => this.ctx.subprocess.spawn(spec),
-      onTool: observation => recordCodexTool(request.parent.session, observation, this.config.toolRecordBytes),
+      onTool: (observation) => { recordCodexTool(request.parent.session, observation, this.config.toolRecordBytes) },
     })
   }
 }
