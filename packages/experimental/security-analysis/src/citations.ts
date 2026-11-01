@@ -56,5 +56,7 @@ export function resolveCitation(events: readonly SessionEvent[], inherited: numb
     return { callId: call.data.callId, resultSeq: event.seq, title: `${citation.path}:${citation.startLine}-${citation.endLine}`,
       workspaceRoot: cwd, bytes: Buffer.from(JSON.stringify(citation)), incomplete: parsed.data.truncatedLines === undefined, citation }
   }
-  throw new Error('No committed read covers this source citation; read the requested lines first')
+  throw new Error(`No committed read covers ${reference.path}:${reference.startLine}-${reference.endLine}. `
+    + 'Each source citation must fit within one successful read result; separate pages are not merged. '
+    + 'Submit a separate citation for each observed page, or read this exact range in one call before retrying.')
 }

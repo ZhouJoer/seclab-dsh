@@ -33,7 +33,7 @@ export function renderReport(records: SecurityRecord[], limits: ReportLimits): R
   const links = (ids: readonly string[]) => ids.map((id) => {
     const index = references.findIndex(item => item.value.id === id)
     if (index < 0) throw new Error('Report refers to missing evidence')
-    return `[${index + 1}](#reference-${index + 1})`
+    return `[^reference-${index + 1}]`
   }).join(' ')
   const findingLine = (record: Extract<SecurityRecord, { kind: 'finding' }>) => {
     const finding = record.value
@@ -60,13 +60,21 @@ export function renderReport(records: SecurityRecord[], limits: ReportLimits): R
     ...(extra.length ? ['其他发现见补充发现。'] : []), '', '## 限制与未覆盖范围', clean(outcome.limitations) || '未提交额外限制；这不构成完整覆盖证明。', '', '## 引用')
   references.forEach((record, index) => {
     const evidence = record.value
-    lines.push('', `<a id="reference-${index + 1}"></a>`, `### ${index + 1}. ${clean(evidence.title)}`)
-    if (evidence.incomplete) lines.push('此观察不完整或未证明完整性。')
+    const callIds = Array.isArray(evidence.request.callIds) && evidence.request.callIds.every(id => typeof id === 'string')
+      ? evidence.request.callIds : [evidence.source.callId]
+    const detail = [clean(evidence.title), '', `证据 ID：${clean(evidence.id)}`,
+      `来源：${clean(evidence.provider)} / ${clean(evidence.operation)}`,
+      `会话：${clean(evidence.source.sessionId)}；调用：${callIds.map(clean).join('、')}`,
+      `原始产物 SHA-256：${evidence.artifact.sha256}`]
+    if (evidence.incomplete) detail.push('', '此观察不完整或未证明完整性。')
+    if (evidence.failure) detail.push('', `执行失败：${clean(evidence.failure)}`)
     if (evidence.citation) {
       const citation = evidence.citation
-      lines.push(`${clean(citation.path)}:${citation.startLine}-${citation.endLine}`, '',
+      detail.push('', `${clean(citation.path)}:${citation.startLine}-${citation.endLine}`, '',
         ...citation.text.split('\n').map(line => '    ' + line))
-    } else lines.push(clean(evidence.summary))
+    } else detail.push('', clean(evidence.summary))
+    lines.push('', `[^reference-${index + 1}]: ${detail[0]}`,
+      ...detail.slice(1).map(line => line ? '    ' + line : ''))
   })
   const recommendations = outcome.recommendations?.map((item) => {
     const finding = findings.find(record => record.value.id === item.findingId)
@@ -74,7 +82,8 @@ export function renderReport(records: SecurityRecord[], limits: ReportLimits): R
     return `- ${clean(finding.value.title)}：${clean(item.text)}`
   }) ?? []
   const documents: RenderedReport = { markdown: lines.join('\n') + '\n',
-    ...(extra.length ? { findingsMarkdown: [`# ${title}：补充发现`, '', ...extra.map(item => findingLine(item).replaceAll('](#reference-', '](report.md#reference-')), ''].join('\n') } : {}),
+    ...(extra.length ? { findingsMarkdown: [`# ${title}：补充发现`, '', ...extra.map(findingLine),
+      ...lines.slice(lines.indexOf('## 引用')), ''].join('\n') } : {}),
     ...(recommendations.length ? { recommendationsMarkdown: [`# ${title}：修复建议`, '', ...recommendations, ''].join('\n') } : {}) }
   for (const content of [documents.markdown, documents.findingsMarkdown, documents.recommendationsMarkdown])
     if (content !== undefined && Buffer.byteLength(content) > limits.outputBytes)

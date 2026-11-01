@@ -22,11 +22,23 @@ it('renders exact observed excerpts, supplied narrative and separate recommendat
   const report = renderReport(records, limits)
   expect(report.markdown).toContain('## 范围\n- Source workspace：/source')
   expect(report.markdown).toContain('src/login.ts:2-3')
-  expect(report.markdown).toContain('    if (user) {\n      run();')
+  expect(report.markdown).toContain('        if (user) {\n          run();')
   expect(report.markdown).toContain('疑似')
-  expect(report.markdown).toContain('[1](#reference-1)')
+  expect(report.markdown).toContain('[^reference-1]')
+  expect(report.markdown).toContain('[^reference-1]: src/login.ts:2-3')
+  expect(report.markdown).toContain('证据 ID：evidence')
+  expect(report.markdown).toContain('会话：session；调用：read')
+  expect(report.markdown).toContain('原始产物 SHA-256：' + 'a'.repeat(64))
+  expect(report.markdown).not.toContain('<a id=')
   expect(report.markdown).not.toContain('验证调用者权限')
   expect(report.recommendationsMarkdown).toContain('验证调用者权限')
+})
+
+it('includes reference definitions in a standalone findings appendix', () => {
+  const records = fixture()
+  const finding = records.find(item => item.kind === 'finding')!
+  records.push({ kind: 'finding', value: { ...finding.value, id: 'second', title: 'Additional finding' } })
+  expect(renderReport(records, limits).findingsMarkdown).toContain('[^reference-1]: src/login.ts:2-3')
 })
 it('does not require new narrative fields for legacy saved outcomes', () => {
   const records = fixture()
@@ -34,6 +46,20 @@ it('does not require new narrative fields for legacy saved outcomes', () => {
   delete project.value.completion!.summary
   delete project.value.completion!.analysis
   expect(renderReport(records, limits).markdown).not.toContain('## 执行摘要')
+})
+
+it('preserves every captured call and failure in native log references', () => {
+  const records = fixture()
+  const evidence = records.find(item => item.kind === 'evidence')!.value
+  delete evidence.citation
+  evidence.provider = 'session-tool'
+  evidence.request = { callIds: ['first', 'second'] }
+  evidence.failure = 'output file missing'
+  evidence.incomplete = true
+  const markdown = renderReport(records, limits).markdown
+  expect(markdown).toContain('调用：first、second')
+  expect(markdown).toContain('执行失败：output file missing')
+  expect(markdown).toContain('此观察不完整或未证明完整性。')
 })
 it('renders older uncertain evidence without asserting completeness', () => {
   const records = fixture()

@@ -3199,6 +3199,32 @@ it('delivers coordinator outcomes through the logged tool and reuses the operato
   expect(markdown).toContain('未运行原始应用')
 })
 
+it('imports a selected workspace file through the model tool and observes its immutable identity', async () => {
+  const { ctx, agent, controller } = await load()
+  const workspace = await mkdtemp(join(tmpdir(), 'dsh-loader-selected-workspace-'))
+  roots.push(workspace)
+  const path = join(workspace, 'sample.exe')
+  const sample = Buffer.alloc(128)
+  sample.write('MZ')
+  sample.writeUInt32LE(64, 60)
+  sample.write('PE\0\0', 64)
+  sample.writeUInt16LE(0x8664, 68)
+  await writeFile(path, sample)
+  await controller.createWorkspaceTask(agent.id, 'selected-workspace', workspace, { title: 'Workspace binary' },
+    async () => ({ environmentIds: ['local'], maxAttempts: 3 }))
+  const imported = await execute(ctx, agent, 'security_command', { command: JSON.stringify({
+    operationId: 'workspace-import', expectedRevision: controller.view(agent.id).revision,
+    action: { kind: 'import', path, label: 'sample.exe' },
+  }) })
+  expect(imported.isError).toBe(false)
+  const file = controller.view(agent.id).records.find(item => item.kind === 'asset' && !('kind' in item.value))
+  if (file?.kind !== 'asset') throw new Error('Missing adapter input')
+  const observed = await execute(ctx, agent, 'security_static', { provider: 'binary', operation: 'identity',
+    assetId: file.value.id, environmentId: 'local', parameters: '{}' }, 'workspace-identity')
+  expect(observed.isError, JSON.stringify(observed)).toBe(false)
+  expect(controller.view(agent.id).records.some(item => item.kind === 'evidence' && item.value.assetId === file.value.id)).toBe(true)
+})
+
 it.each([20000, 100000])('starts a workspace containing %i source files without importing its tree', async (count) => {
   const { ctx, agent, controller, model } = await load(false, 0, { taskIntake: 'current' })
   const workspace = agent.session.header.cwd!

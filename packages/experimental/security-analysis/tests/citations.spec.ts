@@ -29,3 +29,14 @@ it('retains uncertainty for legacy read metadata', () => {
   const events = read('first', 0, 'old', null)
   expect(resolveCitation(events, 0, cwd, reference).incomplete).toBe(true)
 })
+
+it('explains how to cite separate read windows without combining possibly different file versions', () => {
+  const first = read('first', 0, 'before')
+  const second = read('second', 2, 'after').map(event => event.type === 'tool/result'
+    ? { ...event, data: { ...event.data, meta: { path: resolve(cwd, 'src/login.ts'), lines: [{ number: 4, text: 'after' }], truncatedLines: [] } } }
+    : event)
+  expect(() => resolveCitation([...first, ...second], 0, cwd, { ...reference, endLine: 4 }))
+    .toThrow('src/login.ts:3-4. Each source citation must fit within one successful read result')
+  expect(resolveCitation([...first, ...second], 0, cwd, reference).citation?.text).toBe('before')
+  expect(resolveCitation([...first, ...second], 0, cwd, { ...reference, startLine: 4, endLine: 4 }).citation?.text).toBe('after')
+})

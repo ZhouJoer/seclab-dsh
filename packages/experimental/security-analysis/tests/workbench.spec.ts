@@ -752,6 +752,30 @@ describe('security workbench', () => {
       material: { kind: 'files', directory: true, files: [{ name: '../escape.js', base64: 'eA==' }] } })).rejects.toThrow()
   })
 
+  it('imports adapter inputs from the selected task workspace without granting sibling tasks access', async () => {
+    const { controller, send, artifacts } = await harness()
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-adapter-workspace-'))
+    onTestFinished(() => rm(workspace, { recursive: true, force: true }))
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-unselected-workspace-'))
+    onTestFinished(() => rm(outside, { recursive: true, force: true }))
+    const outsidePath = join(outside, 'sample.exe')
+    await writeFile(outsidePath, Buffer.from('MZ unselected sample'))
+    const path = join(workspace, 'sample.exe')
+    await writeFile(path, Buffer.from('MZ workspace sample'))
+    await controller.createWorkspaceTask(SessionId('workspace'), 'workspace-task', workspace, { title: 'Binary' },
+      async () => ({ environmentIds: ['local'], maxAttempts: 3 }))
+    await send({ kind: 'import', path, label: 'Binary' }, false, 'workspace')
+    const sample = controller.view('workspace').records.find(item => item.kind === 'asset' && !('kind' in item.value))
+    expect(sample?.value).toMatchObject({ format: 'pe', identity: 'measured' })
+    if (sample?.kind !== 'asset' || !('artifact' in sample.value)) throw new Error('Missing imported file')
+    expect((await artifacts.read(sample.value.artifact)).toString()).toBe('MZ workspace sample')
+    await send({ kind: 'import-source', path, label: 'Source snapshot' }, false, 'workspace')
+    for (const kind of ['import', 'import-source'] as const) {
+      await expect(send({ kind, path, label: 'Foreign workspace' })).rejects.toThrow('outside')
+      await expect(send({ kind, path: outsidePath, label: 'Escape' }, false, 'workspace')).rejects.toThrow('outside')
+    }
+  })
+
   it('exposes binary directory members and reuses saved members after the original path disappears', async () => {
     const { controller, journal, artifacts, send } = await harness()
     const view = await controller.importMaterials('parent', { operationId: randomUUID(), expectedRevision: journal.view().revision,

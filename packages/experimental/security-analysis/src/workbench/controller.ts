@@ -885,6 +885,8 @@ export class SecurityController {
         }
         const binding = this.requireBinding(view, sessionId)
         const project = this.project(view, binding.engagementId)
+        const importRoots = [...this.options.importRoots,
+          ...(project.workspaceMaterials ? [project.workspaceMaterials.root] : [])]
         if (binding.role !== 'coordinator' && !['finding', 'remember'].includes(action.kind))
           throw new Error('This role cannot change the check plan')
         if (project.stopped && !['resume', 'revoke'].includes(action.kind) && !(operator && action.kind === 'reconcile')) throw new Error('Project is stopped')
@@ -1044,7 +1046,7 @@ export class SecurityController {
             ]
           }
           case 'import-source': {
-            const artifact = await importSource(this.artifacts, action.path, operator ? [action.path] : this.options.importRoots,
+            const artifact = await importSource(this.artifacts, action.path, operator ? [action.path] : importRoots,
               { entries: this.options.maxDerivedAssets, bytes: this.options.maxArtifactBytes })
             return this.importedRecords(sourceAssetSchema.parse({
               kind: 'source', id: randomUUID(), engagementId: project.id, label: action.label,
@@ -1067,7 +1069,7 @@ export class SecurityController {
             return this.importedRecords(sample)
           }
           case 'import': {
-            const measured = await this.artifacts.import(action.path, operator ? [action.path] : this.options.importRoots)
+            const measured = await this.artifacts.import(action.path, operator ? [action.path] : importRoots)
             const sample = fileAssetSchema.parse({
               id: randomUUID(),
               engagementId: project.id,
