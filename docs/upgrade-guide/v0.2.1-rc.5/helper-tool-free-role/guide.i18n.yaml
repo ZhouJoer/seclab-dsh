@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.5/helper-tool-free-role/guide.md
+/:
+  en: 553ba2f2d1a867dc
+  zh: dc52836de3d33f05
+/preserve-the-tool-free-helper-role-in-composed-system-prompts:
+  en: 03bfb123a8189be9
+  zh: 87e7383fd93d3fdd
+/preserve-the-tool-free-helper-role-in-composed-system-prompts/change:
+  en: 99ead5e7f78f6034
+  zh: 8d1a4598d0337c52
+/preserve-the-tool-free-helper-role-in-composed-system-prompts/migration:
+  en: 5f883a54ad717f15
+  zh: 82eee89211886ed5

@@ -969,7 +969,10 @@ async function verifyHeaders(scenario: HeadlessScenario, actualLogs: readonly Se
     for (const [index, header] of headers.entries()) {
       const selectedSchemas = childSchemas.get(logIndex)?.[index]
       const base = childHeaders.get(logIndex)?.[index] ?? reconstructed[index] ?? reconstructed[0]
-      const expected = selectedSchemas === undefined ? base : { ...base as JsonObject, tools: selectedSchemas }
+      // This retained replay owns a text-only delivery header; the shared pin owns ordinary wrap-up tools.
+      const deliveryOnly = scenario.name === 'security-workbench' && logIndex === 0 && index === 1
+      const expected = deliveryOnly ? Object.fromEntries(Object.entries(base as JsonObject).filter(([key]) => key !== 'tools'))
+        : selectedSchemas === undefined ? base : { ...base as JsonObject, tools: selectedSchemas }
       expect(headerForChildSchemaComparison(header, selectedSchemas), `${scenario.name}: request header ${index + 1}`).toEqual(expected)
     }
     if (prompts.length > 0) {
@@ -1419,6 +1422,28 @@ describe('headless recorded-session snapshots', () => {
               expect(results.every(result => result.isError === false)).toBe(true)
               expect(log).toContain('# Office task routing')
             }
+            if (scenario.name === 'security-workbench') {
+              const events = parseSessionLog(actualLogs[0]!.content)
+              expect(events.filter(event => event.type === 'request/header')).toHaveLength(2)
+              const closing = events.findIndex(event => event.type === 'user/message'
+                && event.data.source.kind === 'plugin:security-analysis-budget')
+              expect(closing).toBeGreaterThan(0)
+              const preceding = events.slice(0, closing).findLast(event => event.type === 'request/header')
+              if (preceding?.type !== 'request/header') throw new Error('Missing pre-wrap-up request header')
+              const denied = events.findIndex(event => event.type === 'tool/result' && event.data.message.toolCallId === 'denied-empty-job-list')
+              expect(denied).toBeGreaterThan(closing)
+              for (const event of events.slice(closing, denied)) {
+                if (event.type === 'request/header') expect(event.data.header.tools).toEqual(preceding.data.header.tools)
+              }
+              expect(events[denied]).toMatchObject({ data: { message: { isError: true } } })
+              expect(events.slice(denied).filter(event => event.type === 'request/header').map(event => event.data.header.tools)).toEqual([undefined])
+              expect(events.slice(denied).filter(event => event.type === 'assistant/message')).toHaveLength(1)
+              expect(events.at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'completed' } } })
+              expect(actualLogs[0]!.content).toContain('Deliver the final response now from existing observations')
+              const saved = events.find(event => event.type === 'tool/result' && event.data.message.toolCallId === 'save-budget-checkpoint')
+              expect(saved?.type === 'tool/result' && saved.data.message.isError === false).toBe(true)
+              expect(actualLogs[0]!.content).toContain('A permitted save action succeeded')
+            }
             if (scenario.name === 'security-native-citations' || scenario.name === 'security-observation-failure') {
               const results = parseSessionLog(actualLogs[0]!.content)
                 .flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
@@ -1434,7 +1459,23 @@ describe('headless recorded-session snapshots', () => {
             if (scenario.name === 'helper') {
               const events = parseSessionLog(actualLogs[0]!.content)
               expect(events.filter(event => event.type === 'tool/result' && event.data.message.toolCallId.startsWith('call_probe'))).toHaveLength(2)
-              expect(events.filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-checkpoint')).toHaveLength(1)
+              expect(events.filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-checkpoint')).toHaveLength(0)
+              expect(events.filter(event => event.type === 'helper/auto-end')).toMatchObject([
+                { data: { status: 'completed', model: 'deepseek-v4-flash', reasoningEffort: 'high', answer: 'AUTO_CHECKED',
+                  usage: { inputTokens: 97, outputTokens: 86, cacheReadTokens: 2816, reasoningTokens: 17 } } },
+              ])
+              expect(events.some(event => event.type === 'user/message' && event.data.source.kind === 'helper-automatic')).toBe(true)
+              const automatic = parseSessionLog(actualLogs[2]!.content)
+              expect(automatic.find(event => event.type === 'request/header')).toMatchObject({
+                data: { header: { config: { model: 'deepseek-v4-flash', reasoningEffort: 'high', maxTokens: 64 } } },
+              })
+              expect(automatic.filter(event => event.type === 'request/header').map(event => event.data.header.tools)).toEqual([undefined, undefined])
+              expect(automatic.filter(event => event.type === 'request/header').map(event => event.data.header.config.maxTokens)).toEqual([64, 128])
+              expect(automatic.filter(event => event.type === 'turn/end').map(event => event.data.reason.kind)).toEqual(['max-tokens', 'completed'])
+              expect(automatic.filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-output-recovery')).toHaveLength(1)
+              expect(automatic.find(event => event.type === 'tool/result')).toMatchObject({
+                data: { message: { isError: true, content: [{ type: 'text', text: 'Error: The advisor has no tool access' }] } },
+              })
             }
             if (scenario.name === 'advanced-toolchain') verifyAdvancedToolchain(actualLogs)
             if (scenario.name === 'session-query-spill') {

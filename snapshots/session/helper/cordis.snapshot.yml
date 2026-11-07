@@ -42,6 +42,7 @@
             name: DeepSeek
             models:
               - id: deepseek-v4-flash
+                reasoningEfforts: [high]
               - id: deepseek-v4-pro
                 reasoningEfforts: [high]
 
@@ -55,3 +56,7 @@
         provider: deepseek-official
         model: deepseek-v4-pro
         reasoningEffort: high
+
+- insert:
+    - id: helper-automatic-options-fixture
+      name: '../../../packages/subagent/helper/tests/automatic-options-fixture.mjs'

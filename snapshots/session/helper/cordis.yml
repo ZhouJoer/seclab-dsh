@@ -13,3 +13,7 @@
         provider: deepseek-official
         model: deepseek-v4-pro
         reasoningEffort: high
+
+- insert:
+    - id: helper-automatic-options-fixture
+      name: '../../../packages/subagent/helper/tests/automatic-options-fixture.mjs'

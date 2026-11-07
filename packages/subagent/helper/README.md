@@ -32,6 +32,8 @@ Configure the API endpoint, key, protocol and model on the Models page. Advisor 
 
 The global `enabled` and `mode` preferences apply to new top-level sessions; `mode` defaults to `normal`. `/advisor normal` and `/advisor proactive` enable the selected mode for the current session; `/advisor on` selects normal mode and `/advisor off` disables Advisor. The `/helper` command remains an alias. The session log retains the selected mode; earlier policies without a mode restore as normal. Disabling removes the next request's tool and rejects subsequent calls; use the normal Stop control to cancel an already running consultation. Model preferences are sampled once per call. Unsupported saved efforts fail without fallback. An empty effort explicitly selects the provider default; Web model selection prefers `high` when available.
 
+API consultations use `apiMaxTokens` (default 32,768) for each analysis request. `apiRecoveryEnabled` defaults to false. When enabled, one delivery request uses `apiRecoveryReasoningEffort` (default `low`) and `apiRecoveryMaxTokens` (default 8,192). Both efforts must be supported by the selected model; unsupported recovery settings fail before inference. Codex consultations do not use these API settings.
+
 Each call records its backend, selected/actual model, effort, terminal status, elapsed time and reported token counts. Missing usage remains absent. Codex cumulative notifications replace earlier totals, and cached input is subtracted from the DSH uncached input count. API calls link to their full child session. Statistics come from the complete projection, independently of transcript paging; inherited fork calls are excluded and unfinished restored calls become interrupted.
 
 -----
@@ -48,6 +50,16 @@ The session projection derives only from recorded policy, start and end events. 
 
 Host plugins can call `consultAutomatically` in an enabled proactive session. Automatic calls use `helper/auto-start` and `helper/auto-end` with a consultation ID, question, final advice and the same metrics as tool calls. They share the read-only provider execution and cancellation path. Automatic consultations cannot overlap another consultation in the same parent. Provider failures reach the caller after child cleanup; cleanup failures remain terminal.
 
+The optional fifth argument, `ApiConsultationOptions`, selects a complete API route, reasoning effort, per-request output-token cap and `toolAccess` for that call. It leaves saved preferences and manual consultations unchanged. Omitting it uses the saved backend and read-only access. `toolAccess: 'none'` gives a fresh child only the submitted evidence, hides all tools and rejects tool execution; `'read-only'` keeps the existing read allowlist. The parent records the actual model and usage; its linked child log records the provider, model and output cap. `recovery` accepts an explicit effort and output cap; omission or `false` disables recovery even when saved manual API recovery is enabled.
+
+Tool-free API advisers retain the inherited system policy and append a final role section: “You are a tool-free adviser for the parent agent.” The section assigns execution, skill loading, job management, progress saving and task completion to the parent, while preserving authorization, safety and evidence requirements. The child can return advice without performing those operations. A complete system prompt or assembly override that removes this section rejects the consultation before model inference; use composable prompt sections for tool-free consultations. The child log records the assembled system prompt and any terminal failure. Read-only API and Codex advisers retain their existing instructions.
+
+An enabled delivery policy can follow a known output-limit finish or a completed response without visible text with one separate turn in the same child. The original incomplete turn remains in the log. Recovery hides and denies tools, makes one conversation request, and asks for established findings, remaining uncertainty and the next check. Only the recovery turn's completed, nonempty text can become advice; an earlier partial answer is never substituted. Provider errors, cancellation and unknown outcomes are not retried. The caller's deadline covers both turns, and reported usage sums both turns.
+
+Host plugins can use `installOutputRecovery` for a continuing main agent. Its durable attempt record prevents repeated recovery after reload; the caller chooses one allowance for the session or one after each admitted human input. New human input withdraws an unclaimed delivery prompt. A delivery request already claimed may finish; subsequent human work uses normal request controls and tools. Human steering that shares the claimed batch takes precedence over delivery instructions.
+
+Callers await the controller's `dispose()`. Disabling recovery cancels its active delivery turn and retains tool guards until that turn settles; unrelated queued input remains available. The Agent owns any remaining config restoration until the next normal request header commits, including a request for a different model. A failure before header persistence leaves restoration available for the next request. No synthetic request header is appended during teardown.
+
 </details>
 
 -----
@@ -59,20 +71,20 @@ Host plugins can call `consultAutomatically` in an enabled proactive session. Au
 
 #### What the model sees
 
-The main model completes initial reconnaissance without consulting Advisor. Normal mode describes when expert advice can help afterward and adds no progress reminders. Proactive mode uses an explicit task-specific review threshold when supplied; otherwise it asks the main model to consult after roughly three materially different strategies for the same obstacle produce no actionable evidence or progress. A short, logged progress reminder follows the first eligible top-level tool execution in each turn or after a policy change. Further calls in that turn add no duplicate reminder; `advisor` calls and child agents receive none. The model assesses strategies, grouping related searches and variations together; this service does not count attempts or initiate consultations on its own. Once stalled, the model consults before further retries, asking for more information or reporting the task blocked, even when it expects the adviser may also be unable to solve the problem. Repeated errors, additional guesses and larger searches without a new lead do not establish progress. The model supplies the problem, evidence, approaches and observed results, separating facts from assumptions. After advice, it verifies the smallest recommended step and continues; new evidence or a new question can warrant another consultation. The adviser receives the submitted materials and read-only instructions.
+The main model completes initial reconnaissance itself. Proactive mode asks it to run the smallest executable check before adopting a premise that excludes candidates or directs substantial work. The check must distinguish competing predictions, and its expected result or positive control must have independent support. Tool failures and empty searches do not reject an entire explanation. The `advisor` tool receives the premise, original evidence, actual check and unresolved decision. The model verifies recommended checks before changing direction and consults again only for new evidence or a materially different question. Helper does not count tool executions or strategies and does not add first-tool reminders. Other Host plugins may append logged evidence-execution notices. Normal mode retains optional expert consultation after reconnaissance.
 
 #### Token effect
 
-Progress reminders add input tokens in proactive mode. Normal mode and disabling Advisor stop new reminders. The tool returns the expert's final text or an explicit failure. API advisers can inspect files using the allowed tools. Codex advisers may use native file-reading commands inside the enforced read-only sandbox. Neither adviser may recursively consult or apply implementation changes.
+The tool description and submitted evidence consume input tokens. The tool returns complete advice or an explicit failure. Optional delivery recovery adds one input request, including available prior analysis, and its separately capped output; increasing a token cap alone does not guarantee delivery. API advisers can inspect files using the allowed tools; automatic calls with no tool access use only submitted evidence. Codex advisers may use native file-reading commands inside the enforced read-only sandbox. Neither adviser may recursively consult or apply implementation changes.
 
 #### KV Cache effect
 
-Each adviser has an independent request prefix. Changing its model, effort or available tools changes that prefix. The main conversation appends progress reminders, submitted calls and returned advice without rewriting earlier messages. Switching modes changes the tool description in subsequent requests.
+Each adviser has an independent request prefix. Changing its model, effort or available tools changes that prefix. The main conversation appends submitted calls and returned advice without rewriting earlier messages. Delivery recovery appends its prompt and changes that request's effort, output cap and available tools. Switching modes changes the tool description in subsequent requests.
 
 ## Known Limitations and Deferred Work
 <a id="known-limitations-and-deferred-work"></a>
 
-- Each consultation waits in the foreground; no automatic retries or backend failover are performed.
+- Each consultation waits in the foreground. Optional delivery recovery handles only known incomplete output; it does not retry provider failures or switch backends, and it cannot guarantee a complete or correct model answer.
 - Codex intermediate tool traffic is not a DSH child log. Its final advice and reported usage are retained.
 - The caller supplies relevant evidence. Missing credentials, unavailable account models and provider failures remain visible errors.
 

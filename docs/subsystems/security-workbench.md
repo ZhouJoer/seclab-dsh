@@ -55,6 +55,23 @@ Source: [`packages/experimental/security-analysis/src/external-web-provider.ts`]
 Optional security profile service; default application compositions remain independent.
 
 ```ts cordis-catalog
+/** Read the current in-memory analysis allowance without advancing it; reload does not reconstruct accounting.
+ * @param agent Session owner whose live accounting and task binding are inspected.
+ * @returns Exploring, closing once accrued usage reaches the allowance, or finalizing after saving or
+ * ending a budget-limited turn. Internal wake-ups retain the closed phase; human input claimed for a new turn
+ * resets it before tool assembly.
+ */
+getAnalysisPhase(agent: Agent): AnalysisPhase
+
+/** Save model-authored progress with coordinator permissions and a committed receipt.
+ * @param agent - Session owner on whose behalf the checkpoint is saved.
+ * @param checkpoint - Validated progress fields; this never declares task completion.
+ * @param callId - Logged tool call owning the save operation.
+ * @param signal - Caller cancellation, combined with service shutdown.
+ * @returns Committed revision and changed record identities; rejected commands save nothing.
+ */
+async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityCommand['action'], { kind: 'checkpoint' }>, 'kind' | 'id'>, callId: ToolCallId, signal: AbortSignal): Promise<CommandReceipt>
+
 /** Read engineering suggestions without loading an analysis Agent.
  * @param projectId - optional task filter.
  * @returns the independent improvement revision and visible records. */
@@ -415,7 +432,7 @@ Optional security profile service; default application compositions remain indep
 @Remote('projectMaterialDocument') async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument>
 ```
 
-Types: [Agent](core.md) · [SessionId](core.md)
+Types: [Agent](core.md) · [SessionId](core.md) · [ToolCallId](core.md)
 
 Source: [`packages/experimental/security-analysis/src/index.ts`](../../packages/experimental/security-analysis/src/index.ts)
 <!-- END GENERATED cordis-surface -->

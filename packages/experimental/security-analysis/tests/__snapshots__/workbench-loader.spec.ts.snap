@@ -11,6 +11,8 @@ exports[`recovers binary identity from a directory asset by importing one file w
 
 exports[`recovers binary identity from a directory asset by importing one file without changing child permissions > file identity parameters 1`] = `"Error: binary identity accepts no parameter keys; select the imported file with assetId and pass parameters "{}". Example: {"provider":"binary","operation":"identity","assetId":"<file assetId>","environmentId":"<environmentId>","parameters":"{}"}. Use hex or strings for offset and length."`;
 
+exports[`returns the measured PE image interval to the model before querying an outside instruction address > PE outside-address diagnostic 1`] = `"Error: {"evidenceId":"<evidence-id>","failure":"Virtual address 0x18001000 is outside the PE image range [0x180000000, 0x180002000). ImageBase is 0x180000000. Check the virtual address against this imported binary; no address was substituted.","incomplete":true}"`;
+
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > adb 1`] = `
 [
   {

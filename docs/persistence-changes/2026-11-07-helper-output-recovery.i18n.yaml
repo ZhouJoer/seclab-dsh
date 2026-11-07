@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-07-helper-output-recovery.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-07-helper-output-recovery.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-07-helper-output-recovery:
+  en: e0340b1ab873ba11
+  zh: f882d55004b33307
+/2026-11-07-helper-output-recovery/summary:
+  en: d502157f72048ce5
+  zh: 8d2686498dc30999
+/2026-11-07-helper-output-recovery/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-07-helper-output-recovery/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-07-helper-output-recovery/compatibility:
+  en: 2bbe9ad7e712ee9f
+  zh: 24f77631d25af72e
+/2026-11-07-helper-output-recovery/verification:
+  en: 8d5bac30cfd90c39
+  zh: 86dabfe3f55880c5
+/2026-11-07-helper-output-recovery/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

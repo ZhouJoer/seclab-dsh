@@ -78,6 +78,8 @@ kind: "package-reference"
 
 调用 `security_r2ghidra` 时传入函数入口地址。适配器在独立 radare2 进程内分析该入口，将反编译器报告的错误保留为不完整证据。若标注使响应超限，而伪代码本身能完整放入结果页，模型会直接收到完整伪代码。反编译最多可采集制品字节上限允许的输出。重复保留标注会超限时优先保留伪代码，丢弃原始输出会标记证据不完整。函数超过采集上限时需分段反汇编。
 
+对于未配置 `prefixArgs` 的 radare2/r2ghidra 安装，一致的 PE32/PE32+ 文件头会确定静态区间 `[ImageBase, ImageBase + SizeOfImage)`。反编译、反汇编与 `xrefs-from` 查询（包括 radare2 批量查询）会在查询前拒绝区间外地址，报告实测基址与排他上界，不猜测替代地址。区间内地址不保证映射到函数或节。`xrefs-to` 可引用外部目标；自定义启动器及未知或不一致的映像文件头不作此范围检查。
+
 对于已适配工具，security_capabilities 提供专用接口及操作。指定 toolIds、details 和 native: true，可加载未覆盖操作或不支持环境的既有高级流程。security_environment 默认省略已适配工具的启动配置；native: true 返回实测启动配置，外部容器库存始终保留该信息。操作员库存保留完整安装信息。导入定义不能替换默认语义接口。既有 Provider 和 Shell 流程继续可用，不会静默切换执行环境。
 
 在工具箱配置安装和可选的固定环境。toolConfiguration.path 保存 version 为 1 的 JSON：installations 依次以环境 ID、工具 ID 为键，bindings 将适配器绑定 ID 映射到环境 ID。每项安装包含 command、prefixArgs 和 versionArgs。toolConfiguration.environmentId 指定旧扁平文件所属本机环境；首次保存写入带版本格式。部署中的 environments[].tools 和 toolAdapters.bindings 提供默认值。未绑定适配器继承任务唯一的兼容环境。保存比较修订版本并原子替换文件；检测失败不修改配置。运行中的操作保留安装快照。
@@ -95,7 +97,7 @@ toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分�
 <a id="configure-analysis-providers"></a>
 ### 配置分析 provider
 
-调查指导区分结构识别、独立行为验证和目标完成。`analysisReviewFailures` 默认为连续 2 次同类失败且没有新增证据时咨询可用顾问。输入或环境改变可以支持重测；这是模型指导，不是程序自动认定工具结果产生了新证据。
+调查指导区分结构识别、独立行为验证和目标完成。`analysisReviewFailures` 默认为连续 2 次同类失败且没有新增证据时，用区分性对照检查测量方法。依据前提排除候选或扩大实验前，应引用原始证据、执行能区分竞争解释的检查，并说明实际结果及其能排除的范围。失败、不完整或截断的检查不能支持否定结论。若存在 `premise_check` 工具，可用它记录证据和检查；顾问负责检查后仍未解决的具体问题。建议和未执行的提案不属于执行证据。输入或环境改变可以支持重测。
 
 命令、静态观察和适配器失败保留系统错误码。ENOENT 表示路径不存在，EACCES/EPERM 表示权限拒绝，ENOEXEC 表示可执行格式不支持；恢复建议不会根据文字猜测杀软或网络原因。未知失败按原样传播。`security_help` 说明已保存证据 ID 与原生工具／源码引用；失败和不完整观察不等同于分析完成。
 
@@ -147,7 +149,7 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 
 | 角色 | 任务 | 可用分析能力 |
 |---|---|---|
-| `coordinator` | 规划、汇总与验证 | 领域工具、原生脚本、网页资料、jobs/goal/todo、可选的 `advisor`；执行已批准的验证计划 |
+| `coordinator` | 规划、汇总与验证 | 领域工具、原生脚本、网页资料、jobs/goal/todo、可选的 `premise_check` 和 `advisor`；执行已批准的验证计划 |
 | `reconnaissance` | `inventory` | 原生脚本、二进制身份/十六进制/字符串、Ghidra 清单、固定 adb 查询、环境检查、证据检索 |
 | `reverse-analyst` | `surface`、`assessment`、`mining` | 原生脚本、二进制检查、只读 Ghidra 查询、JADX 和固定 adb 查询、环境检查、证据检索与公开资料研究 |
 | `web-analyst` | `surface`、`assessment` | 原生脚本、已分配的 HTTP 证据、不可变源码读取/搜索、环境检查与公开资料研究 |
@@ -249,6 +251,10 @@ Cookie、Bearer、Basic 和表单/JSON 登录身份保存在 Host credentials �
 
 角色工具筛选处理继承的工具，包括全局工具和预设工具。`advisor` 等会话专属工具保留在所属作用域中；执行守卫对每次工具调用检查角色能力集，包括这些会话专属工具。
 
+仅限 Host 的 `securityWorkbench.getAnalysisPhase(agent)` 同步读取当前权限，返回 `exploring`、`closing` 或 `finalizing`，即时反映实际累计用量及保存成功状态。计量只保存在当前进程中；重载插件或释放 Agent 会清空计量，不从 Session 日志重建。
+
+Host 集成通过 `securityWorkbench.saveAnalysisCheckpoint` 保存进展，并传入所属的已记录工具调用 ID 和调用者信号。它执行协调者命令校验并返回已提交回执；既不授予操作者权限，也不宣告任务完成。
+
 <a id="provider-design"></a>
 ### Provider 设计
 
@@ -349,11 +355,11 @@ flowchart LR
 
 #### Token 影响
 
-skill 摘要占用目录上下文，方法正文在加载时增加上下文。领域工具响应使用 `modelResultBytes`，原始采集使用 `maxOutputBytes`。`analysisTurnTokens` 默认允许每个 Session 分析轮次使用 120,000 个探索 token，计入未缓存输入、缓存写入和输出。`analysisTurnTokens: 0` 关闭这层额外探索限制，不改变 provider 或 agent 的限制。`analysisCountCacheReads: true` 还会计入重复的缓存读取；两种模式均保留完整的模型用量日志。如果再执行一次与上次消耗相当的步骤会达到限额，模型会收到已记录的收尾指令，并沿用既有输出上限。探索工具从列表中隐藏，执行端也会阻止调用。`analysisWrapUpSteps` 默认允许最多三个含工具调用的步骤，供已有证据读取（`security_scope`、`security_evidence`、`security_help`）、`security_checkpoint`、`security_complete` 及 `security_command` 的 `checkpoint`、`complete-task` 或 `report` 动作使用。读取和失败的保存不算持久化成功。保存成功或额度用尽后移除这些工具，并明确指示生成最终回复，说明未保存进展等限制。执行端检查命令动作；完成任务仍要求目标已实现。委派任务仍可使用 `structured_output`。单次请求超出剩余预算时也进入收尾。总结后的额外模型步骤会被拒绝，不会抛出预算异常。阶段总结说明已确认结果、保存的证据、缺口及下一步，不把调查标记为完成。用户后续提问会获得新的轮次预算并恢复正常工具。
+skill 摘要占用目录上下文，方法正文在加载时增加上下文。领域工具响应使用 `modelResultBytes`，原始采集使用 `maxOutputBytes`。`analysisTurnTokens` 默认允许每次用户发起的分析及其内部续行使用 120,000 个探索 token，计入未缓存输入、缓存写入和输出。`analysisTurnTokens: 0` 关闭这层额外探索限制，不改变 provider 或 agent 的限制。`analysisCountCacheReads: true` 还会计入重复的缓存读取；两种模式均保留完整的模型用量日志。实际累计用量达到限额时，模型会收到已记录的收尾指令，并沿用既有输出上限。计费不根据一次冷缓存读取预测下一次请求；一次探索请求可能超出剩余额度。这是探索阈值，不是总 token 上限；有界保存、清理和交付请求还会消耗输入与输出 token。方向复查和常规收尾期间保持工具定义不变，执行端拒绝当前阶段不允许的调用。这避免仅因预算权限变化使缓存输入失效，但不保证 provider 命中缓存。 `analysisWrapUpSteps` 默认允许最多三个含工具调用的步骤，供已有证据读取（`security_scope`、`security_evidence`、`security_help`）、`premise_check` 的已有证据检查、保存准备与保存、`security_checkpoint`、`security_complete` 及 `security_command` 的 `checkpoint`、`complete-task` 或 `report` 动作使用。读取、前提准备和失败的保存不算持久化成功；`premise_check save` 必须返回 `saved` 回执。收尾期间仍禁止前提提交与顾问咨询。保存成功或额度用尽后禁止继续保存与读取，并要求生成最终回复，说明未保存进展等限制。最终回复前仍可有界清理当前 Session 所属的已有作业：调用一次 `job_list`，每个作业尝试一次 `job_output`，每个运行中作业尝试一次 `job_kill`。这些尝试不占用保存步骤。如果最终交付阶段的一次请求未推进获准的清理，包括空 `job_list` 被拒绝，模型会获得一次已记录的纯文本交付请求。该请求移除工具定义并拒绝所有工具执行；再次发出无效调用会结束轮次，不再重试。这个例外请求可能使缓存前缀失效。获准的清理失败后仍可继续有界的剩余清理并给出最终回复。等待取消的作业仍属于未完成作业。仍有价值但无法在获准读取内完成的工作可通过 ID 和状态交接。委派任务仍可使用 `structured_output`。执行端检查命令动作；完成任务仍要求目标已实现。 最终回复后，普通内部通知不能重开探索，也不会为已收尾的分析再次调用模型。显式配置的 Helper 输出恢复提示可请求一次无工具交付回合，但不会重开探索。新轮次认领用户消息时，会在组装工具前重置额度。阶段总结说明已确认结果、保存的证据、缺口及下一步，不把调查标记为完成。
 
 #### KV Cache effect
 
-固定工具定义和工作流指引保持稳定。skill 目录作为上下文记录；已加载的方法和项目状态通过已记录的工具结果进入上下文。
+除有界的纯文本最终交付兜底外，工具定义和工作流指引保持稳定。skill 目录作为上下文记录；已加载的方法和项目状态通过已记录的工具结果进入上下文。
 
 ## 已知限制与后续工作
 

@@ -15,17 +15,17 @@
   en: e7b172dd47cbe6cc
   zh: e7044216691d11fd
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package:
-  en: b0ffb7ecf8658b81
-  zh: bf23a30e033f0316
+  en: 7eb43c6f91b453ea
+  zh: e59310be795e0d53
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/configure-analysis-providers:
-  en: a7e56fa08e450eae
-  zh: e01da16a9c45923a
+  en: 4a6adcb8eb217e0e
+  zh: 4c7e345049a6dbf4
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/tool-inventory-and-acceptance:
   en: 81be3db1733cccea
   zh: bac81c4d390939e7
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/roles-tasks-and-tool-management:
-  en: d8cfccc9c981137f
-  zh: 6d360f02028d6279
+  en: 491d29cd42fc81da
+  zh: 18b1a94d9156dfb1
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/unseal-direct-execution:
   en: 2c1ed63c88287683
   zh: e9c4877246881225
@@ -36,8 +36,8 @@
   en: 120a77dd228e7a2a
   zh: 0ebecc38e9ba93ae
 /deepseek-ai-dsh-experimental-security-analysis/understand-the-implementation:
-  en: 1f43d9893bc580b5
-  zh: c81eedbceb0c776a
+  en: 15aa877613d4832b
+  zh: 1019fba1046c2a82
 /deepseek-ai-dsh-experimental-security-analysis/understand-the-implementation/provider-design:
   en: 04d1105e29097224
   zh: 1864847f223f3bfe
@@ -60,11 +60,11 @@
   en: cc7e34a2ba305996
   zh: 0149b7da7651bda4
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/token-effect:
-  en: b92cf0d91ca0f10f
-  zh: a127d17b8bda9b1b
+  en: d2fd73cc1f1574b6
+  zh: 0b57b55a65759337
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/kv-cache-effect:
-  en: a3623adc2b64df40
-  zh: d48df86714e73e8c
+  en: c14aa54f17e89496
+  zh: da03364252d5de81
 /deepseek-ai-dsh-experimental-security-analysis/known-limitations-and-deferred-work:
   en: 35d420807c9aa408
   zh: 660cd35d20134ab4

@@ -1,6 +1,7 @@
 /** Persisted Helper selections and display-safe consultation facts. @module */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm/types'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { Branded } from '@deepseek-ai/dsh-brand'
@@ -14,6 +15,30 @@ export interface ConsultationQuestion {
   question: string
   context?: string
   attempts?: string
+}
+
+/** Complete API selection for one automatic consultation; saved Helper settings are unchanged. */
+export interface ApiConsultationOptions {
+  /** Existing API provider identity. */
+  readonly provider: string
+  /** Model served by the selected provider. */
+  readonly model: string
+  /** Supported effort, or empty to use the provider default. */
+  readonly reasoningEffort: string
+  /** Positive output-token limit for each child model request, including provider-counted reasoning. */
+  readonly maxTokens: number
+  /** No tools, or the available read, glob, grep and read_image tools. */
+  readonly toolAccess: 'none' | 'read-only'
+  /** One tool-free delivery turn after a known output limit or empty completion; omission and false disable recovery. */
+  readonly recovery?: ApiConsultationRecovery | false
+}
+
+/** Explicit request controls for one delivery attempt, without further research or tools. */
+export interface ApiConsultationRecovery {
+  /** Explicitly selected supported delivery effort; validated before the consultation starts. */
+  readonly reasoningEffort: string
+  /** Positive output limit for the delivery request, including provider-counted reasoning. */
+  readonly maxTokens: number
 }
 
 /** How actively the main model is prompted to seek advice. */
@@ -63,7 +88,7 @@ export interface HelperState {
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
-    /** Progress assessment reminder after a main-agent tool result.
+    /** Host-owned progress or evidence-execution notice.
      * @persistenceAttribution
      */
     'helper-checkpoint': { kind: 'helper-checkpoint' } & Extract<ContextFormed, { form: 'notice' }>
@@ -71,6 +96,10 @@ declare module '@deepseek-ai/dsh-llm' {
      * @persistenceAttribution
      */
     'helper-automatic': { kind: 'helper-automatic'; consultationId: ConsultationId } & Extract<ContextFormed, { form: 'notice' }>
+    /** One bounded delivery turn following a known incomplete assistant response.
+     * @persistenceAttribution
+     */
+    'helper-output-recovery': { kind: 'helper-output-recovery'; failedMessageSeq: SessionSeq } & Extract<ContextFormed, { form: 'notice' }>
   }
 }
 

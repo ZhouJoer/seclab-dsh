@@ -1249,7 +1249,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:117`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:118`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
@@ -1296,13 +1296,13 @@ export interface WorkbenchConfig {
   modelResultBytes: number
   /** Maximum invocation details returned in one activity page. */
   activityPageSize: number
-  /** Exploration tokens per analysis turn before wrap-up; zero disables this additional limit. */
+  /** Exploration tokens per user-requested analysis, including internal continuations; zero disables this limit. */
   analysisTurnTokens: number
   /** Maximum completed tool steps between logged investigation reviews in one turn. */
   analysisReviewSteps: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
-  /** Same-kind failures without new evidence before asking an available advisor to review the approach. */
+  /** Same-kind failures without new evidence before checking the measurement with a discriminating control. */
   analysisReviewFailures: number
   /** Maximum saved-evidence and persistence steps before a final budget summary. */
   analysisWrapUpSteps: number
@@ -1748,7 +1748,7 @@ export interface Config {
 
 - `inject`: `agents` · `tools` · `subagents` · `llm` · `systemPrompt` · `sessionProjections`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/subagent/helper/src/index.ts:34`](../packages/subagent/helper/src/index.ts)
+- `source`: [`packages/subagent/helper/src/index.ts:40`](../packages/subagent/helper/src/index.ts)
 
 ```ts config-catalog
 /** Live settings; each consultation captures one complete selection. */
@@ -1765,6 +1765,14 @@ export interface Config {
   model: Volatile<string>
   /** API effort id, or empty for the provider default. */
   reasoningEffort: Volatile<string>
+  /** Per-request API output limit, including provider-counted reasoning. */
+  apiMaxTokens: Volatile<number>
+  /** Whether API consultations may make one bounded delivery turn after known incomplete output. */
+  apiRecoveryEnabled: Volatile<boolean>
+  /** Supported effort for the delivery turn, validated before the consultation starts. */
+  apiRecoveryReasoningEffort: Volatile<string>
+  /** Per-request output limit for the delivery turn. */
+  apiRecoveryMaxTokens: Volatile<number>
   /** Model advertised by the native Codex directory. */
   codexModel: Volatile<string>
   /** Codex effort id, or empty for the native default. */

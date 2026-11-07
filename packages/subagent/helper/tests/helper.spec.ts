@@ -9,7 +9,7 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import { defineContentToolFixture, type PostToolDecision } from '@deepseek-ai/dsh-tools'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import Helper from '../src/index.ts'
+import Helper, { type ApiConsultationOptions } from '../src/index.ts'
 import { helperProjection } from '../src/projection.ts'
 import type { ConsultationId, HelperState } from '../src/types.ts'
 
@@ -75,9 +75,9 @@ describe('Helper consultations', () => {
     expect(parent.ctx.tools.get('advisor', parent)?.description).not.toBe(normalDescription)
     const reminded = await probe()
     expect(reminded.content).toEqual([{ type: 'text', text: 'NO_PROGRESS' }])
-    expect(reminded.additionalContexts).toMatchObject([
-      { source: { kind: 'helper-checkpoint' } },
-    ])
+    expect(reminded.additionalContexts).toBeUndefined()
+    expect(parent.ctx.tools.get('advisor', parent)?.description).toContain('smallest executable check')
+    expect(parent.ctx.tools.get('advisor', parent)?.description).not.toContain('roughly three')
     expect((await probe()).additionalContexts).toBeUndefined()
     await ctx.commands.execute(parent, '/advisor normal', [], new AbortController().signal)
     expect((await probe()).additionalContexts).toBeUndefined()
@@ -87,13 +87,13 @@ describe('Helper consultations', () => {
     expect((await probe()).additionalContexts).toBeUndefined()
     expect(ctx.sessionProjections.stateOf(parent.session, 'helper')?.enabled).toBe(false)
     await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
-    expect((await probe()).additionalContexts).toHaveLength(1)
+    expect((await probe()).additionalContexts).toBeUndefined()
     await helper.dispose()
     expect(parent.ctx.tools.get('advisor', parent)).toBeUndefined()
     expect((await probe()).additionalContexts).toBeUndefined()
   })
 
-  it('logs one reminder per turn across repeated tool calls', async () => {
+  it('does not turn reconnaissance tool activity into advice or consultation reminders', async () => {
     const { ctx, parent } = await setup([
       toolCallResponse('read-one', 'probe', {}), toolCallResponse('read-two', 'probe', {}), textResponse('Partial observation'),
       toolCallResponse('read-three', 'probe', {}), textResponse('Next observation'),
@@ -105,10 +105,11 @@ describe('Helper consultations', () => {
     const reminders = () => parent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-checkpoint')
     ask()
     await parent.whenIdle()
-    expect(reminders()).toHaveLength(1)
+    expect(reminders()).toHaveLength(0)
     ask()
     await parent.whenIdle()
-    expect(reminders()).toHaveLength(2)
+    expect(reminders()).toHaveLength(0)
+    expect(ctx.sessionProjections.stateOf(parent.session, 'helper')?.calls).toEqual([])
   })
 
   it('uses a fresh high-effort expert, records usage and disposes the child', async () => {
@@ -125,7 +126,105 @@ describe('Helper consultations', () => {
     ])
   })
 
-  it('preserves downstream feedback and context when adding a progress reminder', async () => {
+  it('uses a bounded automatic API route without changing the saved Codex adviser', async () => {
+    const { ctx, parent, invoke } = await setup([textResponse('PARENT_ONLY_ANALYSIS')], true, 'high', 'codex')
+    ctx.effect(() => ctx.subagents.registerProvider({ name: 'helper-codex', inheritsParentContext: false,
+      capabilities: { agentOptions: true, agentPreset: false, outputSchema: false, depthLimit: false },
+      start: async () => ({ id: SessionId('manual-codex'),
+        result: Promise.resolve({ output: [{ type: 'text', text: 'Manual Codex advice' }], structured: undefined, stopReason: 'completed' }),
+        dispose: async () => {},
+      }),
+    }))
+    const review = new MockAdapter([textResponse('Review advice')], { efforts: [{ id: ReasoningEffortId('high'), name: 'High' }] })
+    ctx.llm.registerAdapter(['review'], review)
+    parent.followup(createUserMessage({ content: [{ type: 'text', text: 'PARENT_ONLY_TASK' }], source: { kind: 'user' } }))
+    await parent.whenIdle()
+    await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
+    const settings = ctx.helper.settings()
+    const childHeaders: object[] = []
+    ctx.on('session/event', (session, event) => {
+      if (session.header.parentSession === parent.id && event.type === 'request/header') childHeaders.push(event.data.header.config)
+    })
+    const options: ApiConsultationOptions = { provider: 'review', model: 'fresh-flash', reasoningEffort: 'high', maxTokens: 384, toolAccess: 'none' }
+    const answer = await ctx.helper.consultAutomatically({ reason: 'Direction review', question: 'Inspect the observation.', context: 'RAW_OBSERVATION' },
+      parent, new AbortController().signal, brandString<ConsultationId>('automatic-route'), options)
+    expect(answer).toBe('Review advice')
+    expect(review.requests[0]).toMatchObject({ provider: 'review', model: 'fresh-flash', reasoningEffort: 'high', maxTokens: 384 })
+    expect(review.requests[0]?.tools ?? []).toEqual([])
+    expect(JSON.stringify(review.requests[0]?.messages)).toContain('RAW_OBSERVATION')
+    expect(JSON.stringify(review.requests[0]?.messages)).not.toContain('PARENT_ONLY')
+    expect(childHeaders).toEqual([expect.objectContaining({ provider: 'review', model: 'fresh-flash', maxTokens: 384 })])
+    expect(ctx.helper.settings()).toEqual(settings)
+    const helperState = ctx.sessionProjections.stateOf(parent.session, 'helper')
+    expect(helperState).toMatchObject({ enabled: true, mode: 'proactive', calls: [
+      { backend: 'api', model: 'fresh-flash', reasoningEffort: 'high', status: 'completed',
+        usage: { inputTokens: 10, outputTokens: 13 } },
+    ] })
+    expect(helperState?.calls[0]?.childSessionId).toEqual(expect.any(String))
+    expect((await invoke()).content).toEqual([{ type: 'text', text: 'Manual Codex advice' }])
+    expect(ctx.agents.list()).toHaveLength(1)
+  })
+
+  it('hides and denies even child-local read tools when an automatic call has no tool access', async () => {
+    const { ctx, parent, adapter } = await setup([
+      toolCallResponse('hidden-read', 'read', {}), textResponse('Only supplied evidence'),
+    ])
+    await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
+    parent.options.reasoningEffort = ReasoningEffortId('high')
+    let reads = 0
+    const read = () => defineContentToolFixture({ name: 'read', description: 'Read evidence', parameters: {},
+      execute: async () => { reads++; return [{ type: 'text', text: 'Extra evidence' }] } })
+    parent.ctx.tools.register(read())
+    ctx.on('agent/created', ({ agent }) => {
+      if (agent.session.header.parentSession === parent.id) agent.ctx.tools.register(read())
+    })
+    await ctx.helper.consultAutomatically({ reason: 'Review', question: 'Use supplied evidence only.' }, parent,
+      new AbortController().signal, brandString<ConsultationId>('automatic-no-tools'),
+      { provider: 'mock', model: 'review', reasoningEffort: '', maxTokens: 96, toolAccess: 'none' })
+    expect(reads).toBe(0)
+    expect(adapter.requests).toHaveLength(2)
+    for (const request of adapter.requests) {
+      expect(request.tools ?? []).toEqual([])
+      expect(request.reasoningEffort).toBeUndefined()
+      expect(request.maxTokens).toBe(96)
+    }
+    expect(JSON.stringify(adapter.requests[1]?.messages)).toContain('The advisor has no tool access')
+    expect(ctx.agents.list()).toHaveLength(1)
+  })
+
+  it.each([false, true])('keeps read-only automatic calls available with explicit options=%s', async (explicit) => {
+    const { ctx, parent, adapter } = await setup([
+      toolCallResponse('read-evidence', 'read', {}), textResponse('Evidence checked'),
+    ])
+    await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
+    let reads = 0
+    ctx.tools.register(defineContentToolFixture({ name: 'read', description: 'Read evidence', parameters: {},
+      execute: async () => { reads++; return [{ type: 'text', text: 'Original observation' }] } }))
+    const options: ApiConsultationOptions | undefined = explicit
+      ? { provider: 'mock', model: 'review', reasoningEffort: 'high', maxTokens: 256, toolAccess: 'read-only' }
+      : undefined
+    expect(await ctx.helper.consultAutomatically({ reason: 'Review', question: 'Inspect the evidence.' }, parent,
+      new AbortController().signal, brandString<ConsultationId>('automatic-read-only'), options)).toBe('Evidence checked')
+    expect(reads).toBe(1)
+    expect(adapter.requests[0]?.tools?.map(tool => tool.name)).toEqual(['read'])
+    expect(adapter.requests[0]?.model).toBe(explicit ? 'review' : 'expert')
+    expect(adapter.requests[0]?.maxTokens).toBe(explicit ? 256 : 32768)
+    expect(ctx.agents.list()).toHaveLength(1)
+  })
+
+  it('keeps enabled and proactive policy requirements when automatic API options are supplied', async () => {
+    const { ctx, parent, adapter } = await setup([])
+    const options: ApiConsultationOptions = { provider: 'mock', model: 'review', reasoningEffort: '', maxTokens: 128, toolAccess: 'none' }
+    const call = () => ctx.helper.consultAutomatically({ reason: 'Review', question: 'Inspect.' }, parent,
+      new AbortController().signal, brandString<ConsultationId>('automatic-policy'), options)
+    expect(call).toThrow('requires proactive mode')
+    parent.session.append('helper/policy', { enabled: false, mode: 'proactive' })
+    await expect(call()).rejects.toThrow('disabled')
+    expect(adapter.requests).toEqual([])
+    expect(ctx.sessionProjections.stateOf(parent.session, 'helper')?.calls).toEqual([])
+  })
+
+  it('preserves downstream feedback and context without adding a consultation reminder', async () => {
     const { ctx, parent } = await setup([])
     await ctx.commands.execute(parent, '/advisor proactive', [], new AbortController().signal)
     parent.ctx.tools.register(defineContentToolFixture({ name: 'probe', description: 'probe', parameters: {},
@@ -140,9 +239,9 @@ describe('Helper consultations', () => {
       arguments: {}, agent: parent, signal: new AbortController().signal })
     expect(result.isError).toBe(true)
     expect(result.content).toEqual([{ type: 'text', text: 'needs correction' }])
-    expect(result.additionalContexts).toHaveLength(2)
+    expect(result.additionalContexts).toHaveLength(1)
     expect(result.additionalContexts).toContainEqual(context)
-    expect(result.additionalContexts?.filter(message => message.source.kind === 'helper-checkpoint')).toHaveLength(1)
+    expect(result.additionalContexts?.filter(message => message.source.kind === 'helper-checkpoint')).toHaveLength(0)
   })
 
   it('denies writes and recursive delegation even when the adviser requests hidden tools', async () => {

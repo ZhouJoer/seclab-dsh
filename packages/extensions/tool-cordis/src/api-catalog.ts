@@ -1338,9 +1338,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'loginId', description: 'Id from login.' }],
       },
       {
-        signature: 'consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>',
-        description: 'Consult the configured adviser from a Host plugin in an enabled proactive session. Failures reject after child cleanup; callers must not retry an unknown outcome.',
-        parameters: [{ name: 'args', description: 'Self-contained question and evidence.' }, { name: 'agent', description: 'Top-level owner of the consultation and its log.' }, { name: 'signal', description: 'Cancellation owned by the caller, including plugin disposal.' }, { name: 'consultationId', description: 'Unique identity, allocated before invoking this operation.' }],
+        signature: 'consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId, apiOptions?: ApiConsultationOptions): Promise<string>',
+        description: 'Consult an adviser from a Host plugin in an enabled proactive session. Omitted options use saved settings and read-only tools. Complete API options select a fresh child for this call without changing saved settings or session policy. Tool-free calls append their advisory role to the inherited system policy. A complete prompt or override that removes this role fails before inference. Explicit recovery permits one tool-free delivery turn after known incomplete output. Its input, output and elapsed time count toward the same consultation; caller deadlines cover both turns. Failures reject after child cleanup; unknown outcomes are not retried.',
+        parameters: [{ name: 'args', description: 'Self-contained question and evidence.' }, { name: 'agent', description: 'Top-level owner of the consultation and its log.' }, { name: 'signal', description: 'Cancellation owned by the caller, including plugin disposal.' }, { name: 'consultationId', description: 'Unique identity, allocated before invoking this operation.' }, { name: 'apiOptions', description: 'Optional complete API route, output budget, tool access and delivery policy.' }],
         returns: 'Final advice after the child has been released and the result logged.',
       },
     ],
@@ -2177,6 +2177,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'readonly ready: Promise<SecurityController>',
         description: 'Domain initialization and recovery complete before accepting operations.',
         parameters: [],
+      },
+      {
+        signature: 'getAnalysisPhase(agent: Agent): AnalysisPhase',
+        description: 'Read the current in-memory analysis allowance without advancing it; reload does not reconstruct accounting.',
+        parameters: [{ name: 'agent', description: 'Session owner whose live accounting and task binding are inspected.' }],
+        returns: 'Exploring, closing once accrued usage reaches the allowance, or finalizing after saving or ending a budget-limited turn. Internal wake-ups retain the closed phase; human input claimed for a new turn resets it before tool assembly.',
+      },
+      {
+        signature: 'async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityCommand[\'action\'], { kind: \'checkpoint\' }>, \'kind\' | \'id\'>, callId: ToolCallId, signal: AbortSignal): Promise<CommandReceipt>',
+        description: 'Save model-authored progress with coordinator permissions and a committed receipt.',
+        parameters: [{ name: 'agent', description: 'Session owner on whose behalf the checkpoint is saved.' }, { name: 'checkpoint', description: 'Validated progress fields; this never declares task completion.' }, { name: 'callId', description: 'Logged tool call owning the save operation.' }, { name: 'signal', description: 'Caller cancellation, combined with service shutdown.' }],
+        returns: 'Committed revision and changed record identities; rejected commands save nothing.',
       },
       {
         signature: '@Remote(\'improvements\') async improvements(projectId?: string): Promise<EvolutionView>',
@@ -5256,6 +5268,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AnalysisOperation = z.infer<typeof operationSchema>;',
   },
   {
+    name: 'AnalysisPhase',
+    declaration: 'export type AnalysisPhase = \'exploring\' | \'closing\' | \'finalizing\';',
+  },
+  {
     name: 'AnalysisProvider',
     declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    inputEvidenceIds?(request: AnalysisOperation): readonly string[];\n    activityTools?(request: AnalysisOperation): string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
   },
@@ -5294,6 +5310,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AnyHook',
     declaration: 'export type AnyHook = ModHook<unknown, unknown>;',
+  },
+  {
+    name: 'ApiConsultationOptions',
+    declaration: 'export interface ApiConsultationOptions {\n    readonly provider: string;\n    readonly model: string;\n    readonly reasoningEffort: string;\n    readonly maxTokens: number;\n    readonly toolAccess: \'none\' | \'read-only\';\n    readonly recovery?: ApiConsultationRecovery | false;\n}',
+  },
+  {
+    name: 'ApiConsultationRecovery',
+    declaration: 'export interface ApiConsultationRecovery {\n    readonly reasoningEffort: string;\n    readonly maxTokens: number;\n}',
   },
   {
     name: 'ApiKeyRecord',
@@ -5574,6 +5598,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CommandInvocation',
     declaration: 'export interface CommandInvocation {\n    readonly commandId: CommandId;\n    readonly agent: Agent;\n    readonly rawInput: string;\n    readonly attachments: readonly (ImageBlock | FileBlock)[];\n    readonly signal: AbortSignal;\n}',
+  },
+  {
+    name: 'CommandReceipt',
+    declaration: 'export interface CommandReceipt {\n    revision: number;\n    committed: boolean;\n    changed: {\n        kind: SecurityRecord[\'kind\'];\n        id: string;\n    }[];\n    totalChanged: number;\n    hasMore: boolean;\n    report?: {\n        id: string;\n        path: string;\n    };\n}',
   },
   {
     name: 'CommandResult',
@@ -6201,7 +6229,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Helper',
-    declaration: 'export class Helper extends TypertRemoteService {\n    static inject;\n    static Config;\n    constructor(ctx: Context, private readonly config: Config);\n    @Remote\n    settings(): HelperSettings;\n    @Remote\n    account(): Promise<{\n        loggedIn: boolean;\n        email?: string;\n        planType?: string;\n        login?: {\n            loginId: string;\n            status: \'pending\' | \'completed\' | \'failed\';\n            error?: string;\n        };\n    }>;\n    @Remote\n    codexModels(): Promise<Array<{\n        id: string;\n        name: string;\n        efforts: string[];\n    }>>;\n    @Remote\n    login(): Promise<{\n        authUrl: string;\n        loginId: string;\n    }>;\n    @Remote\n    cancelLogin(loginId: string): Promise<void>;\n    consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>;\n}',
+    declaration: 'export class Helper extends TypertRemoteService {\n    static inject;\n    static Config;\n    constructor(ctx: Context, private readonly config: Config);\n    @Remote\n    settings(): HelperSettings;\n    @Remote\n    account(): Promise<{\n        loggedIn: boolean;\n        email?: string;\n        planType?: string;\n        login?: {\n            loginId: string;\n            status: \'pending\' | \'completed\' | \'failed\';\n            error?: string;\n        };\n    }>;\n    @Remote\n    codexModels(): Promise<Array<{\n        id: string;\n        name: string;\n        efforts: string[];\n    }>>;\n    @Remote\n    login(): Promise<{\n        authUrl: string;\n        loginId: string;\n    }>;\n    @Remote\n    cancelLogin(loginId: string): Promise<void>;\n    consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId, apiOptions?: ApiConsultationOptions): Promise<string>;\n}',
   },
   {
     name: 'HelperMode',
@@ -7666,6 +7694,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SecurityCheckpoint',
     declaration: 'export type SecurityCheckpoint = z.infer<typeof checkpointSchema>;',
+  },
+  {
+    name: 'SecurityCommand',
+    declaration: 'export type SecurityCommand = z.infer<typeof commandSchema>;',
   },
   {
     name: 'SecurityController',

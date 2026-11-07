@@ -38,7 +38,7 @@ import { randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import type { UserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { z } from 'zod'
@@ -56,7 +56,8 @@ import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { analysisCallPage, analysisLog } from './analysis-log.ts'
 import { isSecurityBrowserTool } from './browser-tools.ts'
-import { installAnalysisBudget } from './analysis-budget.ts'
+import { installAnalysisBudget, type AnalysisPhase } from './analysis-budget.ts'
+export type { AnalysisPhase } from './analysis-budget.ts'
 import { closingBrief } from './turn-brief.ts'
 import { installNativeAnalysis } from './native-analysis.ts'
 import { installActivityObserver } from './activity-observer.ts'
@@ -72,7 +73,7 @@ import { registerToolAdapters } from './tool-adapter-tools.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
 import { analysisFailure } from './analysis-failure.ts'
 import { standaloneTool } from './local-tools.ts'
-import { modelPage, recordDetail, commandReceipt, sourceEvidenceLines } from './workbench/model-view.ts'
+import { modelPage, recordDetail, commandReceipt, sourceEvidenceLines, type CommandReceipt } from './workbench/model-view.ts'
 import { SourceProvider } from './workbench/source.ts'
 import { BinaryProvider } from './workbench/binary.ts'
 import { toolsForRole, canObserve, delegationPrompt, resolveTask, taskKinds } from './workbench/roles.ts'
@@ -157,13 +158,13 @@ export interface WorkbenchConfig {
   modelResultBytes: number
   /** Maximum invocation details returned in one activity page. */
   activityPageSize: number
-  /** Exploration tokens per analysis turn before wrap-up; zero disables this additional limit. */
+  /** Exploration tokens per user-requested analysis, including internal continuations; zero disables this limit. */
   analysisTurnTokens: number
   /** Maximum completed tool steps between logged investigation reviews in one turn. */
   analysisReviewSteps: number
   /** Include repeated cache reads in the exploration allowance; full usage remains logged either way. */
   analysisCountCacheReads: boolean
-  /** Same-kind failures without new evidence before asking an available advisor to review the approach. */
+  /** Same-kind failures without new evidence before checking the measurement with a discriminating control. */
   analysisReviewFailures: number
   /** Maximum saved-evidence and persistence steps before a final budget summary. */
   analysisWrapUpSteps: number
@@ -308,6 +309,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     committed: boolean
     action: Extract<SecurityCommand['action'], { kind: 'create' }> }>()
   private readonly turnBriefs = new Map<SessionId, string>()
+  private readonly analysisPhase: (agent: Agent) => AnalysisPhase
 
   constructor(
     ctx: Context,
@@ -644,17 +646,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
         output,
         execute: async (args, exec) => {
           if (!exec.agent) throw new Error('Security tools require a session')
-          for (const [field, limit] of [['title', 100], ['reason', 300], ['summary', 300], ['next', 300]] as const) {
-            if (args[field].length > limit) throw new Error(`${field} has ${args[field].length} characters; maximum ${limit}. Rewrite it as one sentence under ${Math.floor(limit / 2)} characters rather than trimming a few characters. Keep detailed traces in an artifact and reference its path. Nothing was saved.`)
-          }
-          const controller = await this.ready
-          const before = controller.view(exec.agent.id)
-          const after = await controller.command(exec.agent.id, {
-            operationId: JSON.stringify(['checkpoint', exec.agent.id, exec.callId]),
-            expectedRevision: before.revision, action: { kind: 'checkpoint', ...args },
-          }, false, AbortSignal.any([exec.signal, this.shutdown.signal]))
-            .catch((error: unknown) => { throw analysisFailure(error) })
-          return json(commandReceipt(before, after, Math.floor(config.modelResultBytes / 2)))
+          return json(await this.saveAnalysisCheckpoint(exec.agent, args, exec.callId, exec.signal))
         },
       }),
     )
@@ -1031,7 +1023,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       await controller.admitTask(exec.agent.id, `task-intake:${exec.agent.id}:${candidate.message.id}`, candidate.action, exec.signal)
       return next()
     })
-    installAnalysisBudget(ctx, config, id => this.controller?.binding(id)?.role, (id) => {
+    this.analysisPhase = installAnalysisBudget(ctx, config, id => this.controller?.binding(id)?.role, (id) => {
       assert(this.controller, 'Investigation progress requires a bound security task')
       return this.controller.view(id)
     })
@@ -1094,7 +1086,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       text: () => {
         this.toolConfiguration.refresh()
         return GUIDANCE + '\n\nAfter ' + String(config.analysisReviewFailures)
-          + ' consecutive same-kind failures without new evidence, summarize the question, attempts, supporting and contrary evidence for an available advisor. Changed inputs or environments can justify retesting. This is investigation guidance; tool success does not establish a correct conclusion.'
+          + ' consecutive same-kind failures without new evidence, stop unchanged retries and check the measurement with a discriminating control. Before adopting a premise to exclude candidates or expand an experiment, identify its raw evidence, execute a check that distinguishes competing explanations, and state the observed result and its exclusion scope. Failed, incomplete or truncated checks do not support a negative finding. Keep untested premises tentative. Use premise_check when available to record the evidence and check. Consult an available advisor only for a concrete question that remains unresolved after the check; advice is not execution evidence. Changed inputs or environments can justify retesting. Tool success alone does not establish a correct conclusion.'
       },
       interpolate: false,
     })
@@ -1172,6 +1164,35 @@ export default class SecurityWorkbench extends TypertRemoteService {
         this.ownership?.close()
       }
     })
+  }
+  /** Read the current in-memory analysis allowance without advancing it; reload does not reconstruct accounting.
+   * @param agent Session owner whose live accounting and task binding are inspected.
+   * @returns Exploring, closing once accrued usage reaches the allowance, or finalizing after saving or
+   * ending a budget-limited turn. Internal wake-ups retain the closed phase; human input claimed for a new turn
+   * resets it before tool assembly.
+   */
+  getAnalysisPhase(agent: Agent): AnalysisPhase { return this.analysisPhase(agent) }
+  /** Save model-authored progress with coordinator permissions and a committed receipt.
+   * @param agent - Session owner on whose behalf the checkpoint is saved.
+   * @param checkpoint - Validated progress fields; this never declares task completion.
+   * @param callId - Logged tool call owning the save operation.
+   * @param signal - Caller cancellation, combined with service shutdown.
+   * @returns Committed revision and changed record identities; rejected commands save nothing.
+   */
+  async saveAnalysisCheckpoint(agent: Agent,
+    checkpoint: Omit<Extract<SecurityCommand['action'], { kind: 'checkpoint' }>, 'kind' | 'id'>,
+    callId: ToolCallId, signal: AbortSignal): Promise<CommandReceipt> {
+    for (const [field, limit] of [['title', 100], ['reason', 300], ['summary', 300], ['next', 300]] as const) {
+      if (checkpoint[field].length > limit) throw new Error(`${field} has ${checkpoint[field].length} characters; maximum ${limit}. Rewrite it as one sentence under ${Math.floor(limit / 2)} characters rather than trimming a few characters. Keep detailed traces in an artifact and reference its path. Nothing was saved.`)
+    }
+    const controller = await this.ready
+    const before = controller.view(agent.id)
+    const after = await controller.command(agent.id, {
+      operationId: JSON.stringify(['checkpoint', agent.id, callId]),
+      expectedRevision: before.revision, action: { kind: 'checkpoint', ...checkpoint },
+    }, false, AbortSignal.any([signal, this.shutdown.signal]))
+      .catch((error: unknown) => { throw analysisFailure(error) })
+    return commandReceipt(before, after, Math.floor(this.config.modelResultBytes / 2))
   }
   /** Scoped persona shadows installed while an agent's engagement stays unsealed. */
   private readonly unsealedPersonas = new Map<SessionId, () => void>()

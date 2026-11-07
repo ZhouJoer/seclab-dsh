@@ -5,5 +5,5 @@ composition: helper
 recording: authored
 header:
   class: helper
-  childSystemPrompts: [1]
-  childToolSchemas: [1]
+  childSystemPrompts: [1, 2]
+  childToolSchemas: [1, 2]

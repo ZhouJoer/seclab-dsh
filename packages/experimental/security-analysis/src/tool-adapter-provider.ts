@@ -15,6 +15,7 @@ import { adapterProcessFailure, retainAdapterResult } from './tool-adapter-resul
 import { fileAsset } from './workbench/assessment.ts'
 import { isPacketCapture } from './workbench/artifacts.ts'
 import { runProcess } from './workbench/process.ts'
+import { checkPeAddresses } from './pe-address-range.ts'
 import type { AnalysisContext, AnalysisProvider, AnalysisResult } from './workbench/providers.ts'
 import type { AnalysisOperation } from './workbench/model.ts'
 
@@ -322,6 +323,15 @@ export class ToolAdapterProvider implements AnalysisProvider {
       if (adapter.id === 'tshark' && !isPacketCapture(await context.artifacts.read(asset.artifact))) throw new Error('TShark requires PCAP or PCAPNG input')
       const path = await context.artifacts.materialize(asset.artifact)
       try {
+        if (['radare2', 'r2ghidra'].includes(adapter.id)
+          && !environment.tools.find(tool => tool.id === 'radare2')?.prefixArgs?.length) {
+          const parameters = parseAdapterParameters(request.operation, request.parameters)
+          const addresses = parameters.queries?.flatMap(query =>
+            ['disassemble', 'xrefs-from'].includes(query.operation) && query.address ? [query.address] : [])
+            ?? (['r2ghidra.decompile', 'radare2.disassemble', 'radare2.xrefs-from'].includes(request.operation)
+              && parameters.address ? [parameters.address] : [])
+          if (addresses.length) await checkPeAddresses(path, addresses)
+        }
         const process = await runProcess(this.ctx, environment, adapter.id === 'r2ghidra' ? 'radare2' : adapter.id,
           adapterArguments(request.operation, request.parameters, path),
           adapter.id === 'r2ghidra' ? { ...limits, maxOutputBytes: context.maxOutputBytes } : limits)

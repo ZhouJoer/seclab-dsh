@@ -45,6 +45,7 @@
       name: '@deepseek-ai/dsh-experimental-security-analysis'
       config:
         analysisTurnTokens: 360000
+        analysisWrapUpSteps: 5
         maxDurationMs: 1800000
         maxDerivedAssets: 1024
         evolution:

@@ -291,6 +291,7 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  ApiConsultationOptions: 'subagent.md',
   HelperSettings: 'subagent.md',
   ConsultationId: 'subagent.md',
   ConsultationQuestion: 'subagent.md',
@@ -717,6 +718,9 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SpawnTeammateResult: 'agent-team.md',
   TeamId: 'agent-team.md',
   WorkbenchView: 'security-workbench.md',
+  SecurityCommand: 'security-workbench.md',
+  CommandReceipt: 'security-workbench.md',
+  AnalysisPhase: 'security-workbench.md',
   MaterialBrowserView: 'security-workbench.md',
   MaterialDocument: 'security-workbench.md',
   SecurityProjectSummary: 'security-workbench.md',

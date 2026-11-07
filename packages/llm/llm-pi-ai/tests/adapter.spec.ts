@@ -684,6 +684,24 @@ describe('provider profile lifecycle', () => {
     expect(server.requests[1]).not.toHaveProperty('reasoning_effort')
   })
 
+  it.each(['glm-5.3', 'glm-5.3-flash'])('sends low effort and the delivery limit on the catalog ZAI route for %s', async (model) => {
+    const server = await mockServer([{ events: textEvents }, { events: textEvents }])
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(LlmPiAi, {
+      providers: { 'zai-coding-cn': { apiKeyEnv: 'PI_TEST_KEY', baseURL: server.url } },
+    })
+    const messages = [createUserMessage({ content: [{ type: 'text', text: 'Report the verified result.' }], source: { kind: 'user' } })]
+    await assemble(ctx, { provider: 'zai-coding-cn', model, reasoningEffort: ReasoningEffortId('high'), maxTokens: 32768, messages })
+    await assemble(ctx, { provider: 'zai-coding-cn', model, reasoningEffort: ReasoningEffortId('low'), maxTokens: 8192, messages })
+    expect(server.requests[0]).toMatchObject({ model, thinking: { type: 'enabled' }, reasoning_effort: 'high', max_tokens: 32768 })
+    expect(server.requests[1]).toMatchObject({ model, thinking: { type: 'enabled' }, reasoning_effort: 'low', max_tokens: 8192 })
+    const unavailable = await assemble(ctx, { provider: 'zai-coding-cn', model, reasoningEffort: ReasoningEffortId('off'), messages })
+    expect(unavailable.finish).toMatchObject({ kind: 'error', failure: { code: 'UNSUPPORTED_REASONING_EFFORT' } })
+    expect(server.requests).toHaveLength(2)
+  })
+
   it('keeps the system role on a declared route whose gateway rejects the developer one', async () => {
     vi.stubEnv('PI_TEST_KEY', 'test-key')
     const server = await mockServer([{ events: textEvents }, { events: textEvents }])

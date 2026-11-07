@@ -6,7 +6,7 @@ The unified activation API manages local conversations and external executions.
 
 ## Advisor consultations
 
-`ctx.helper` runs read-only consultations using the selected `HelperSettings`. Host callers supply a `ConsultationQuestion` containing the reason, question, optional context and attempted approaches, plus a branded `ConsultationId` for automatic calls. Automatic calls require an enabled proactive parent, log their question and answer, and settle after child cleanup. See the [Helper package](../../packages/subagent/helper/README.md) for policy and provider configuration.
+`ctx.helper` uses the selected `HelperSettings` by default. Host callers supply a `ConsultationQuestion` containing the reason, question, optional context and attempted approaches, plus a branded `ConsultationId` for automatic calls. Optional `ApiConsultationOptions` select one automatic call's API route, output limit, read-only or no-tool access, and one delivery-only recovery attempt. Automatic calls require an enabled proactive parent, log their question and answer, and settle after child cleanup. Truncated or empty output is not a successful consultation. See the [Helper package](../../packages/subagent/helper/README.md) for policy and provider configuration.
 
 ## Capabilities and activation requests
 
@@ -484,15 +484,22 @@ Helper runtime, authenticated native-account methods and scoped tool ownership.
 @Remote cancelLogin(loginId: string): Promise<void>
 
 /**
- * Consult the configured adviser from a Host plugin in an enabled proactive session.
- * Failures reject after child cleanup; callers must not retry an unknown outcome.
+ * Consult an adviser from a Host plugin in an enabled proactive session.
+ * Omitted options use saved settings and read-only tools. Complete API options select
+ * a fresh child for this call without changing saved settings or session policy.
+ * Tool-free calls append their advisory role to the inherited system policy.
+ * A complete prompt or override that removes this role fails before inference.
+ * Explicit recovery permits one tool-free delivery turn after known incomplete output.
+ * Its input, output and elapsed time count toward the same consultation; caller deadlines
+ * cover both turns. Failures reject after child cleanup; unknown outcomes are not retried.
  * @param args Self-contained question and evidence.
  * @param agent Top-level owner of the consultation and its log.
  * @param signal Cancellation owned by the caller, including plugin disposal.
  * @param consultationId Unique identity, allocated before invoking this operation.
+ * @param apiOptions Optional complete API route, output budget, tool access and delivery policy.
  * @returns Final advice after the child has been released and the result logged.
  */
-consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId): Promise<string>
+consultAutomatically(args: ConsultationQuestion, agent: Agent, signal: AbortSignal, consultationId: ConsultationId, apiOptions?: ApiConsultationOptions): Promise<string>
 ```
 
 Types: [Agent](core.md)

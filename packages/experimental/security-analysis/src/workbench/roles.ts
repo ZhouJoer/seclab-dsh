@@ -19,7 +19,7 @@ export const analysisTools = ['bash', 'pwsh', 'read', 'read_image', 'write', 'ed
   'job_list', 'job_output', 'job_kill', 'security_capture_analysis'] as const
 const roleTools: Record<SecurityRole, readonly string[]> = {
   coordinator: [...researchTools, ...analysisTools, ...securityBrowserTools, 'security_environment', 'security_static', 'security_command', 'security_checkpoint', 'security_complete', 'security_execute', 'security_delegate',
-    'todo_write', 'get_goal', 'create_goal', 'update_goal', 'advisor', 'working_directory', 'exit_plan_mode'],
+    'todo_write', 'get_goal', 'create_goal', 'update_goal', 'advisor', 'premise_check', 'working_directory', 'exit_plan_mode'],
   reconnaissance: [...evidenceTools, ...analysisTools, 'security_environment', 'security_static'],
   'reverse-analyst': [...researchTools, ...analysisTools, 'security_environment', 'security_static'],
   'web-analyst': [...researchTools, ...analysisTools, ...securityBrowserTools, 'security_environment', 'security_static'],

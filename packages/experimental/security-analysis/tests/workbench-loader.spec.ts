@@ -46,6 +46,7 @@ import type { SecurityEnvironment, ToolInstallation } from '../src/workbench/pro
 import { findingHash } from '../src/workbench/assessment.ts'
 import { SecurityActivityStore } from '../src/workbench/activity.ts'
 import { bindDelegatedChild } from './delegation-fixture.ts'
+import { peImageBytes } from './pe-fixture.ts'
 import type { SessionBinding } from '../src/workbench/model.ts'
 import type { EvolutionConfig } from '../src/evolution.ts'
 import { evolutionInputSchema } from '../src/evolution-model.ts'
@@ -74,7 +75,7 @@ import SessionQuery from '@deepseek-ai/dsh-session-query'
 import AgentPresets, { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import * as NativeJobs from '@deepseek-ai/dsh-tool-jobs'
 import Commands from '@deepseek-ai/dsh-commands'
-import Helper from '@deepseek-ai/dsh-helper'
+import Helper, { installOutputRecovery } from '@deepseek-ai/dsh-helper'
 import * as SessionJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { createSessionTestController } from '../../../api/session-controller/tests/test-remote.ts'
@@ -112,6 +113,7 @@ class ScopeModel extends LlmAdapter {
   firstSkill: string | undefined
   scopeCalls = 1
   usageTokens = 0
+  outputTokens = 0
   cacheReadTokens = 0
   exactUsageTotal = true
   childReport: NonNullable<SessionBinding['report']> = {
@@ -120,6 +122,7 @@ class ScopeModel extends LlmAdapter {
   refinementOutput: ((prompt: string) => string) | undefined
   evolutionOutput: ((prompt: string) => string) | undefined
   evolutionTruncated = false
+  truncatedRequests = new Set<number>()
   reasoning: LlmResolvedModelInfo['reasoning']
   refinementWait: ((signal: AbortSignal | undefined) => Promise<void>) | undefined
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -129,8 +132,8 @@ class ScopeModel extends LlmAdapter {
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
     await this.beforeResponse?.(this.requests.length)
-    if (this.usageTokens || this.cacheReadTokens) yield { type: 'usage', usage: { inputTokens: this.usageTokens, outputTokens: 0, cacheReadTokens: this.cacheReadTokens,
-      ...(this.exactUsageTotal ? { totalTokens: this.usageTokens + this.cacheReadTokens } : {}) } }
+    if (this.usageTokens || this.outputTokens || this.cacheReadTokens) yield { type: 'usage', usage: { inputTokens: this.usageTokens, outputTokens: this.outputTokens, cacheReadTokens: this.cacheReadTokens,
+      ...(this.exactUsageTotal ? { totalTokens: this.usageTokens + this.outputTokens + this.cacheReadTokens } : {}) } }
     const native = this.nativeCalls[this.requests.length - 1]
     if (native) {
       const call = { type: 'tool-call' as const, id: ToolCallId(this.nativeCallId(this.requests.length)), name: native.name,
@@ -174,7 +177,7 @@ class ScopeModel extends LlmAdapter {
         index: 0,
         block: { type: 'text', text: 'The configured binary is ready for static reconnaissance.' },
       }
-      yield { type: 'finish', reason: { kind: 'stop' } }
+      yield { type: 'finish', reason: { kind: this.truncatedRequests.has(this.requests.length) ? 'max-tokens' : 'stop' } }
     }
   }
 }
@@ -208,7 +211,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { advisor?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { advisor?: boolean; jobs?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -265,6 +268,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
   if (options.advisor) {
     modules.set('commands', Commands); modules.set('helper', Helper); modules.set('session-jsonl', SessionJsonl)
   }
+  if (options.jobs) modules.set('tool-jobs', NativeJobs)
   if (options.skills) {
     modules.set('query', ExactQuery)
     modules.set('skills', Skills)
@@ -743,22 +747,27 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
     expect(await active()).toEqual(['security-investigation'])
   })
 
-  it('activates a coordinator with a scope-local advisor while retaining role enforcement', async () => {
+  it('activates coordinator consultation and premise checks while retaining role enforcement', async () => {
     const { ctx, shell } = await load()
     const consult = vi.fn(async () => true)
+    const check = vi.fn(async () => true)
     const forbidden = vi.fn(async () => true)
     const { agent } = await ctx.agents.create({
       sessionId: SessionId('coordinator-with-advisor'),
       setup(agentCtx) {
         independentTool(agentCtx, 'advisor', consult)
+        independentTool(agentCtx, 'premise_check', check)
         independentTool(agentCtx, 'unlisted-local', forbidden)
       },
       agentOptions: { provider: 'fixture', model: 'fixture' },
     })
     expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('advisor')
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('premise_check')
     expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('shell')
     await execute(ctx, agent, 'advisor')
     expect(consult).toHaveBeenCalledOnce()
+    await execute(ctx, agent, 'premise_check')
+    expect(check).toHaveBeenCalledOnce()
     await execute(ctx, agent, 'shell')
     expect(shell).not.toHaveBeenCalled()
     expect((await execute(ctx, agent, 'unlisted-local')).isError).toBe(true)
@@ -2356,8 +2365,8 @@ it('keeps discovery and skill loading available while stalled experiments remain
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
   expect(results.slice(4).map(event => event.data.message.isError)).toEqual([false, false, false, false, true, false, false])
   expect(model.requests[4]?.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining(['skill', 'security_capabilities', 'security_environment']))
-  expect(model.requests[8]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
-  expect(model.requests[10]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  expect(model.requests[8]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  expect(model.requests[10]?.tools).toEqual(model.requests[8]!.tools)
   expect(search).toHaveBeenCalledOnce()
 })
 
@@ -2397,8 +2406,7 @@ it('requires a committed checkpoint before further coordinator experiments after
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
   expect(results.slice(4).map(event => event.data.message.isError)).toEqual([true, true, true, false, true, false, false])
   expect(JSON.stringify(results[4])).toContain('save a security_command checkpoint')
-  for (const index of [4, 6, 8]) expect(model.requests[index]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
-  expect(model.requests[10]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
   expect(search).toHaveBeenCalledOnce()
   agent.followup(webPrompt('Continue from the saved direction.'))
   await agent.whenIdle()
@@ -2419,9 +2427,7 @@ it('restores stalled experiments through the typed checkpoint tool with the toke
     } }, { name: 'web_search', args: {} }]
   agent.followup(webPrompt('Compare the candidate transformations.'))
   await agent.whenIdle()
-  expect(model.requests[4]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
-  expect(model.requests[5]?.tools?.some(tool => tool.name === 'security_checkpoint')).toBe(true)
-  expect(model.requests[6]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
   expect(search).toHaveBeenCalledOnce()
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
   expect(results.slice(4).map(event => event.data.message.isError)).toEqual([true, false, false])
@@ -2459,9 +2465,7 @@ it('restores experiments when existing evidence resolves an open acceptance crit
     command('resolve-listen', { kind: 'finish', evidenceIds: [observation.value.id], rationale: 'The listen setting specifies loopback.' }), experiment]
   agent.followup(webPrompt('Inspect the configured address.'))
   await agent.whenIdle()
-  expect(model.requests[4]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
-  expect(model.requests[6]?.tools?.some(tool => tool.name === 'web_search')).toBe(false)
-  expect(model.requests[9]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
   expect(search).toHaveBeenCalledOnce()
   expect(controller.view(agent.id).records.some(item => item.kind === 'checkpoint')).toBe(false)
   agent.followup(webPrompt('Which evidence supports the result?'))
@@ -2500,7 +2504,43 @@ it('blocks repeated wrap-up exploration and preserves new user steering for the 
   expect(endings.map(event => event.data.reason.kind)).toEqual(['completed', 'completed', 'completed'])
 })
 
-it('persists a typed checkpoint during wrap-up and then removes collection and persistence tools', async () => {
+it.each([false, true])('continues a cold resumed investigation until accrued usage reaches the allowance (explicit total: %s)', async (exactUsageTotal) => {
+  const { ctx, agent, controller, model } = await load(false, 0, { analysisTurnTokens: 360000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Resume evidence review', objective: 'Compare observations', environmentIds: ['local'], maxAttempts: 1 })
+  const search = independentTool(agent.ctx, 'web_search')
+  model.scopeCalls = 0
+  model.exactUsageTotal = exactUsageTotal
+  const phases: string[] = []
+  model.beforeResponse = (request) => {
+    phases.push(ctx.securityWorkbench.getAnalysisPhase(agent))
+    const usages = [
+      { input: 360000, output: 0, cached: 0 },
+      { input: 249042, output: 6518, cached: 0 },
+      { input: 1032, output: 6525, cached: 249024 },
+      { input: 96883, output: 0, cached: 256000 },
+      { input: 0, output: 0, cached: 0 },
+    ]
+    const usage = usages[request - 1]!
+    model.usageTokens = usage.input
+    model.outputTokens = usage.output
+    model.cacheReadTokens = usage.cached
+  }
+  agent.followup(webPrompt('Inspect the observations.'))
+  await agent.whenIdle()
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  model.nativeCalls[1] = { name: 'security_scope', args: {} }
+  model.nativeCalls[2] = { name: 'web_search', args: {} }
+  model.nativeCalls[3] = { name: 'web_search', args: {} }
+  agent.followup(webPrompt('Continue the unfinished investigation.'))
+  await agent.whenIdle()
+  expect(phases).toEqual(['exploring', 'exploring', 'exploring', 'exploring', 'closing'])
+  expect(search, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).toHaveBeenCalledTimes(2)
+  expect(JSON.stringify(model.requests[2]!.messages)).not.toContain('Analysis exploration is ending')
+  expect(JSON.stringify(model.requests[4]!.messages)).toContain('360000 / 360000 tokens (excluding cache reads)')
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
+})
+
+it('persists a typed checkpoint and denies further collection before one text-only final delivery', async () => {
   const { agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000 })
   await operator(controller, agent)({ kind: 'create', title: 'Save progress', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
   model.usageTokens = 1200
@@ -2511,13 +2551,116 @@ it('persists a typed checkpoint during wrap-up and then removes collection and p
   model.nativeCalls[2] = { name: 'pwsh', args: { command: 'Write-Output unexpected' } }
   agent.followup(webPrompt('Inspect the project.'))
   await agent.whenIdle()
-  expect(model.requests).toHaveLength(3)
+  expect(model.requests).toHaveLength(4)
   expect(model.requests[1]!.tools?.some(tool => tool.name === 'security_checkpoint')).toBe(true)
-  expect((model.requests[2]!.tools ?? []).every(tool => tool.name === 'structured_output')).toBe(true)
+  for (const request of model.requests.slice(0, 3)) expect(request.tools).toEqual(model.requests[0]!.tools)
+  expect(model.requests[3]!.tools ?? []).toEqual([])
   expect(JSON.stringify(controller.view(agent.id).records)).toContain('Unresolved input')
   expect(JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result')))
     .toContain('Analysis budget wrap-up allows only the final response')
   expect(shell).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('offers one final delivery after an empty job list is denied and bounds further invalid calls (repeats: %s)', async (repeats) => {
+  const { ctx, agent, controller, model, shell } = await load(false, 0, { jobs: true, analysisTurnTokens: 1000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Deliver saved progress', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'security_checkpoint', args: {
+    phase: 'assessment', title: 'Unresolved input', reason: 'Retain the remaining uncertainty',
+    summary: 'The input has not been verified.', next: 'Inspect the original input.', evidenceIds: [], findingIds: [],
+  } }
+  model.nativeCalls[2] = { name: 'job_list', args: {} }
+  if (repeats) model.nativeCalls[3] = { name: 'pwsh', args: { command: 'Write-Output unexpected' } }
+  model.beforeResponse = async (request) => {
+    if (request === 4) expect((await execute(ctx, agent, 'job_list', {}, 'delivery-only')).isError).toBe(true)
+  }
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  for (const request of model.requests.slice(0, 3)) expect(request.tools).toEqual(model.requests[0]!.tools)
+  expect(model.requests[3]!.tools ?? []).toEqual([])
+  expect(JSON.stringify(model.requests[3]!.messages)).toContain('Deliver the final response now from existing observations')
+  const events = agent.session.snapshotEvents()
+  expect(events.filter(event => event.type === 'tool/result' && event.data.message.toolCallId === model.nativeCallId(3)))
+    .toMatchObject([{ data: { message: { isError: true } } }])
+  expect(events.filter(event => event.type === 'turn/end').at(-1)?.data.reason.kind).toBe(repeats ? 'blocked' : 'completed')
+  if (!repeats) expect(events.filter(event => event.type === 'assistant/message').at(-1)?.data.message.content)
+    .toContainEqual({ type: 'text', text: 'The configured binary is ready for static reconnaissance.' })
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint')).toHaveLength(1)
+  agent.followup(createUserMessage({ source: { kind: 'plugin:security-analysis-budget' }, content: [{ type: 'text', text: 'An internal continuation arrived.' }] }))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  expect(shell).not.toHaveBeenCalled()
+  model.usageTokens = 0
+  model.nativeCalls[4] = { name: 'security_scope', args: {} }
+  agent.followup(webPrompt('Resume the unfinished investigation.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(6)
+  expect(model.requests[4]!.tools).toEqual(model.requests[0]!.tools)
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('exploring')
+})
+
+it('permits bounded premise preparation before a closing save without authorizing consultation', async () => {
+  const { ctx, agent, controller, model } = await load(false, 0, { analysisTurnTokens: 1000, analysisWrapUpSteps: 3 })
+  await operator(controller, agent)({ kind: 'create', title: 'Preserve uncertainty', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  const prepare = vi.fn(async () => true)
+  agent.ctx.tools.register(defineTool({
+    name: 'premise_check', description: 'Fixture for admission of existing-evidence inspection and save preparation.',
+    parameters: { action: { type: 'string', required: true } },
+    output: { schema: { type: 'boolean' }, render: () => [{ type: 'text', text: 'Existing evidence reviewed; no checkpoint saved.' }] },
+    execute: prepare,
+  }))
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'premise_check', args: { action: 'inspect' } }
+  model.nativeCalls[2] = { name: 'premise_check', args: { action: 'prepare' } }
+  model.nativeCalls[3] = { name: 'security_checkpoint', args: {
+    phase: 'assessment', title: 'Unresolved source', reason: 'The original result has not been independently checked.',
+    summary: 'Source inspected; interpretation remains provisional.', next: 'Run a distinguishing check.', evidenceIds: [], findingIds: [],
+  } }
+  model.beforeResponse = async (request) => {
+    if (request === 2) {
+      for (const action of ['submit', 'consult', ''])
+        expect((await execute(ctx, agent, 'premise_check', { action }, 'denied-' + action)).isError).toBe(true)
+    }
+    if (request === 4) expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('closing')
+    if (request === 5) expect((await execute(ctx, agent, 'premise_check', { action: 'prepare' }, 'after-save')).isError).toBe(true)
+  }
+  agent.followup(webPrompt('Preserve the verified observations and remaining uncertainty.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(5)
+  expect(prepare).toHaveBeenCalledTimes(2)
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint')).toHaveLength(1)
+})
+
+it.each(['saved', 'prepared', 'failed'])('recognizes only a saved premise receipt as successful wrap-up persistence (%s)', async (status) => {
+  const { ctx, agent, controller, model } = await load(false, 0, { analysisTurnTokens: 1000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Save checked evidence', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  const save = vi.fn(async () => {
+    if (status === 'failed') throw new Error('Fixture persistence rejected the save')
+    return { status }
+  })
+  agent.ctx.tools.register(defineTool({
+    name: 'premise_check', description: 'Fixture for the premise persistence receipt.',
+    parameters: { action: { type: 'string', required: true } },
+    output: { schema: { type: 'object', properties: { status: { type: 'string', required: true } }, additionalProperties: false },
+      render: value => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: save,
+  }))
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'premise_check', args: { action: 'save' } }
+  model.beforeResponse = (request) => {
+    if (request === 3) expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe(status === 'saved' ? 'finalizing' : 'closing')
+  }
+  agent.followup(webPrompt('Preserve the observations and uncertainty.'))
+  await agent.whenIdle()
+  expect(save).toHaveBeenCalledOnce()
+  expect(model.requests).toHaveLength(3)
+  const receipt = agent.session.snapshotEvents().find(event => event.type === 'tool/result'
+    && event.data.message.toolCallId === model.nativeCallId(2))
+  expect(receipt).toMatchObject({ data: { message: { isError: status === 'failed' } } })
+  expect(JSON.stringify(model.requests[2]!.messages).includes('A permitted save action succeeded')).toBe(status === 'saved')
 })
 
 it('keeps a delegated structured report available during budget wrap-up', async () => {
@@ -2535,7 +2678,7 @@ it('keeps a delegated structured report available during budget wrap-up', async 
   await send({ kind: 'import', path: join(root, 'budget.bin'), label: 'sample' })
   const asset = controller.view(agent.id).records.find(item => item.kind === 'asset')!
   if (asset.kind !== 'asset') throw new Error('Missing asset')
-  model.usageTokens = 600
+  model.usageTokens = 1200
   model.nativeCalls = [{ name: 'security_scope', args: {} }]
   const result = await execute(ctx, agent, 'security_delegate', {
     assetId: asset.value.id, role: 'reconnaissance', question: 'Inspect the assigned scope.', criterion: 'Return established evidence.',
@@ -2544,9 +2687,99 @@ it('keeps a delegated structured report available during budget wrap-up', async 
   const { jobId } = JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join('')) as { jobId: string }
   expect((await ctx.jobs.wait(JobId(jobId), 10000, agent.id)).status).toBe('completed')
   expect(model.requests).toHaveLength(2)
-  expect(model.requests[1]!.tools?.map(tool => tool.name)).toEqual(['security_evidence', 'security_help', 'security_scope', 'structured_output'])
+  expect(model.requests[1]!.tools).toEqual(model.requests[0]!.tools)
+  expect(model.requests[1]!.tools?.some(tool => tool.name === 'structured_output')).toBe(true)
   expect(JSON.stringify(model.requests[1]!.messages)).toContain('security-analysis-budget')
   expect(controller.view(agent.id).records.filter(item => item.kind === 'delegation').map(item => item.value.report)).toContainEqual(model.childReport)
+})
+
+it.each([false, true])('cleans existing jobs after a wrap-up save and requires human input after a late completion (failed read: %s)', async (failedRead) => {
+  const { ctx, agent, controller, model, shell } = await load(false, 0, { jobs: true, analysisTurnTokens: 1000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Clean pending work', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  const obsolete = Promise.withResolvers<{ status: 'killed' }>()
+  const late = Promise.withResolvers<{ status: 'completed' }>()
+  const cancel = vi.fn(() => { obsolete.resolve({ status: 'killed' }) })
+  const obsoleteId = ctx.jobs.start({ kind: 'bash', label: 'Obsolete analysis', owner: agent.id,
+    run: (job) => { job.append('Partial observation'); return { cancel, done: obsolete.promise } } })
+  const lateId = ctx.jobs.start({ kind: 'bash', label: 'Retained service', owner: agent.id,
+    run: () => ({ cancel: () => { late.resolve({ status: 'completed' }) }, done: late.promise }) })
+  const completedNotice = Promise.withResolvers<undefined>()
+  ctx.effect(() => ctx.jobs.events.subscribe({ owner: agent.id }, (event) => {
+    if (event.type === 'settled' && event.job.id === lateId) completedNotice.resolve(undefined)
+  }))
+  const phases: string[] = []
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'job_list', args: {} }
+  model.nativeCalls[2] = { name: 'security_checkpoint', args: {
+    phase: 'assessment', title: 'Pending cleanup', reason: 'Retain the unresolved question',
+    summary: 'Partial evidence only.', next: 'Check the original input.', evidenceIds: [], findingIds: [],
+  } }
+  model.nativeCalls[3] = { name: 'job_output', args: { job_id: obsoleteId, ...(failedRead ? { wait: true, timeout_ms: -1 } : {}) } }
+  model.nativeCalls[4] = { name: 'job_kill', args: { job_id: obsoleteId, reason: 'No longer relevant' } }
+  model.beforeResponse = async (request) => {
+    phases.push(ctx.securityWorkbench.getAnalysisPhase(agent))
+    if (request === 5) {
+      expect(ctx.jobs.get(obsoleteId, agent.id).status).toBe('running')
+      expect((await execute(ctx, agent, 'job_output', { job_id: obsoleteId }, 'repeat-cleanup')).isError).toBe(true)
+      expect((await execute(ctx, agent, 'security_capabilities', {}, 'forbidden-exploration')).isError).toBe(true)
+    }
+  }
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('exploring')
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(6)
+  expect(phases).toEqual(['exploring', 'closing', 'closing', 'finalizing', 'finalizing', 'finalizing'])
+  expect(model.requests[1]!.tools?.some(tool => tool.name === 'job_list')).toBe(true)
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
+  expect(cancel).toHaveBeenCalledOnce()
+  const output = agent.session.snapshotEvents().find(event => event.type === 'tool/result' && event.data.message.toolCallId === model.nativeCallId(4))
+  expect(output?.type === 'tool/result' && output.data.message.isError === true).toBe(failedRead)
+  expect(ctx.jobs.get(obsoleteId, agent.id).status).toBe('killed')
+  expect(shell).not.toHaveBeenCalled()
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'assistant/message').at(-1)?.data.message.content)
+    .toContainEqual({ type: 'text', text: 'The configured binary is ready for static reconnaissance.' })
+  late.resolve({ status: 'completed' })
+  await completedNotice.promise
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(6)
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(2)
+  model.usageTokens = 0
+  model.nativeCalls[6] = { name: 'security_capabilities', args: {} }
+  agent.followup(webPrompt('Continue the investigation now.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(8)
+  expect(phases.slice(-2)).toEqual(['exploring', 'exploring'])
+  expect(model.requests[6]!.tools?.some(tool => tool.name === 'security_capabilities')).toBe(true)
+  const resumed = agent.session.snapshotEvents().find(event => event.type === 'tool/result' && event.data.message.toolCallId === model.nativeCallId(7))
+  expect(resumed?.type === 'tool/result' && !resumed.data.message.isError).toBe(true)
+})
+
+it('delivers one truncated final report without reopening a closed investigation', async () => {
+  const { ctx, agent, controller, model, shell } = await load(false, 0, { analysisTurnTokens: 1000 })
+  await operator(controller, agent)({ kind: 'create', title: 'Deliver available findings', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.reasoning = { efforts: [{ id: ReasoningEffortId('low'), name: 'Low' }] }
+  installOutputRecovery(agent, { resetOnUserInput: true, reasoningEffort: 'low', maxTokens: 8192 })
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'security_checkpoint', args: {
+    phase: 'assessment', title: 'Partial observation', reason: 'Retain uncertainty',
+    summary: 'No independent validation yet.', next: 'Check the original input.', evidenceIds: [], findingIds: [],
+  } }
+  model.truncatedRequests.add(3)
+  agent.followup(webPrompt('Inspect the project.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(model.requests[3]).toMatchObject({ reasoningEffort: 'low', maxTokens: 8192 })
+  expect(model.requests[3]!.tools ?? []).toEqual([])
+  expect(model.requests[3]!.messages.some(message => message.source?.kind === 'helper-output-recovery')).toBe(true)
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/end').map(event => event.data.reason.kind))
+    .toEqual(['max-tokens', 'completed'])
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  agent.followup(createUserMessage({ content: [{ type: 'text', text: 'An internal continuation arrived.' }], source: { kind: 'plugin:security-analysis-budget' } }))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(shell).not.toHaveBeenCalled()
 })
 
 it('reads the current revision and retries a failed wrap-up save before finalizing', async () => {
@@ -2565,9 +2798,9 @@ it('reads the current revision and retries a failed wrap-up save before finalizi
   expect(model.requests).toHaveLength(5)
   expect(model.requests[2]!.tools?.some(tool => tool.name === 'security_command')).toBe(true)
   expect(model.requests[3]!.tools?.some(tool => tool.name === 'security_command')).toBe(true)
-  expect(model.requests[4]!.tools ?? []).toEqual([])
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
   expect(JSON.stringify(model.requests[4]!.messages)).toContain('A permitted save action succeeded')
-  expect(JSON.stringify(model.requests[4]!.messages)).toContain('Do not retry any tool or print tool-call markup such as DSML')
+  expect(JSON.stringify(model.requests[4]!.messages)).toContain('Do not retry denied tools or print tool-call markup such as DSML')
   expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint').map(record => record.value.title)).toEqual(['Observed input'])
 })
 
@@ -2583,7 +2816,7 @@ it('ends unsuccessful wrap-up retries with an explicit unsaved-progress summary'
   agent.followup(webPrompt('Inspect the project.'))
   await agent.whenIdle()
   expect(model.requests).toHaveLength(4)
-  expect(model.requests[3]!.tools ?? []).toEqual([])
+  for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
   expect(JSON.stringify(model.requests[3]!.messages)).toContain('No successful checkpoint or report save was observed')
   expect(controller.view(agent.id).records.some(record => record.kind === 'checkpoint')).toBe(false)
   expect(shell).not.toHaveBeenCalled()
@@ -3640,4 +3873,39 @@ it('synchronizes primary task deletion and native archive in both directions wit
   expect(controller.projects()[0]).toMatchObject({ archived: false, stopped: true })
   expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
   expect(model.requests).toHaveLength(0)
+})
+
+it('returns the measured PE image interval to the model before querying an outside instruction address', async () => {
+  const { ctx, agent, controller, model } = await load(false, 0, { adapters: true, installations: [
+    { id: 'radare2', command: process.execPath, prefixArgs: [], versionArgs: ['--version'], source: 'Fixture' },
+  ] })
+  const send = operator(controller, agent), root = roots[roots.length - 1]!
+  await send({ kind: 'create', title: 'PE address inspection', objective: 'Inspect the imported image',
+    moduleSelection: { mode: 'manual', modules: ['reverse.native'], reason: 'Static PE fixture' },
+    environmentIds: ['local'], maxAttempts: 3 })
+  const path = join(root, 'image.exe')
+  await writeFile(path, peImageBytes())
+  await send({ kind: 'import', path, label: 'Synthetic PE image' })
+  const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+  if (asset.kind !== 'asset') throw new Error('Missing PE fixture asset')
+  const spawn = vi.spyOn(ctx.subprocess, 'spawn')
+  model.nativeCalls = [{ name: 'security_radare2', args: {
+    assetId: asset.value.id, operation: 'disassemble', address: '0x18001000', count: 4,
+  } }]
+  agent.followup(webPrompt('Inspect the requested instruction address.'))
+  await agent.whenIdle()
+  const result = agent.session.snapshotEvents().find(event => event.type === 'tool/result'
+    && event.data.message.toolCallId === model.nativeCallId(1))
+  if (result?.type !== 'tool/result') throw new Error('Missing address rejection result')
+  expect(result.data.message.isError).toBe(true)
+  const text = result.data.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+  const evidence = controller.view(agent.id).records.find(record => record.kind === 'evidence')
+  if (evidence?.kind !== 'evidence') throw new Error('Missing address rejection evidence')
+  expect(text).toContain(evidence.value.id)
+  expect(text.replace(evidence.value.id, '<evidence-id>')).toMatchSnapshot('PE outside-address diagnostic')
+  expect(text).toContain('ImageBase is 0x180000000')
+  expect(JSON.stringify(model.requests[1]?.messages)).toContain('outside the PE image range')
+  expect(spawn.mock.calls).toHaveLength(1)
+  expect(spawn.mock.calls[0]?.[0].argv.slice(1)).toEqual(['--version'])
+  expect(await readdir(join(root, 'workbench', 'runs'))).toEqual([])
 })

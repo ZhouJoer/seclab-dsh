@@ -148,6 +148,7 @@ export async function apply(ctx) {
       if (exec.callId === 'identity-corrected') return commandIO.run({ identifier: 2000 }, next)
       if (exec.callId === 'save-research-progress') return commandIO.run({ identifier: 0 }, next)
       if (exec.callId === 'save-native-progress') return commandIO.run({ identifier: 100 }, next)
+      if (exec.callId === 'save-budget-checkpoint') return commandIO.run({ identifier: 3000 }, next)
       if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
         const service = securityCtx.securityWorkbench
         if (exec.callId === 'native-source-read') {

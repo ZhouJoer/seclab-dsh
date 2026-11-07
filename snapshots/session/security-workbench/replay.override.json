@@ -245,14 +245,29 @@
           "arguments": "{\"command\":\"{\\\"operationId\\\":\\\"fixture-native-method\\\",\\\"expectedRevision\\\":14,\\\"action\\\":{\\\"kind\\\":\\\"modules\\\",\\\"selection\\\":{\\\"mode\\\":\\\"auto\\\",\\\"modules\\\":[\\\"reverse.native\\\"],\\\"reason\\\":\\\"Inspect imported native binary and PE helper guidance\\\"}}}\"}"
         }
       },
-      { "type": "usage", "usage": { "inputTokens": 3, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {
     "kind": "chunks",
     "chunks": [
-      { "type": "block-start", "index": 0, "blockType": "tool-call" },
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
       {
         "type": "block-end",
         "index": 0,
@@ -263,8 +278,85 @@
           "arguments": "{\"name\":\"security-native\"}"
         }
       },
-      { "type": "usage", "usage": { "inputTokens": 1200, "outputTokens": 3 } },
-      { "type": "finish", "reason": { "kind": "tool-calls" } }
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 1200,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "save-budget-checkpoint",
+          "name": "security_checkpoint",
+          "arguments": "{\"phase\":\"assessment\",\"title\":\"Unverified interpretation\",\"reason\":\"The available observations do not establish the runtime behavior.\",\"summary\":\"Static material inspected; runtime behavior remains unverified.\",\"next\":\"Compare a distinguishing experiment with the original evidence.\",\"evidenceIds\":[],\"findingIds\":[]}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "denied-empty-job-list",
+          "name": "job_list",
+          "arguments": "{}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
     ]
   },
   {

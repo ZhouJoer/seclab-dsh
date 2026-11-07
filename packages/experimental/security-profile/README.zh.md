@@ -69,7 +69,7 @@ preset 提供通用 `skill` 加载工具。安全方法摘要进入已记录的�
 
 #### Token 影响
 
-方法摘要、加载的正文、领域工具定义和检索到的证据按各自配置的限额占用上下文。此 profile 将 `analysisTurnTokens` 设置为每个 Session 分析轮次 360,000 个探索 token；服务默认值为 120,000。默认计入未缓存输入、缓存写入和输出。设置 `analysisCountCacheReads: true` 可同时计入重复的缓存读取。完整模型用量仍会记录，因此这一限额不等于计费用量或上下文窗口上限。[分析服务](../security-analysis/README.zh.md#model-experience) 会在探索达到预算时提供阶段总结。
+方法摘要、加载的正文、领域工具定义和检索到的证据按各自配置的限额占用上下文。此 profile 将 `analysisTurnTokens` 设置为每次用户请求的分析 360,000 个探索 token，包含内部续行；服务默认值为 120,000。默认计入未缓存输入、缓存写入和输出。设置 `analysisCountCacheReads: true` 可同时计入重复的缓存读取。完整模型用量仍会记录，因此这一限额不等于计费用量或上下文窗口上限。此 profile 允许五个有界收尾工具步骤，用于查看已有证据、准备和保存检查点；这些步骤不允许新探索。[分析服务](../security-analysis/README.zh.md#model-experience) 会在探索达到预算时提供阶段总结。
 
 #### KV Cache effect
 

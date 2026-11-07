@@ -906,7 +906,10 @@ async function verifyHeaders(
       const expected = selectedSchemas === undefined
         ? configured
         : { ...configured as JsonObject, tools: selectedSchemas }
-      expect(header, `${scenario.name}: session ${logIndex} header ${index + 1}`).toEqual(expected)
+      const comparable = selectedSchemas?.length === 0 && !Object.hasOwn(header as object, 'tools')
+        ? { ...header as JsonObject, tools: [] }
+        : header
+      expect(comparable, `${scenario.name}: session ${logIndex} header ${index + 1}`).toEqual(expected)
     }
     if (prompts.length > 0) {
       expect(formatSystemPromptSnapshot(prompts[0] as string, prompts.slice(1)), `${scenario.name}: session ${logIndex} system prompts`)
@@ -963,6 +966,21 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'helper') {
+        const parent = parseSessionLog(ordered[0]!.content)
+        expect(parent.filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-checkpoint')).toHaveLength(0)
+        const settled = parent.filter(event => event.type === 'helper/auto-end')
+        expect(settled).toMatchObject([{ data: { status: 'completed', answer: 'AUTO_CHECKED',
+          usage: { inputTokens: 97, outputTokens: 86, cacheReadTokens: 2816, reasoningTokens: 17 } } }])
+        const automatic = parseSessionLog(ordered[2]!.content)
+        expect(automatic.filter(event => event.type === 'turn/end').map(event => event.data.reason.kind)).toEqual(['max-tokens', 'completed'])
+        const headers = automatic.filter(event => event.type === 'request/header').map(event => event.data.header)
+        expect(headers.map(header => [header.config.maxTokens, header.tools])).toEqual([[64, undefined], [128, undefined]])
+        expect(automatic.filter(event => event.type === 'user/message' && event.data.source.kind === 'helper-output-recovery')).toHaveLength(1)
+        expect(automatic.filter(event => event.type === 'tool/result')).toMatchObject([{ data: { message: {
+          isError: true, content: [{ type: 'text', text: 'Error: The advisor has no tool access' }],
+        } } }])
+      }
       if (scenario.name === 'minimal-image-compaction') {
         const events = results.flatMap(result => result.events)
         const image = events.find(event => event.type === 'tool/result')

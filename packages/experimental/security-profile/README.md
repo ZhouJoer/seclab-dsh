@@ -69,7 +69,7 @@ The preset exposes the shared `skill` loader. Security method summaries enter th
 
 #### Token effect
 
-Method summaries, loaded bodies, domain tool schemas and retrieved evidence consume context according to their configured limits. This profile sets `analysisTurnTokens` to 360,000 exploration tokens per Session turn; the service default is 120,000. Uncached input, cache writes and output count by default. Set `analysisCountCacheReads: true` to include repeated cache reads. Complete provider usage remains logged, so this allowance is not a billing total or context-window limit. The [analysis service](../security-analysis/README.md#model-experience) provides a final checkpoint when exploration reaches its allowance.
+Method summaries, loaded bodies, domain tool schemas and retrieved evidence consume context according to their configured limits. This profile sets `analysisTurnTokens` to 360,000 exploration tokens per user-requested analysis, including internal continuations; the service default is 120,000. Uncached input, cache writes and output count by default. Set `analysisCountCacheReads: true` to include repeated cache reads. Complete provider usage remains logged, so this allowance is not a billing total or context-window limit. The profile allows five bounded wrap-up tool steps for existing-evidence inspection, checkpoint preparation and saving; these steps do not permit new exploration. The [analysis service](../security-analysis/README.md#model-experience) provides a final checkpoint when exploration reaches its allowance.
 
 #### KV Cache effect
 
