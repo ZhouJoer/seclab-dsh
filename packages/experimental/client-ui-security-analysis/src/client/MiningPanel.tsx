@@ -17,5 +17,6 @@ export function MiningPanel({ t }: PropsLocale<typeof NS>) {
       <li><code>{t('miningCommandGrade')}</code> — {t('miningCardGrade')}</li>
     </ol>
     <p>{t('miningCardManual')}</p>
+    <p>{t('miningPanelWebHint')}</p>
   </details>
 }

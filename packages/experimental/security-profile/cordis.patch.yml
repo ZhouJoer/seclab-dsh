@@ -124,6 +124,10 @@
                 command: pkg-config
                 versionArgs: [--version]
                 source: Toolbox image
+              - id: sh
+                command: sh
+                versionArgs: [-c, 'echo ready']
+                source: Toolbox image
     - id: security-environments
       name: '@deepseek-ai/dsh-experimental-security-analysis/environment'
     - id: security-ghidra

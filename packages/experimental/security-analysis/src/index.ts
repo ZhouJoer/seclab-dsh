@@ -182,6 +182,11 @@ export interface WorkbenchConfig {
   maxConcurrentDelegations: number
   /** Lifetime of an operator approval in milliseconds. */
   approvalTtlMs: number
+  /** Session self-service policy for otherwise operator-gated workbench commands. */
+  approval: {
+    /** Let a bound Session create its own task and approve its own plans without an operator gesture. */
+    sessionSelfApprove: boolean
+  }
   /** Periodic refinement cadence; zero disables automatic runs. */
   knowledgeIntervalMs: number
   /** Maximum complete refinement prompt size. */
@@ -241,6 +246,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     })]),
     maxConcurrentDelegations: Schema.number().step(1).min(1).default(3),
     approvalTtlMs: Schema.number().step(1).min(1).default(3600000),
+    approval: Schema.object({ sessionSelfApprove: Schema.boolean().default(false) }).default({}),
     targetProbeTimeoutMs: Schema.number().step(1).min(1000).default(15000),
     delegationTimeoutMs: Schema.number().step(1).min(1).default(300000),
     knowledgeIntervalMs: Schema.number().step(1).min(0).max(2147483647).default(3600000),
@@ -1438,7 +1444,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const controller = new SecurityController(
         journal,
         artifacts,
-        { ...this.config, reportLimits: { maxFindings: this.config.reportMaxFindings, outputBytes: this.config.maxOutputBytes } },
+        { ...this.config, sessionSelfApprove: this.config.approval.sessionSelfApprove,
+          reportLimits: { maxFindings: this.config.reportMaxFindings, outputBytes: this.config.maxOutputBytes } },
         this.activity,
         async (project) => {
           await this.evolution?.cancel(project); await this.evolutionStore?.removeProject(project)

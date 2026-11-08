@@ -12,6 +12,7 @@ import { openSecurityJournal } from '../src/workbench/journal.ts'
 import { sourceManifestSchema } from '../src/workbench/source.ts'
 import { ArtifactStore } from '../src/workbench/artifacts.ts'
 import { SecurityController } from '../src/workbench/controller.ts'
+import type { SecurityEnvironment } from '../src/workbench/providers.ts'
 import { BinaryProvider } from '../src/workbench/binary.ts'
 import type { SecurityCommand } from '../src/workbench/controller.ts'
 import type { AnalysisOperation } from '../src/workbench/model.ts'
@@ -24,7 +25,7 @@ import { openTaskSettings } from '../src/task-settings.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 async function harness(generateReport?: (prompt: string, signal: AbortSignal) => Promise<string>,
-  citationReader?: ConstructorParameters<typeof SecurityController>[6]) {
+  citationReader?: ConstructorParameters<typeof SecurityController>[6], selfApprove = false) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-workbench-'))
   const ctx = new Context()
   const backend = new JsonStorageBackend(root)
@@ -45,6 +46,7 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
     maxDurationMs: 1000,
     maxOutputBytes: 32768,
     approvalTtlMs: 60000,
+    sessionSelfApprove: selfApprove,
     maxArtifactBytes: 65536,
     maxDerivedAssets: 10,
     reportLimits: { maxFindings: 5, outputBytes: 16384 },
@@ -1076,8 +1078,77 @@ describe('security workbench', () => {
     expect(controller.binding('child')?.role).toBe('reconnaissance')
     await expect(send({ kind: 'stop' }, false, 'child')).rejects.toThrow(/role/)
     await expect(send({ kind: 'approve', planId: 'unknown' })).rejects.toThrow(/operator/)
+    await expect(send({ kind: 'create', title: 'Unattended', objective: 'Create without an operator', environmentIds: ['local'], maxAttempts: 3 })).rejects.toThrow(/operator/)
     await expect(bindDelegatedChild(controller, 'child', 'grandchild', assetId, 'reviewer')).rejects.toThrow('Coordinator role required')
     expect(controller.view('unbound').records).toEqual([])
+  })
+
+  it('lets a bound session create and approve its own task under sessionSelfApprove', async () => {
+    const { root, controller, send } = await harness(undefined, undefined, true)
+    await send({ kind: 'create', title: 'Bench task', objective: 'Blind rediscovery', environmentIds: ['local'], maxAttempts: 6 }, false, 'bench')
+    expect(controller.binding('bench')).toBeDefined()
+    await send({ kind: 'import', path: join(root, 'sample.exe'), label: 'bench sample' }, false, 'bench')
+    const asset = controller.view('bench').records.find(item => item.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Fixture failed to import')
+    controller.providers.register({ id: 'fixture', operations: ['inspect'], resolve: request => request,
+      run: async () => ({ bytes: Buffer.from('{}'), mediaType: 'application/json', summary: 'observed', incomplete: false, toolVersion: 'fixture' }) })
+    await send({
+      kind: 'check', check: { assetId: asset.value.id, title: 'Inspect', phase: 'recon', criterion: 'One observation', dependencies: [], evidenceIds: [] },
+    }, false, 'bench')
+    const check = controller.view('bench').records.find(item => item.kind === 'check')!
+    await send({
+      kind: 'plan', checkId: check.value.id,
+      operation: { provider: 'fixture', operation: 'inspect', assetId: asset.value.id, environmentId: 'local', parameters: {}, impact: 'observe' },
+      hypothesis: 'Inspect once', expectedObservation: 'JSON', impact: 'Read', cleanup: 'None', durationMs: 1000,
+    }, false, 'bench')
+    const plan = controller.view('bench').records.find(item => item.kind === 'plan')!
+    if (plan.kind !== 'plan') throw new Error('Missing plan')
+    await send({ kind: 'approve', planId: plan.value.id }, false, 'bench')
+    expect(controller.view('bench').records.find(item => item.kind === 'plan')?.value).toMatchObject({ status: 'approved' })
+    await expect(send({ kind: 'leave' }, false, 'bench')).rejects.toThrow(/operator/)
+  })
+
+  it('starts the managed mining container when an approved mining plan executes', async () => {
+    const { root, controller, send, journal } = await harness()
+    const miningEnvironment: SecurityEnvironment = { id: 'dig', kind: 'docker', label: 'Dig', cwd: root,
+      image: 'fixture-image:latest', tools: [{ id: 'cmake', command: 'cmake', versionArgs: ['--version'], source: 'Fixture' }] }
+    controller.options.environments.push(miningEnvironment)
+    controller.environments.register({ id: 'local', manager: {
+      devices: async environment => ({ environmentId: environment.id, checkedAt: Date.now(), checks: [], devices: [] }),
+      inventory: async environment => ({ environmentId: environment.id, kind: 'docker' as const, runtime: 'unchecked' as const,
+        detail: 'fixture', checkedAt: Date.now(), workdir: '/workspace', tools: [] }),
+      inspect: async () => ({ id: 'dig', ready: false, diagnostics: [], tools: [] }),
+      start: async (environment) => {
+        environment.containerId = 'fixture-container'
+        environment.resolvedImageId = 'fixture-image@sha256:fixture'
+        return 'fixture-container'
+      },
+      stop: async () => {},
+    } })
+    const run = vi.fn(async () => ({ bytes: Buffer.from('built'), mediaType: 'application/json', summary: 'steps completed',
+      incomplete: false, toolVersion: 'mining container fixture-image:latest', observationKind: 'implementation' as const }))
+    controller.providers.register({ id: 'mining', operations: ['build'], resolve: request => request, run })
+    await send({ kind: 'create', title: 'Dig task', objective: 'Sanitizer build', environmentIds: ['dig'], maxAttempts: 3 }, true, 'digger')
+    await send({ kind: 'import', path: join(root, 'sample.exe'), label: 'dig sample' }, false, 'digger')
+    const asset = controller.view('digger').records.find(item => item.kind === 'asset')!
+    if (asset.kind !== 'asset') throw new Error('Fixture failed to import')
+    await send({
+      kind: 'check', check: { assetId: asset.value.id, title: 'Build', phase: 'validation', criterion: 'Build settles', dependencies: [], evidenceIds: [] },
+    }, false, 'digger')
+    const check = controller.view('digger').records.find(item => item.kind === 'check')!
+    await send({
+      kind: 'plan', checkId: check.value.id,
+      operation: { provider: 'mining', operation: 'build', assetId: asset.value.id, environmentId: 'dig',
+        parameters: { sourceDir: root, buildTag: 'fixture-tag', steps: [{ tool: 'cmake', args: ['--version'] }] },
+        impact: 'observe' },
+      hypothesis: 'Build once', expectedObservation: 'Steps completed', impact: 'Write', cleanup: 'Build root only', durationMs: 1000,
+    }, false, 'digger')
+    const plan = controller.view('digger').records.find(item => item.kind === 'plan')!
+    if (plan.kind !== 'plan') throw new Error('Missing plan')
+    await send({ kind: 'approve', planId: plan.value.id }, true, 'digger')
+    await controller.execute('digger', plan.value.id, randomUUID(), journal.view().revision, 'dig-call', new AbortController().signal)
+    expect(miningEnvironment.containerId).toBe('fixture-container')
+    expect(run).toHaveBeenCalledTimes(1)
   })
 
   it('does not complete checks without evidence or execute unapproved plans', async () => {

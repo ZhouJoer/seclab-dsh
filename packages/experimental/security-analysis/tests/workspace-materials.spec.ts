@@ -35,6 +35,7 @@ async function harness() {
     maxDurationMs: 1000,
     maxOutputBytes: 32768,
     approvalTtlMs: 60000,
+    sessionSelfApprove: false,
     maxArtifactBytes: 65536,
     maxDerivedAssets: 10,
   })

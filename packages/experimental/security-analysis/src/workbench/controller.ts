@@ -75,6 +75,8 @@ export interface WorkbenchOptions {
   maxDurationMs: number
   maxOutputBytes: number
   approvalTtlMs: number
+  /** Whether a bound Session may create its own task and approve its own plans without an operator gesture. */
+  sessionSelfApprove: boolean
   maxDerivedAssets: number
   maxArtifactBytes: number
   reportLimits?: ReportLimits
@@ -899,7 +901,8 @@ export class SecurityController {
     const command = commandSchema.parse(input)
     const action = command.action
     const operatorActions = ['create', 'select', 'leave', 'approve', 'publish', 'resume', 'web-target', 'external-web-target']
-    if (operatorActions.includes(action.kind) && !operator) throw new Error('This action requires an operator gesture')
+    const selfServe = this.options.sessionSelfApprove && (action.kind === 'create' || action.kind === 'approve')
+    if (operatorActions.includes(action.kind) && !operator && !selfServe) throw new Error('This action requires an operator gesture')
     if (action.kind === 'report' || action.kind === 'complete-task') return this.createReport(sessionId, command, operator, signal)
     const checkpointBinding = action.kind === 'checkpoint' ? this.requireBinding(this.journal.view(), sessionId) : undefined
     await this.journal.commit(
@@ -1814,6 +1817,14 @@ export class SecurityController {
       })
       state = 'running'
       combined.throwIfAborted()
+      // Executing an approved mining plan may start its configured managed
+      // container; containerId is excluded from the environment hash, so the
+      // recorded plan stays valid across the start (same precedent as the
+      // tool-adapter observation path).
+      if (plan.operation.provider === 'mining' && environment.kind === 'docker'
+        && !environment.externalContainer && !environment.containerId) {
+        await this.environments.get('local').manager.start(environment, combined)
+      }
       const context = {
         environment,
         asset: sample.value,

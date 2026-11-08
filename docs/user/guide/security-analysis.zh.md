@@ -224,9 +224,9 @@ Nuclei 与 Metasploit 专用 provider 执行、审核模块目录、Vulhub 编�
 <a id="cve-blind-rediscovery"></a>
 ## CVE 盲测复现基准
 
-挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。配置一个镜像内含构建工具链的 Docker 环境（包内 toolbox 配方安装 git、cmake、make、gcc、clang 和 pkg-config），在 `environments[].tools` 下注册这些工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。
+挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。先用 `pnpm security:toolbox` 构建 toolbox 镜像（可传 `--base <image>` / `--tag <tag>`）；镜像安装 git、cmake、make、gcc、clang、pkg-config、autoconf/automake/libtool 和 POSIX shell，并内置 `/opt/dsh-toolbox/diffcheck.py`（在两个构建根下各跑一次同一复现程序，记录有界差分观察）。在 `environments[].tools` 下注册工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。
 
-该能力为实验性且仅限手动：对话不会自动启动挖掘，工具箱只在折叠卡片中展示。`pnpm security:cve-bench prepare` 将每个种子案例固定的漏洞与修复 commit 克隆到 `.dsh/cve-bench/`，写出 `patch.diff` 作为唯一线索，并生成盲测任务与 overlay。`pnpm security:cve-bench run` 打印精确的 profile 启动命令；启动后把生成的任务粘贴进会话，检查计划步骤后批准 mining 计划，并导出报告。`pnpm security:cve-bench grade --case <id> --report <report.json>` 按案例的补丁文件与崩溃特征对导出评分。任务全程看不到 CVE 编号或公告文字；复现标准是同一 PoC 在漏洞构建上触发 sanitizer 崩溃而修复构建正常结束。把包含固定 commit 与评分字段的 JSON 放入 `resources/cve-cases/` 即可新增案例。
+该能力为实验性且仅限手动：对话不会自动启动挖掘，工具箱只在折叠卡片中展示。`pnpm security:cve-bench prepare [--force]` 将每个种子案例固定的漏洞与修复 commit 克隆到 `.dsh/cve-bench/`，写出 `patch.diff` 作为唯一线索，并生成盲测任务与 overlay。`pnpm security:cve-bench run [--launch]` 打印无头启动命令，或以 `--launch` 直接执行；无头会话把工作台存储钉在案例工作区内，对该一次性工作区开启 `approval.sessionSelfApprove`（会话自建任务并自批 mining 计划；其他所有场景仍默认逐条 operator 审批），并对 `webAccess: off` 的案例禁用 web 搜索/抓取工具，使盲态约束落在机制而非提示词上。`pnpm security:cve-bench verify --case <id>` 在 toolbox 镜像内重执行每对已记录的 mining 运行，结构化解析 AddressSanitizer 报告并写出 `verify.json`；`pnpm security:cve-bench grade --case <id>` 读取案例 journal（或 `--report <report.json>` 导出）评分，机械差分结果优先于文本匹配。无头结果按设计不出现在操作员的 Web 工作台里。`pnpm security:cve-bench web --case <id>` 在准备好的案例工作区上打开常规 Web 工作台，供操作员驱动运行：在对话 Workbench 概览页的“挖掘任务”表单提交目标（源码路径、二进制上传或网页目标，以及再发现线索），在计划审批中逐条批准 mining 计划，结束后对同一份 journal 执行 `verify` 与 `grade`。`pnpm security:cve-bench review --case <id>` 则把同一工作台打开在已完成运行的 journal 上，可在现有侧栏浏览任务、计划、证据与 finding；两个入口都不改动任何网页功能。任务全程看不到 CVE 编号或公告文字；复现标准是同一 PoC 在漏洞构建上触发 sanitizer 崩溃而修复构建正常结束。案例分 tier：`patch-guided` 把修复 diff 作为唯一线索交给会话，`version-diff` 只准备两个版本、不提供补丁文件，定位版本间的安全相关改动本身就是任务的一部分。把包含固定 commit 与评分字段的 JSON 放入 `resources/cve-cases/` 即可新增案例；`cve: "PENDING"` 表示修复尚无公告编号。
 
 ## 源码与静态前端项目
 

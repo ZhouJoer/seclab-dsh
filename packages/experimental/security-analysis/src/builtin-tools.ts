@@ -862,6 +862,19 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
       'skills': ['security-cve-mining'],
     },
     {
+      'id': 'sh',
+      'label': 'sh',
+      'description': 'POSIX shell for configure scripts and composed build steps / 漏洞挖掘 构建 autotools',
+      'category': 'utility',
+      'tags': ['mining', 'build'],
+      'commands': ['sh'],
+      'args': ['-c', 'echo ready'],
+      'url': 'https://en.wikipedia.org/wiki/Unix_shell',
+      'provider': 'mining',
+      'guide': 'Run autotools configure and other shell-driven build steps on read-only imported sources, for example sh {sourceDir}/configure --prefix={buildRoot}. The source tree stays read-only; configure outputs and intermediate files belong under {buildRoot}. Keep exit status and diagnostics as evidence.',
+      'skills': ['security-cve-mining'],
+    },
+    {
       'id': 'pkg-config',
       'label': 'pkg-config',
       'description': 'Library compile and link flag lookup / 漏洞挖掘 编译 依赖',
@@ -884,7 +897,7 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
     {
       'id': 'mining',
       'label': 'Vulnerability mining / 漏洞挖掘',
-      'toolIds': ['git', 'cmake', 'make', 'gcc', 'clang', 'pkg-config', 'python'],
+      'toolIds': ['git', 'cmake', 'make', 'gcc', 'clang', 'pkg-config', 'sh', 'python'],
     },
     {
       'id': 'iot',

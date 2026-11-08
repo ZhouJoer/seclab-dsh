@@ -12,6 +12,7 @@ import type { NS, SecurityKey } from './locales.ts'
 import css from './Workbench.module.css'
 import { ToolPreferences, type ToolPreferenceActions } from './ToolPreferences.tsx'
 import { AnalysisStart } from './AnalysisStart.tsx'
+import { MiningStart } from './MiningStart.tsx'
 import { WorkspaceResources } from './WorkspaceResources.tsx'
 import { MaterialPanel } from './MaterialPanel.tsx'
 import { ProjectManagement, projectLabel } from './ProjectManagement.tsx'
@@ -456,6 +457,30 @@ export function Workbench(props: WorkbenchProps) {
                       <>
                         {maxAttempts === undefined && <p role="alert" className={css.error}>{t(workspace ? 'missingAttemptLimit' : 'missingAnalysisWorkspace')}</p>}
                         <AnalysisStart key={sessionId} t={t} disabled={busy > 0 || running || maxAttempts === undefined}
+                          workspaceEnvironmentIds={workspace?.environmentIds}
+                          defaultTaskContext={workspace?.taskContext} taskContextMaxBytes={configuration.taskContextMaxBytes}
+                          limits={configuration.materialLimits} environments={configuration.environments}
+                          prepare={async (input) => {
+                            if (maxAttempts === undefined) throw new Error(t(workspace ? 'missingAttemptLimit' : 'missingAnalysisWorkspace'))
+                            await props.importMaterials(sessionId, JSON.stringify({
+                              operationId: input.operationId, expectedRevision: view.revision,
+                              material: input.material, target: input.target ? { ...input.target,
+                                environmentId: input.environmentId, label: input.title } : undefined,
+                              title: input.title, objective: input.objective,
+                              taskContext: input.taskContext, moduleSelection: input.moduleSelection,
+                              resources: { environmentIds: input.environmentIds, maxAttempts },
+                            }))
+                          }}
+                          send={async (objective) => {
+                            if (activeSession.current !== sessionId) throw new Error(t('analysisSessionChanged'))
+                            await props.sendAnalysis(sessionId, objective)
+                          }}
+                          continueInChat={(objective) => {
+                            if (activeSession.current !== sessionId) throw new Error(t('analysisSessionChanged'))
+                            props.openAnalysisChat(sessionId, objective)
+                          }}
+                          started={() => { if (activeSession.current === sessionId) setOpen(false) }} />
+                        <MiningStart key={sessionId + '-mining'} t={t} disabled={busy > 0 || running || maxAttempts === undefined}
                           workspaceEnvironmentIds={workspace?.environmentIds}
                           defaultTaskContext={workspace?.taskContext} taskContextMaxBytes={configuration.taskContextMaxBytes}
                           limits={configuration.materialLimits} environments={configuration.environments}

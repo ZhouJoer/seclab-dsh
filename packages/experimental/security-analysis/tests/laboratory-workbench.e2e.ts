@@ -29,7 +29,7 @@ it.skipIf(!process.env.DSH_SECURITY_DOCKER_IMAGE)('collects HTTP inside the owne
   const journal = await openSecurityJournal(ctx)
   const artifacts = new ArtifactStore(root, 2 * 1024 * 1024)
   const controller = new SecurityController(journal, artifacts, { importRoots: [root], environments: [],
-    taskContextMaxBytes: 4096, maxDurationMs: 30000, maxOutputBytes: 65536, approvalTtlMs: 60000,
+    taskContextMaxBytes: 4096, maxDurationMs: 30000, maxOutputBytes: 65536, approvalTtlMs: 60000, sessionSelfApprove: false,
     maxArtifactBytes: 2 * 1024 * 1024, maxDerivedAssets: 10 })
   const existingImage = process.env.DSH_SECURITY_DOCKER_IMAGE
   if (!existingImage) throw new Error('Configure the local toolbox image for this opt-in test')

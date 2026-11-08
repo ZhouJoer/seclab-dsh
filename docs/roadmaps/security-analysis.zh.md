@@ -68,8 +68,8 @@ r2pipe、Capstone、pefile 和 Unicorn 保留 Python/脚本能力。Fastboot 和
 
 - [x] **挖掘 provider**：受管 Docker 环境中经审批的 `mining` build/run 操作，构建根按标签隔离，选择容器内已注册工具，支持 `{sourceDir}`/`{buildRoot}` 占位符，sanitizer 崩溃按观察记录（`packages/experimental/security-analysis/src/mining-provider.ts`）。
 - [x] **挖掘方法与任务**：`security-cve-mining` 技能、`mining` 委派任务类型、工具箱 `mining` 集合（git/cmake/make/gcc/clang/pkg-config 定义）与构建工具链镜像配方。
-- [x] **盲测基准 harness**：`pnpm security:cve-bench` 准备固定漏洞/修复检出与补丁线索，生成盲测任务与 overlay，并对导出报告评分；三个种子案例位于 `resources/cve-cases/`。
-- [ ] **真实模型盲测验收**：通过 security profile 用真实模型端到端运行种子案例并记录再发现率；先在挖掘容器中通过 ground-truth 崩溃差分。
+- [x] **盲测基准 harness**：`pnpm security:cve-bench` 准备固定漏洞/修复检出与补丁线索，生成盲测任务与 overlay，无头启动案例，机械重执行运行对并对 journal 或导出报告评分；四个种子案例位于 `resources/cve-cases/`。案例 `webAccess` 从机制上禁用 web 搜索/抓取以保证盲测；toolbox 镜像经 `pnpm security:toolbox` 构建，内置差分运行器 `diffcheck.py`。
+- [x] **真实模型盲测验收**：libtiff col-offset 案例经无头启动端到端跑了两轮。第一轮重建了根因但差分无法执行（mining 容器缺少无头启动路径）；补上"计划执行触发容器启动"后，第二轮记录了 finding，其 PoC 对通过机械差分重执行，判分 4/4。选靶核查结论：libssh 2026 年的修复逐项检查后搁置（CVE-2025-4877 需 >256MB 输入且仅在 32 位溢出；SFTP long-name 溢出在 Linux NAME_MAX 下填不满 350 字节缓冲；kbdint、closed-channel 与 SFTP 队列修复需要完整会话驱动或缺崩溃 oracle）；libtiff `tif_getimage` col-offset 子字节越界读（2026-11-06 合入，公告待分配）成为截止日期后的展示案例。
 - [ ] **Phase 2 模糊测试**：AFL++ campaign 与 campaign 级审批、崩溃收集、去重与最小化；无补丁线索的全盲档位。
 - [ ] **Phase 3 公告数据**：经 web 服务获取 NVD/OSV、受影响版本范围分析与披露就绪的报告段落。
 
