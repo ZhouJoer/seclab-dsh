@@ -1322,6 +1322,11 @@ export interface WorkbenchConfig {
   maxConcurrentDelegations: number
   /** Lifetime of an operator approval in milliseconds. */
   approvalTtlMs: number
+  /** Session self-service policy for otherwise operator-gated workbench commands. */
+  approval: {
+    /** Let a bound Session create its own task and approve its own plans without an operator gesture. */
+    sessionSelfApprove: boolean
+  }
   /** Periodic refinement cadence; zero disables automatic runs. */
   knowledgeIntervalMs: number
   /** Maximum complete refinement prompt size. */

@@ -70,7 +70,7 @@ export function MiningStart(props: AnalysisStartProps) {
       if (!prepared) {
         const material = target === 'source' ? { kind: 'path' as const, path: sourcePath.trim() }
           : target === 'binary' ? upload?.material : undefined
-        const input = { material, title, objective: objective.trim(), environmentId, environmentIds,
+        const input = { ...(material === undefined ? {} : { material }), title, objective: objective.trim(), environmentId, environmentIds,
           taskContext: props.defaultTaskContext ?? null, moduleSelection,
           ...(target === 'web' && origin.trim() ? { target: { origin: origin.trim(), pathPrefix,
             allowedAddresses: [] } } : {}) }

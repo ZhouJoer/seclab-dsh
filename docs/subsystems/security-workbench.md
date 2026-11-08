@@ -63,6 +63,15 @@ Optional security profile service; default application compositions remain indep
  */
 getAnalysisPhase(agent: Agent): AnalysisPhase
 
+/** Reserve one text-only delivery continuation for a closed analysis without resetting its research budget.
+ * @param agent - Live Session owner whose current user request needs a corrected delivery.
+ * @param message - Plugin-authored notice passed unchanged to followup after this method succeeds.
+ * @returns True when the notice identity is reserved for one request. False during exploration, for human
+ * messages, or after a reservation in this analysis. New human input revokes an unused reservation.
+ * Delivery omits tool definitions and denies all tools, including cleanup; it cannot grant another retry.
+ */
+prepareAnalysisDelivery(agent: Agent, message: UserMessage): boolean
+
 /** Save model-authored progress with coordinator permissions and a committed receipt.
  * @param agent - Session owner on whose behalf the checkpoint is saved.
  * @param checkpoint - Validated progress fields; this never declares task completion.
@@ -432,7 +441,7 @@ async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityComm
 @Remote('projectMaterialDocument') async projectMaterialDocument(projectId: string, input: string, signal: AbortSignal): Promise<MaterialDocument>
 ```
 
-Types: [Agent](core.md) · [SessionId](core.md) · [ToolCallId](core.md)
+Types: [Agent](core.md) · [SessionId](core.md) · [ToolCallId](core.md) · [UserMessage](session.md)
 
 Source: [`packages/experimental/security-analysis/src/index.ts`](../../packages/experimental/security-analysis/src/index.ts)
 <!-- END GENERATED cordis-surface -->

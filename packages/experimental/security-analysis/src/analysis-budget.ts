@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type MessageId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { WorkbenchConfig } from './index.ts'
 import type { SecurityRole } from './workbench/roles.ts'
@@ -13,6 +13,10 @@ import { JobId } from '@deepseek-ai/dsh-jobs'
 export type AnalysisPhase = 'exploring' | 'closing' | 'finalizing'
 
 type BudgetConfig = Pick<WorkbenchConfig, 'analysisTurnTokens' | 'analysisCountCacheReads' | 'analysisReviewSteps' | 'analysisWrapUpSteps'>
+interface AnalysisBudget {
+  phase: (agent: Agent) => AnalysisPhase
+  prepareDelivery: (agent: Agent, message: UserMessage) => boolean
+}
 interface TurnBudget {
   used: number
   closing: boolean
@@ -20,6 +24,10 @@ interface TurnBudget {
   saved?: boolean
   finalizing?: boolean
   deliveryOnly?: boolean
+  requestId?: MessageId
+  delivery?: { messageId: MessageId; requestId: MessageId }
+  deliveryPrepared?: boolean
+  deliveryConsumed?: boolean
   cleanupAdvanced?: boolean
   jobsListed?: boolean
   collectedJobs: Set<JobId>
@@ -28,7 +36,7 @@ interface TurnBudget {
   stepsSinceReview: number
   previousBatchFailed: boolean
   failedShellExecutions: number
-  review: 'initial' | 'requested' | 'checkpoint'
+  review: 'initial' | 'requested'
   baseline?: ReturnType<typeof investigationProgress>
   /** Undefined until the current step returns its first tool result. */
   batchFailed?: boolean
@@ -56,8 +64,7 @@ function investigationProgress(view: WorkbenchView) {
 type InvestigationProgress = ReturnType<typeof investigationProgress>
 
 function hasProgress(current: InvestigationProgress, baseline: InvestigationProgress | undefined): boolean {
-  return (current.decision !== undefined && JSON.stringify(current.decision) !== JSON.stringify(baseline?.decision))
-    || [...current.supported].some(id => !baseline?.supported.has(id))
+  return [...current.supported].some(id => !baseline?.supported.has(id))
 }
 
 const cleanupTools = new Set(['job_list', 'job_output', 'job_kill'])
@@ -87,21 +94,13 @@ function allowsClosingCall(name: string, args: unknown): boolean {
  * @param config - resolved exploration limit and cache accounting policy.
  * @param roleOf - active task role for the Session.
  * @param viewOf - committed project records visible to the bound coordinator.
- * @returns Synchronous phase reader; reads do not change accounting or advance the phase.
+ * @returns Phase reader and one-shot delivery preparation; neither resets accrued usage.
  */
 export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf: (id: SessionId) => SecurityRole | undefined,
-  viewOf: (id: SessionId) => WorkbenchView): (agent: Agent) => AnalysisPhase {
+  viewOf: (id: SessionId) => WorkbenchView): AnalysisBudget {
   const turns = new Map<SessionId, TurnBudget>()
   const progress = (id: SessionId) => investigationProgress(viewOf(id))
-  const reviewTools = new Set(['security_scope', 'security_help', 'security_capabilities', 'security_environment', 'skill', 'security_evidence', 'security_capture_analysis',
-    'security_command', 'security_checkpoint', 'security_complete', 'read', 'read_image', 'grep', 'glob', 'job_list', 'job_output', 'job_kill', 'advisor', 'premise_check', 'structured_output', 'run_code'])
-  const checkpointInstruction = 'No new complete observation has been linked to a finished check since the last scheduled review. If existing evidence resolves a planned criterion, finish that check with its evidence. Otherwise save a security_command checkpoint: cite the last observation or failed control in summary, distinguish the remaining explanations in reason, and give a test with different predicted outcomes in next. Treat advice as a hypothesis until verified. If the objective is met, submit the result; if the required observation is unavailable, report that limit. Use security_scope for the current revision and security_help for action fields. Capability discovery, environment inspection and skill loading remain available; selecting a module alone does not establish investigation progress.'
-  function needsCheckpoint(agent: Agent): boolean {
-    const state = turns.get(agent.id)
-    if (!state || state.review === 'initial' || roleOf(agent.id) !== 'coordinator') return false
-    if (state.review !== 'checkpoint') return false
-    return !hasProgress(progress(agent.id), state.baseline)
-  }
+  const noProgressInstruction = 'No new complete observation has been linked to a finished check since the last scheduled review. A saved or rewritten checkpoint does not establish that a premise was tested. If existing evidence resolves a planned criterion, finish that check with its evidence. Otherwise execute the smallest check that distinguishes the remaining explanations before using a premise to exclude candidates or expand a search. Keep unresolved claims and failed or incomplete checks explicit. Save a checkpoint when handing off unfinished work, using the available checkpoint tool; saving is not a prerequisite for an informative experiment. If the required observation is unavailable, report that limit and the next check. Treat advice as a hypothesis until verified.'
   function stateFor(id: SessionId): TurnBudget {
     let state = turns.get(id)
     if (!state) {
@@ -153,6 +152,9 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
     // Inbox claims reset the allowance before the new user's first request.
     if (boundary?.openTurnStartSeq !== null && boundary !== undefined
       && (boundary.lastStepStartSeq === null || boundary.lastStepStartSeq < boundary.openTurnStartSeq)) turns.delete(agent.id)
+    const state = stateFor(agent.id)
+    state.requestId = message.id
+    delete state.delivery
   })
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembled = await next()
@@ -163,10 +165,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
   // Schema omission never authorizes execution, including a provider's tool calls during text-only delivery.
   ctx.tools.guard((exec) => {
     const state = exec.agent && turns.get(exec.agent.id)
-    if (!state?.closing) {
-      if (exec.agent && needsCheckpoint(exec.agent) && !reviewTools.has(exec.name)) return checkpointInstruction
-      return undefined
-    }
+    if (!state?.closing) return undefined
     if (state.deliveryOnly) return 'Analysis final delivery cannot execute tools. Return the conclusion, limitations and next action from existing observations.'
     if (exec.agent && cleanupTools.has(exec.name) && allowsCleanup(exec.agent, state, exec.name, exec.arguments)) return undefined
     if (state.saved || state.finalizing ? exec.name !== 'structured_output' : !allowsClosingCall(exec.name, exec.arguments))
@@ -228,16 +227,17 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
         }
       }
       const review = turns.get(agent.id)
-      if (!review || review.batchFailed === undefined || !roleOf(agent.id) || needsCheckpoint(agent)) return decision
-      if (review.review === 'checkpoint') review.review = 'initial'
+      if (!review || review.batchFailed === undefined || !roleOf(agent.id)) return decision
       const repeatedFailure = (review.previousBatchFailed && review.batchFailed) || review.failedShellExecutions >= 2
       review.previousBatchFailed = review.batchFailed
       delete review.batchFailed
       const scheduled = ++review.stepsSinceReview >= config.analysisReviewSteps
       if (!scheduled && !repeatedFailure) return decision
+      let noProgress = false
       if (scheduled && roleOf(agent.id) === 'coordinator') {
         const current = progress(agent.id)
-        review.review = review.review === 'requested' && !hasProgress(current, review.baseline) ? 'checkpoint' : 'requested'
+        noProgress = review.review === 'requested' && !hasProgress(current, review.baseline)
+        review.review = 'requested'
         review.baseline = current
       }
       if (scheduled) review.stepsSinceReview = 0
@@ -247,7 +247,7 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
         ...decision,
         messages: [...decision.messages, createUserMessage({
           source: { kind: 'plugin:security-analysis-budget' },
-          content: [{ type: 'text', text: review.review === 'checkpoint' ? checkpointInstruction : (repeatedFailure ? 'Repeated tool or foreground shell failures require a method review. ' : 'Review the investigation direction. ')
+          content: [{ type: 'text', text: noProgress ? noProgressInstruction : (repeatedFailure ? 'Repeated tool or foreground shell failures require a method review. ' : 'Review the investigation direction. ')
             + 'Compare the last planned experiment with its actual result; an unperformed experiment or a rewritten summary is not evidence for its prediction. '
             + 'Before repairing another custom parser or expanding a search, inspect relevant security_capabilities and load its skill. Use security_environment for the selected dependency when needed. These discovery tools remain available during a direction review. '
             + 'Identify the observation supporting the current assumption and one alternative that predicts a different result. '
@@ -259,7 +259,17 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
       }
     }
     if (state.closing) {
-      if (step === 1 && decision.messages.some(message => message.source.kind === 'helper-output-recovery')) return decision
+      if (step === 1 && state.delivery && state.delivery.requestId === state.requestId
+        && decision.messages.some(message => message.id === state.delivery?.messageId)) {
+        delete state.delivery
+        state.deliveryConsumed = true
+        state.deliveryOnly = true
+        state.finalizing = true
+        state.cleanupAdvanced = false
+        return decision
+      }
+      if (step === 1 && !state.deliveryConsumed
+        && decision.messages.some(message => message.source.kind === 'helper-output-recovery')) return decision
       for (const message of decision.messages) {
         if (message.source.kind === 'user') agent.send(message, 'next-turn', false)
       }
@@ -310,8 +320,17 @@ export function installAnalysisBudget(ctx: Context, config: BudgetConfig, roleOf
     }
   })
   ctx.effect(() => () => { turns.clear() })
-  return (agent) => {
-    const state = closingState(agent)
-    return state?.saved || state?.finalizing ? 'finalizing' : state ? 'closing' : 'exploring'
+  return {
+    phase(agent: Agent): AnalysisPhase {
+      const state = closingState(agent)
+      return state?.saved || state?.finalizing ? 'finalizing' : state ? 'closing' : 'exploring'
+    },
+    prepareDelivery(agent: Agent, message: UserMessage): boolean {
+      const state = closingState(agent)
+      if (!state?.requestId || state.deliveryPrepared || message.source.kind === 'user') return false
+      state.delivery = { messageId: message.id, requestId: state.requestId }
+      state.deliveryPrepared = true
+      return true
+    },
   }
 }

@@ -2185,6 +2185,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Exploring, closing once accrued usage reaches the allowance, or finalizing after saving or ending a budget-limited turn. Internal wake-ups retain the closed phase; human input claimed for a new turn resets it before tool assembly.',
       },
       {
+        signature: 'prepareAnalysisDelivery(agent: Agent, message: UserMessage): boolean',
+        description: 'Reserve one text-only delivery continuation for a closed analysis without resetting its research budget.',
+        parameters: [{ name: 'agent', description: 'Live Session owner whose current user request needs a corrected delivery.' }, { name: 'message', description: 'Plugin-authored notice passed unchanged to followup after this method succeeds.' }],
+        returns: 'True when the notice identity is reserved for one request. False during exploration, for human messages, or after a reservation in this analysis. New human input revokes an unused reservation. Delivery omits tool definitions and denies all tools, including cleanup; it cannot grant another retry.',
+      },
+      {
         signature: 'async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityCommand[\'action\'], { kind: \'checkpoint\' }>, \'kind\' | \'id\'>, callId: ToolCallId, signal: AbortSignal): Promise<CommandReceipt>',
         description: 'Save model-authored progress with coordinator permissions and a committed receipt.',
         parameters: [{ name: 'agent', description: 'Session owner on whose behalf the checkpoint is saved.' }, { name: 'checkpoint', description: 'Validated progress fields; this never declares task completion.' }, { name: 'callId', description: 'Logged tool call owning the save operation.' }, { name: 'signal', description: 'Caller cancellation, combined with service shutdown.' }],
@@ -9465,7 +9471,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkbenchOptions',
-    declaration: 'export interface WorkbenchOptions {\n    taskContextMaxBytes: number;\n    importRoots: string[];\n    environments: SecurityEnvironment[];\n    maxDurationMs: number;\n    maxOutputBytes: number;\n    approvalTtlMs: number;\n    maxDerivedAssets: number;\n    maxArtifactBytes: number;\n    reportLimits?: ReportLimits;\n}',
+    declaration: 'export interface WorkbenchOptions {\n    taskContextMaxBytes: number;\n    importRoots: string[];\n    environments: SecurityEnvironment[];\n    maxDurationMs: number;\n    maxOutputBytes: number;\n    approvalTtlMs: number;\n    sessionSelfApprove: boolean;\n    maxDerivedAssets: number;\n    maxArtifactBytes: number;\n    reportLimits?: ReportLimits;\n}',
   },
   {
     name: 'WorkbenchView',

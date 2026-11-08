@@ -10,3 +10,5 @@ header:
   class: security-workbench
 replay:
   override: true
+environment:
+  DSH_SECURITY_DIRECTION_REMINDERS: '1'

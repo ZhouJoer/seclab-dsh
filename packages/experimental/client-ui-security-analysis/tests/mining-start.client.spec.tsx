@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The mining start form drafts the objective from mode and target and submits through the shared actions. @module */
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { MiningStart } from '../src/client/MiningStart.tsx'
@@ -9,7 +9,7 @@ import { zh } from '../src/client/locales.ts'
 
 const environments = [{ id: 'mining', label: 'Mining sanitizer builds', kind: 'docker' }, { id: 'local', label: 'Local', kind: 'local' }]
 const actions = () => ({
-  prepare: vi.fn(async () => {}), send: vi.fn(async () => {}), continueInChat: vi.fn(), started: vi.fn(),
+  prepare: vi.fn<Parameters<typeof MiningStart>[0]['prepare']>(async () => {}), send: vi.fn(async () => {}), continueInChat: vi.fn(), started: vi.fn(),
 })
 
 function mount(overrides: Partial<Parameters<typeof MiningStart>[0]> = {}) {
@@ -31,7 +31,7 @@ it('renders collapsed, reveals the mining modes and drafts the objective from th
   expect(screen.getByText('补丁引导（提供修复补丁作为唯一线索）')).toBeDefined()
   expect(screen.getByText('版本差分（提供两个版本，自行定位改动）')).toBeDefined()
   fireEvent.change(screen.getByLabelText('源码路径（Host 绝对路径）'), { target: { value: '/bench/case/vulnerable' } })
-  const objective = screen.getByLabelText('任务文稿（自动生成，可编辑）') as HTMLTextAreaElement
+  const objective = screen.getByLabelText<HTMLTextAreaElement>('任务文稿（自动生成，可编辑）')
   expect(objective.value).toContain('/bench/case/vulnerable')
   expect(objective.value).toContain('独立 buildTag')
 })
@@ -39,7 +39,7 @@ it('renders collapsed, reveals the mining modes and drafts the objective from th
 it('switches the lead line with the mode and keeps start disabled without a target', () => {
   mount()
   fireEvent.click(screen.getByText('挖掘任务（实验）'))
-  const objective = () => screen.getByLabelText('任务文稿（自动生成，可编辑）') as HTMLTextAreaElement
+  const objective = () => screen.getByLabelText<HTMLTextAreaElement>('任务文稿（自动生成，可编辑）')
   fireEvent.change(screen.getByLabelText('源码路径（Host 绝对路径）'), { target: { value: '/v' } })
   fireEvent.change(screen.getByLabelText('补丁文件路径'), { target: { value: '/p.diff' } })
   expect(objective().value).toContain('/p.diff')
@@ -49,7 +49,7 @@ it('switches the lead line with the mode and keeps start disabled without a targ
   expect(objective().value).toContain('/f')
   expect(objective().value).toContain('定位版本间的安全相关改动')
   fireEvent.change(screen.getByLabelText('源码路径（Host 绝对路径）'), { target: { value: '' } })
-  expect(screen.getByRole('button', { name: zh.startAnalysis }).disabled).toBe(true)
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.startAnalysis }).disabled).toBe(true)
 })
 
 it('prepares the task with the path material and sends the objective', async () => {
@@ -57,12 +57,11 @@ it('prepares the task with the path material and sends the objective', async () 
   fireEvent.click(screen.getByText('挖掘任务（实验）'))
   fireEvent.change(screen.getByLabelText('源码路径（Host 绝对路径）'), { target: { value: 'D:/bench/case/vulnerable' } })
   fireEvent.change(screen.getByLabelText('任务文稿（自动生成，可编辑）'), { target: { value: 'objective text' } })
-  const start = screen.getByRole('button', { name: zh.startAnalysis })
+  const start = screen.getByRole<HTMLButtonElement>('button', { name: zh.startAnalysis })
   expect(start.disabled).toBe(false)
-  await fireEvent.click(start)
-  await Promise.resolve()
+  await act(async () => { fireEvent.click(start) })
   expect(acts.prepare).toHaveBeenCalledTimes(1)
-  const input = acts.prepare.mock.calls[0]![0] as { material?: { kind: string; path: string }; objective: string; environmentId: string }
+  const input = acts.prepare.mock.calls[0]![0]
   expect(input.material).toMatchObject({ kind: 'path', path: 'D:/bench/case/vulnerable' })
   expect(input.objective).toBe('objective text')
   expect(input.environmentId).toBe('mining')

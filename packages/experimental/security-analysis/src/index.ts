@@ -315,7 +315,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     committed: boolean
     action: Extract<SecurityCommand['action'], { kind: 'create' }> }>()
   private readonly turnBriefs = new Map<SessionId, string>()
-  private readonly analysisPhase: (agent: Agent) => AnalysisPhase
+  private readonly analysisBudget: ReturnType<typeof installAnalysisBudget>
 
   constructor(
     ctx: Context,
@@ -1029,7 +1029,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       await controller.admitTask(exec.agent.id, `task-intake:${exec.agent.id}:${candidate.message.id}`, candidate.action, exec.signal)
       return next()
     })
-    this.analysisPhase = installAnalysisBudget(ctx, config, id => this.controller?.binding(id)?.role, (id) => {
+    this.analysisBudget = installAnalysisBudget(ctx, config, id => this.controller?.binding(id)?.role, (id) => {
       assert(this.controller, 'Investigation progress requires a bound security task')
       return this.controller.view(id)
     })
@@ -1177,7 +1177,15 @@ export default class SecurityWorkbench extends TypertRemoteService {
    * ending a budget-limited turn. Internal wake-ups retain the closed phase; human input claimed for a new turn
    * resets it before tool assembly.
    */
-  getAnalysisPhase(agent: Agent): AnalysisPhase { return this.analysisPhase(agent) }
+  getAnalysisPhase(agent: Agent): AnalysisPhase { return this.analysisBudget.phase(agent) }
+  /** Reserve one text-only delivery continuation for a closed analysis without resetting its research budget.
+   * @param agent - Live Session owner whose current user request needs a corrected delivery.
+   * @param message - Plugin-authored notice passed unchanged to followup after this method succeeds.
+   * @returns True when the notice identity is reserved for one request. False during exploration, for human
+   * messages, or after a reservation in this analysis. New human input revokes an unused reservation.
+   * Delivery omits tool definitions and denies all tools, including cleanup; it cannot grant another retry.
+   */
+  prepareAnalysisDelivery(agent: Agent, message: UserMessage): boolean { return this.analysisBudget.prepareDelivery(agent, message) }
   /** Save model-authored progress with coordinator permissions and a committed receipt.
    * @param agent - Session owner on whose behalf the checkpoint is saved.
    * @param checkpoint - Validated progress fields; this never declares task completion.

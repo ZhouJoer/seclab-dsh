@@ -2345,7 +2345,7 @@ it('reviews consecutive failed steps and successful-looking long investigations 
   expect(model.requests[16]!.tools?.some(tool => tool.name === 'security_scope')).toBe(true)
 })
 
-it('keeps discovery and skill loading available while stalled experiments remain blocked', async () => {
+it('keeps discovery and experiments available while scheduled reviews report missing checks', async () => {
   const { agent, controller, model } = await load(false, 0, { skills: true, analysisReviewSteps: 2 })
   await operator(controller, agent)({ kind: 'create', title: 'Inspect material', objective: 'Identify a supported analysis method', environmentIds: ['local'], maxAttempts: 1 })
   const search = independentTool(agent.ctx, 'web_search')
@@ -2363,11 +2363,14 @@ it('keeps discovery and skill loading available while stalled experiments remain
   agent.followup(webPrompt('Find the appropriate inspection method.'))
   await agent.whenIdle()
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
-  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([false, false, false, false, true, false, false])
+  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([false, false, false, false, false, false, false])
   expect(model.requests[4]?.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining(['skill', 'security_capabilities', 'security_environment']))
   expect(model.requests[8]?.tools?.some(tool => tool.name === 'web_search')).toBe(true)
   expect(model.requests[10]?.tools).toEqual(model.requests[8]!.tools)
-  expect(search).toHaveBeenCalledOnce()
+  expect(search).toHaveBeenCalledTimes(2)
+  const review = agent.session.snapshotEvents().filter(event => event.type === 'user/message'
+    && event.data.source?.kind === 'plugin:security-analysis-budget').at(-1)
+  expect(JSON.stringify(review)).toContain('No new complete observation has been linked to a finished check')
 })
 
 it('reviews failed shell executions across intervening reads and resets after a successful execution', async () => {
@@ -2387,7 +2390,7 @@ it('reviews failed shell executions across intervening reads and resets after a 
   expect(results.every(event => !event.data.message.isError)).toBe(true)
 })
 
-it('requires a committed checkpoint before further coordinator experiments after two scheduled reviews', async () => {
+it('keeps experiments available and does not treat changed checkpoint text as a finished check', async () => {
   const { agent, controller, model } = await load(false, 0, { analysisReviewSteps: 2 })
   await operator(controller, agent)({ kind: 'create', title: 'Measure progress', objective: 'Distinguish candidate mechanisms', environmentIds: ['local'], maxAttempts: 1 })
   const search = independentTool(agent.ctx, 'web_search')
@@ -2404,17 +2407,20 @@ it('requires a committed checkpoint before further coordinator experiments after
   agent.followup(webPrompt('Investigate the samples.'))
   await agent.whenIdle()
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
-  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([true, true, true, false, true, false, false])
-  expect(JSON.stringify(results[4])).toContain('save a security_command checkpoint')
+  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([false, true, false, false, false, false, false])
   for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
-  expect(search).toHaveBeenCalledOnce()
+  expect(search).toHaveBeenCalledTimes(4)
+  const review = agent.session.snapshotEvents().filter(event => event.type === 'user/message'
+    && event.data.source?.kind === 'plugin:security-analysis-budget').at(-1)
+  expect(JSON.stringify(review)).toContain('A saved or rewritten checkpoint does not establish that a premise was tested.')
+  expect(JSON.stringify(review)).toContain('saving is not a prerequisite for an informative experiment')
   agent.followup(webPrompt('Continue from the saved direction.'))
   await agent.whenIdle()
   expect(JSON.stringify(model.requests.at(-1)?.messages)).toContain('Saved project data from earlier work')
   expect(JSON.stringify(model.requests.at(-1)?.messages)).toContain(checkpoint.next)
 })
 
-it('restores stalled experiments through the typed checkpoint tool with the token limit disabled', async () => {
+it('keeps experiments available before and after a typed checkpoint with the token limit disabled', async () => {
   const { agent, controller, model } = await load(false, 0, { analysisReviewSteps: 2, analysisTurnTokens: 0 })
   await operator(controller, agent)({ kind: 'create', title: 'Compare observations', objective: 'Identify the input transformation', environmentIds: ['local'], maxAttempts: 1 })
   const search = independentTool(agent.ctx, 'web_search')
@@ -2428,13 +2434,13 @@ it('restores stalled experiments through the typed checkpoint tool with the toke
   agent.followup(webPrompt('Compare the candidate transformations.'))
   await agent.whenIdle()
   for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
-  expect(search).toHaveBeenCalledOnce()
+  expect(search).toHaveBeenCalledTimes(2)
   const results = agent.session.snapshotEvents().filter(event => event.type === 'tool/result')
-  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([true, false, false])
+  expect(results.slice(4).map(event => event.data.message.isError)).toEqual([false, false, false])
   expect(JSON.stringify(model.requests.at(-1)?.messages)).not.toContain('Analysis exploration is ending')
 })
 
-it('restores experiments when existing evidence resolves an open acceptance criterion without a new checkpoint', async () => {
+it('recognizes complete evidence linked to a finished check without requiring a checkpoint', async () => {
   const { agent, controller, model } = await load(false, 0, { analysisReviewSteps: 2 })
   const send = operator(controller, agent)
   await send({ kind: 'create', title: 'Configuration review', objective: 'Determine which address is configured.', environmentIds: ['local'], maxAttempts: 1 })
@@ -2466,8 +2472,13 @@ it('restores experiments when existing evidence resolves an open acceptance crit
   agent.followup(webPrompt('Inspect the configured address.'))
   await agent.whenIdle()
   for (const request of model.requests) expect(request.tools).toEqual(model.requests[0]!.tools)
-  expect(search).toHaveBeenCalledOnce()
+  expect(search).toHaveBeenCalledTimes(3)
   expect(controller.view(agent.id).records.some(item => item.kind === 'checkpoint')).toBe(false)
+  const reviews = agent.session.snapshotEvents().filter(event => event.type === 'user/message'
+    && event.data.source?.kind === 'plugin:security-analysis-budget')
+  expect(JSON.stringify(reviews.at(-2))).toContain('No new complete observation has been linked to a finished check')
+  expect(JSON.stringify(reviews.at(-1))).toContain('Review the investigation direction.')
+  expect(JSON.stringify(reviews.at(-1))).not.toContain('No new complete observation')
   agent.followup(webPrompt('Which evidence supports the result?'))
   await agent.whenIdle()
   const handoff = agent.session.snapshotEvents().filter(event => event.type === 'user/message')
@@ -2780,6 +2791,101 @@ it('delivers one truncated final report without reopening a closed investigation
   await agent.whenIdle()
   expect(model.requests).toHaveLength(4)
   expect(shell).not.toHaveBeenCalled()
+})
+
+function correctionNotice() {
+  return createUserMessage({ source: { kind: 'helper-checkpoint', form: 'notice', summary: 'Research handoff correction' },
+    content: [{ type: 'text', text: 'The saved interpretation remains unverified. Correct the handoff using existing observations.' }] })
+}
+
+async function deliveryFixture() {
+  const fixture = await load(false, 0, { analysisTurnTokens: 1000 })
+  const { agent, controller, model } = fixture
+  await operator(controller, agent)({ kind: 'create', title: 'Correct the handoff', objective: 'Inspect source', environmentIds: ['local'], maxAttempts: 1 })
+  model.usageTokens = 1200
+  model.nativeCalls[1] = { name: 'security_checkpoint', args: {
+    phase: 'assessment', title: 'Provisional interpretation', reason: 'No independent check was executed.',
+    summary: 'The interpretation remains unverified.', next: 'Compare the original observation.', evidenceIds: [], findingIds: [],
+  } }
+  return fixture
+}
+
+it.each([false, true])('admits one identity-bound handoff correction after a saved final and forbids its tools (tool attempt: %s)', async (attemptTool) => {
+  const { ctx, agent, controller, model, shell } = await deliveryFixture()
+  const search = independentTool(ctx, 'web_search')
+  const correction = correctionNotice()
+  expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, correction)).toBe(false)
+  const grants: boolean[] = []
+  ctx.on('agent/turn-stopping', ({ agent: stopped }) => {
+    if (stopped !== agent || grants.length > 0) return
+    grants.push(ctx.securityWorkbench.prepareAnalysisDelivery(agent, correction))
+    expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, correctionNotice())).toBe(false)
+    agent.followup(correction)
+  })
+  if (attemptTool) model.nativeCalls[3] = { name: 'web_search', args: {} }
+  agent.followup(webPrompt('Inspect the original observation.'))
+  await agent.whenIdle()
+  expect(grants).toEqual([true])
+  expect(model.requests).toHaveLength(4)
+  expect(controller.view(agent.id).records.filter(record => record.kind === 'checkpoint')).toHaveLength(1)
+  expect(model.requests[3]!.tools ?? []).toEqual([])
+  expect(model.requests[3]!.messages.some(message => message.id === correction.id)).toBe(true)
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.id === correction.id)).toHaveLength(1)
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  expect(shell).not.toHaveBeenCalled()
+  expect(search).not.toHaveBeenCalled()
+  if (attemptTool) expect(JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result')))
+    .toContain('Analysis final delivery cannot execute tools')
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/end').map(event => event.data.reason.kind))
+    .toEqual(['completed', attemptTool ? 'blocked' : 'completed'])
+  agent.followup(correctionNotice())
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, correctionNotice())).toBe(false)
+})
+
+it('requires the reserved message identity even when another helper notice has the same summary and content', async () => {
+  const { ctx, agent, model } = await deliveryFixture()
+  agent.followup(webPrompt('Inspect the observation.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(3)
+  expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, webPrompt('A human message is not a delivery notice.'))).toBe(false)
+  const correction = correctionNotice()
+  expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, correction)).toBe(true)
+  agent.followup(correctionNotice())
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(3)
+  agent.followup(correction)
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(model.requests[3]!.tools ?? []).toEqual([])
+  agent.followup(createUserMessage({ source: { kind: 'helper-output-recovery', form: 'notice', summary: 'Retry delivery',
+    failedMessageSeq: agent.session.snapshotEvents().findLast(event => event.type === 'assistant/message')!.seq },
+  content: [{ type: 'text', text: 'Retry delivery.' }] }))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+})
+
+it('revokes an unused delivery reservation when a new human request is claimed', async () => {
+  const { ctx, agent, model } = await deliveryFixture()
+  agent.followup(webPrompt('Inspect the observation.'))
+  await agent.whenIdle()
+  const stale = correctionNotice()
+  expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, stale)).toBe(true)
+  agent.followup(webPrompt('Review a different observation.'))
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  expect(model.requests[3]!.tools).toEqual(model.requests[0]!.tools)
+  expect(ctx.securityWorkbench.getAnalysisPhase(agent)).toBe('finalizing')
+  agent.followup(stale)
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(4)
+  const fresh = correctionNotice()
+  expect(ctx.securityWorkbench.prepareAnalysisDelivery(agent, fresh)).toBe(true)
+  agent.followup(fresh)
+  await agent.whenIdle()
+  expect(model.requests).toHaveLength(5)
+  expect(model.requests[4]!.tools ?? []).toEqual([])
 })
 
 it('reads the current revision and retries a failed wrap-up save before finalizing', async () => {

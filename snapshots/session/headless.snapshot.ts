@@ -1426,8 +1426,11 @@ describe('headless recorded-session snapshots', () => {
               const events = parseSessionLog(actualLogs[0]!.content)
               expect(events.filter(event => event.type === 'request/header')).toHaveLength(2)
               const closing = events.findIndex(event => event.type === 'user/message'
-                && event.data.source.kind === 'plugin:security-analysis-budget')
+                && event.data.source.kind === 'plugin:security-analysis-budget'
+                && JSON.stringify(event.data.content).includes('Analysis exploration is ending'))
               expect(closing).toBeGreaterThan(0)
+              expect(actualLogs[0]!.content).toContain('A saved or rewritten checkpoint does not establish that a premise was tested.')
+              expect(actualLogs[0]!.content).toContain('saving is not a prerequisite for an informative experiment')
               const preceding = events.slice(0, closing).findLast(event => event.type === 'request/header')
               if (preceding?.type !== 'request/header') throw new Error('Missing pre-wrap-up request header')
               const denied = events.findIndex(event => event.type === 'tool/result' && event.data.message.toolCallId === 'denied-empty-job-list')
