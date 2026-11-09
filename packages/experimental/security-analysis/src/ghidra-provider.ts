@@ -202,7 +202,7 @@ export class GhidraProvider implements AnalysisProvider {
     }
     const bytes = Buffer.concat(chunks)
     const text = bytes.toString('utf8')
-    if (/^(Error|Failed|No program)/iu.test(text)) throw new Error('Ghidra analysis failed: ' + text)
+    if (/^(Error|Failed|No program|No function found\b)/iu.test(text)) throw new Error('Ghidra analysis failed: ' + text)
     if (request.operation === 'identity' && (text.split('\n')[0] !== binding.sha256 || text.split('\n')[1] !== binding.programId))
       throw new Error('Ghidra returned another sample identity')
     return {

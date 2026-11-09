@@ -57,6 +57,13 @@ it('refuses responses from an unpatched or incorrectly bound server', async () =
   const { provider, context, request } = fixture()
   await expect(provider.run(provider.resolve(request, context), context)).rejects.toThrow(/identity/)
 })
+it.each(['decompile', 'disassemble'])('reports a missing function from %s even when HTTP succeeds', async (operation) => {
+  const diagnostic = 'No function found at or containing address 401000'
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(diagnostic))
+  const { provider, context, request } = fixture(operation, { address: '401000' })
+  context.maxOutputBytes = 512
+  await expect(provider.run(provider.resolve(request, context), context)).rejects.toThrow('Ghidra analysis failed: ' + diagnostic)
+})
 it('retains explicit truncation and refuses pagination above the configured budget', async () => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(response('x'.repeat(80)))
   const { provider, context, request } = fixture()
