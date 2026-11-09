@@ -77,16 +77,13 @@ export class PeAddressOutsideImageError extends Error {
   }
 }
 
-/** Reject addresses outside reliable preferred PE bounds; unknown formats remain tool-owned.
- * @param path - Verified private input returned by the artifact store.
- * @param addresses - Parsed hexadecimal virtual addresses for the current operation.
- * @returns completion without changing addresses; rejects with PeAddressOutsideImageError for an outside address.
+/** Compare a virtual address against the preferred PE image interval.
+ * @param range - Reliable bounds, or undefined when the headers did not establish them.
+ * @param address - Parsed hexadecimal virtual address.
+ * @returns the failure for an address outside reliable bounds, otherwise undefined.
  */
-export async function checkPeAddresses(path: string, addresses: readonly string[]): Promise<void> {
-  const range = await readPeImageRange(path)
-  if (!range) return
-  for (const address of addresses) {
-    const value = BigInt(address)
-    if (value < range.base || value >= range.end) throw new PeAddressOutsideImageError(address, range)
-  }
+export function peAddressError(range: PeImageRange | undefined, address: string): PeAddressOutsideImageError | undefined {
+  if (!range) return undefined
+  const value = BigInt(address)
+  return value < range.base || value >= range.end ? new PeAddressOutsideImageError(address, range) : undefined
 }

@@ -1,5 +1,6 @@
-/** Real binary observation failure with persisted diagnostics available to the model. */
+/** Persisted binary observation diagnostics and partial adapter results visible to the model. */
 import assert from 'node:assert/strict'
+import { peImageBytes } from '../../../packages/experimental/security-analysis/tests/pe-fixture.ts'
 
 export function apply(ctx) {
   ctx.inject(['securityWorkbench'], (securityCtx) => {
@@ -14,7 +15,7 @@ export function apply(ctx) {
             objective: '检查静态读取错误是否明确报告并保留原始诊断。', environmentIds: ['fixture-local'], maxAttempts: 1 } }))
         await service.importMaterials(exec.agent, JSON.stringify({ operationId: 'fixture-observation-material',
           expectedRevision: created.revision, title: '失败的二进制观察', objective: '读取已导入样本。',
-          material: { kind: 'files', directory: false, files: [{ name: 'sample.bin', base64: 'AAECAw==' }] } }))
+          material: { kind: 'files', directory: false, files: [{ name: 'sample.bin', base64: peImageBytes().toString('base64') }] } }))
         await service.toolPreferences(exec.agent, JSON.stringify({ toolIds: ['radare2'], collectionIds: [], tags: [] }))
       }
       const result = await next()
@@ -33,7 +34,7 @@ export function apply(ctx) {
         assert(identity)
         const controller = await service.ready
         const value = JSON.parse((await controller.artifacts.read(identity.value.artifact)).toString())
-        assert.equal(value.size, 4)
+        assert.equal(value.size, 1024)
         assert.match(value.sha256, /^[a-f0-9]{64}$/)
       }
       if (exec.callId === 'observe-outside-sample') {
@@ -49,10 +50,15 @@ export function apply(ctx) {
         const controller = await service.ready
         assert.equal((await controller.artifacts.read(evidence.value.artifact)).toString(), 'Offset exceeds sample size')
       }
-      if (exec.callId === 'adapter-functions') {
+      if (exec.callId === 'adapter-pe-batch') {
         assert.notEqual(result.isError, true)
         assert.equal(result.value.tool, 'radare2')
-        assert.deepEqual(result.value.items, [{ offset: 4096, name: 'main' }])
+        assert.equal(result.value.incomplete, true)
+        const [imports, rejected, disassembly] = result.value.items
+        assert.deepEqual(result.value.items.map(item => item.queryIndex), [0, 1, 2])
+        assert.deepEqual(imports.items, [{ name: 'ReadFile' }])
+        assert.match(rejected.failure, /Virtual address 0x18001000 is outside the PE image range/)
+        assert.deepEqual(disassembly.items, [{ offset: 6442455040, opcode: 'ret' }])
         const controller = await service.ready
         const projectId = controller.binding(exec.agent.id).engagementId
         const activity = controller.activity.invocation(exec.agent.id, exec.callId)

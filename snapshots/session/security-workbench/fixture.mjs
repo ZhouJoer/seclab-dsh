@@ -60,7 +60,10 @@ export async function apply(ctx) {
       }, terminate() {}, waitForExit: async () => true }
     }
     if (spec.argv[0] === radareCommand) {
-      const output = spec.argv.includes('-v') ? 'radare2 fixture 1\n' : '[{"offset":4096,"name":"main"}]'
+      let output = '[{"offset":4096,"name":"main"}]'
+      if (spec.argv.includes('-v')) output = 'radare2 fixture 1\n'
+      else if (spec.argv.includes('?e [;iij;?e ,;pdj 1 @ 0x180001000;?e ]'))
+        output = '[[{"name":"ReadFile"}],[{"offset":6442455040,"opcode":"ret"}]]'
       return { done: Promise.resolve({ exitCode: 0, signal: null }), collected: {
         stdout: { readFrom: () => ({ text: output, lossy: false }) },
         stderr: { readFrom: () => ({ text: '', lossy: false }) },

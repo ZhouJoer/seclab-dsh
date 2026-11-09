@@ -15,7 +15,7 @@ import { adapterProcessFailure, retainAdapterResult } from './tool-adapter-resul
 import { fileAsset } from './workbench/assessment.ts'
 import { isPacketCapture } from './workbench/artifacts.ts'
 import { runProcess } from './workbench/process.ts'
-import { checkPeAddresses } from './pe-address-range.ts'
+import { peAddressError, readPeImageRange, type PeAddressOutsideImageError } from './pe-address-range.ts'
 import type { AnalysisContext, AnalysisProvider, AnalysisResult } from './workbench/providers.ts'
 import type { AnalysisOperation } from './workbench/model.ts'
 
@@ -37,6 +37,11 @@ const batchQuery = z.object({
   address: address.optional(), count: count.optional(),
   offset: z.number().int().nonnegative().optional(), limit: count.optional(), filter: z.string().max(4096).optional(),
 }).strict()
+type Radare2Query = z.infer<typeof batchQuery>
+interface Radare2Batch {
+  queries: Radare2Query[]
+  rejected: ReadonlyMap<number, PeAddressOutsideImageError>
+}
 const argsSchema = z.object({ seed: z.string().min(1).max(1024).optional(), direction: z.enum(['callers', 'callees']).optional(), maxDepth: count.optional(), address: address.optional(), startAddress: address.optional(), endAddress: address.optional(),
   queries: z.array(batchQuery).min(1).optional(),
   count: count.optional(), filter: z.string().max(4096).optional(),
@@ -141,6 +146,50 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
 
 class DecompilerFailure extends Error {}
 
+function r2ImageAddress(operation: string, address: string | undefined): string | undefined {
+  return ['r2ghidra.decompile', 'radare2.disassemble', 'radare2.xrefs-from'].includes(operation) ? address : undefined
+}
+
+async function prepareRadare2(request: AnalysisOperation, path: string,
+  environment: AnalysisContext['environment']): Promise<Radare2Batch | undefined> {
+  const { queries, address } = parseAdapterParameters(request.operation, request.parameters)
+  const rejected = new Map<number, PeAddressOutsideImageError>()
+  const addresses = queries?.map(query => r2ImageAddress('radare2.' + query.operation, query.address))
+    ?? [r2ImageAddress(request.operation, address)]
+  if (!environment.tools.find(tool => tool.id === 'radare2')?.prefixArgs?.length && addresses.some(value => value !== undefined)) {
+    const range = await readPeImageRange(path)
+    for (const [index, target] of addresses.entries()) {
+      const error = target === undefined ? undefined : peAddressError(range, target)
+      if (!error) continue
+      if (!queries) throw error
+      rejected.set(index, error)
+    }
+  }
+  return queries ? { queries, rejected } : undefined
+}
+
+function decodeRadare2Batch(queries: Radare2Query[], value: unknown,
+  rejected?: ReadonlyMap<number, PeAddressOutsideImageError>): JsonValue[] {
+  const outputs = z.array(z.json()).length(queries.length - (rejected?.size ?? 0)).parse(value)
+  let outputIndex = 0
+  return queries.map((query, index) => {
+    const error = rejected?.get(index)
+    if (error) return { queryIndex: index, operation: query.operation, incomplete: true, failure: error.message, items: [] }
+    try {
+      const records = decodeAdapterOutput('radare2.' + query.operation, JSON.stringify(outputs[outputIndex++]))
+        .filter(item => !query.filter || JSON.stringify(item).includes(query.filter))
+      const offset = query.offset ?? 0
+      if (offset > records.length) throw new Error('Collection offset exceeds filtered results')
+      const items = records.slice(offset, offset + (query.limit ?? records.length))
+      const nextOffset = offset + items.length < records.length ? offset + items.length : null
+      return { queryIndex: index, operation: query.operation, offset, total: records.length, nextOffset, items,
+        incomplete: nextOffset !== null, filter: query.filter ?? null }
+    } catch (error) {
+      return { queryIndex: index, operation: query.operation, incomplete: true, failure: String(error), items: [] }
+    }
+  })
+}
+
 /** Decode native tool output, rejecting reported decompiler failures even on exit code zero.
  * @param operation - declared tool and operation.
  * @param stdout - complete collected stdout.
@@ -160,21 +209,7 @@ export function decodeAdapterOutput(operation: string, stdout: string, parameter
     if (action === 'batch') {
       const queries = parseAdapterParameters(operation, parameters).queries
       assert(queries, 'A parsed batch requires queries')
-      const outputs = z.array(z.json()).length(queries.length).parse(value)
-      return queries.map((query, index) => {
-        try {
-          const records = decodeAdapterOutput('radare2.' + query.operation, JSON.stringify(outputs[index]))
-            .filter(item => !query.filter || JSON.stringify(item).includes(query.filter))
-          const offset = query.offset ?? 0
-          if (offset > records.length) throw new Error('Collection offset exceeds filtered results')
-          const items = records.slice(offset, offset + (query.limit ?? records.length))
-          const nextOffset = offset + items.length < records.length ? offset + items.length : null
-          return { queryIndex: index, operation: query.operation, offset, total: records.length, nextOffset, items,
-            incomplete: nextOffset !== null, filter: query.filter ?? null }
-        } catch (error) {
-          return { queryIndex: index, operation: query.operation, incomplete: true, failure: String(error), items: [] }
-        }
-      })
+      return decodeRadare2Batch(queries, value)
     }
     if (action === 'identity') return [z.object({ core: z.record(z.string(), z.json()) }).catchall(z.json()).parse(value)]
     return z.array(z.record(z.string(), z.json())).parse(value)
@@ -323,27 +358,29 @@ export class ToolAdapterProvider implements AnalysisProvider {
       if (adapter.id === 'tshark' && !isPacketCapture(await context.artifacts.read(asset.artifact))) throw new Error('TShark requires PCAP or PCAPNG input')
       const path = await context.artifacts.materialize(asset.artifact)
       try {
-        if (['radare2', 'r2ghidra'].includes(adapter.id)
-          && !environment.tools.find(tool => tool.id === 'radare2')?.prefixArgs?.length) {
-          const parameters = parseAdapterParameters(request.operation, request.parameters)
-          const addresses = parameters.queries?.flatMap(query =>
-            ['disassemble', 'xrefs-from'].includes(query.operation) && query.address ? [query.address] : [])
-            ?? (['r2ghidra.decompile', 'radare2.disassemble', 'radare2.xrefs-from'].includes(request.operation)
-              && parameters.address ? [parameters.address] : [])
-          if (addresses.length) await checkPeAddresses(path, addresses)
-        }
-        const process = await runProcess(this.ctx, environment, adapter.id === 'r2ghidra' ? 'radare2' : adapter.id,
-          adapterArguments(request.operation, request.parameters, path),
+        const batch = adapter.id === 'radare2' || adapter.id === 'r2ghidra'
+          ? await prepareRadare2(request, path, environment) : undefined
+        const queries = batch?.queries.filter((_, index) => !batch.rejected.has(index))
+        const parameters = queries ? { ...request.parameters, queries } : request.parameters
+        const process = queries?.length === 0 ? undefined : await runProcess(this.ctx, environment,
+          adapterInstallation(adapter.id), adapterArguments(request.operation, parameters, path),
           adapter.id === 'r2ghidra' ? { ...limits, maxOutputBytes: context.maxOutputBytes } : limits)
-        raw = { ...process, parameters: request.parameters }; diagnostics = process.stderr; incomplete = process.truncated
-        failure = adapterProcessFailure(process)
-        if (!failure && !process.truncated) {
+        if (process) {
+          raw = { ...process, parameters: request.parameters }; diagnostics = process.stderr; incomplete = process.truncated
+          failure = adapterProcessFailure(process)
+        }
+        if (!process && batch) {
+          items = decodeRadare2Batch(batch.queries, [], batch.rejected)
+          incomplete = true
+        } else if (process && !failure && !process.truncated) {
           try {
-            items = decodeAdapterOutput(request.operation, process.stdout, request.parameters)
-            if (request.operation === 'radare2.batch') {
+            items = batch ? decodeRadare2Batch(batch.queries, JSON.parse(process.stdout), batch.rejected)
+              : decodeAdapterOutput(request.operation, process.stdout, parameters)
+            if (batch) {
               const pages = z.array(z.object({ incomplete: z.boolean(), failure: z.string().optional() })).parse(items)
               incomplete ||= pages.some(page => page.incomplete)
-              const failures = pages.flatMap((page, index) => page.failure ? ['Query ' + String(index) + ': ' + page.failure] : [])
+              const failures = pages.flatMap((page, index) => page.failure && !batch.rejected.has(index)
+                ? ['Query ' + String(index) + ': ' + page.failure] : [])
               if (failures.length) failure = failures.join('\n')
             }
             if (['radare2.functions', 'radare2.xrefs-to', 'radare2.xrefs-from'].includes(request.operation)) {

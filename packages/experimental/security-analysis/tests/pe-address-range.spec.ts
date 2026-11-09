@@ -4,12 +4,14 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
-import { checkPeAddresses, readPeImageRange } from '../src/pe-address-range.ts'
+import { peAddressError, readPeImageRange } from '../src/pe-address-range.ts'
 import { ToolAdapterProvider } from '../src/tool-adapter-provider.ts'
+import { adapterResultSchema } from '../src/tool-adapter-results.ts'
 import { inspectToolbox } from '../src/toolbox.ts'
 import { runProcess } from '../src/workbench/process.ts'
 import { ArtifactStore } from '../src/workbench/artifacts.ts'
 import { fileAssetSchema, operationSchema } from '../src/workbench/model.ts'
+import type { AnalysisOperation } from '../src/workbench/model.ts'
 import type { AnalysisContext } from '../src/workbench/providers.ts'
 import { peImageBytes as pe } from './pe-fixture.ts'
 
@@ -28,17 +30,19 @@ async function fixture(bytes: Buffer) {
 it.each([32, 64] as const)('checks the half-open PE%s image interval without requiring a function', async (bits) => {
   const { path } = await fixture(pe(bits))
   const base = bits === 64 ? 0x180000000n : 0x400000n
-  expect(await readPeImageRange(path)).toEqual({ base, end: base + 0x2000n })
-  await expect(checkPeAddresses(path, ['0x' + base.toString(16), '0x' + (base + 0x1fffn).toString(16)])).resolves.toBeUndefined()
+  const range = await readPeImageRange(path)
+  expect(range).toEqual({ base, end: base + 0x2000n })
+  for (const value of [base, base + 0x1fffn]) expect(peAddressError(range, '0x' + value.toString(16))).toBeUndefined()
   for (const value of [base - 1n, base + 0x2000n])
-    await expect(checkPeAddresses(path, ['0x' + value.toString(16)])).rejects.toMatchObject({ code: 'PE_ADDRESS_OUTSIDE_IMAGE' })
+    expect(peAddressError(range, '0x' + value.toString(16))).toMatchObject({ code: 'PE_ADDRESS_OUTSIDE_IMAGE' })
 })
 
 it('compares 64-bit addresses exactly beyond the Number integer range', async () => {
   const base = 0x20000000000000n
   const { path } = await fixture(pe(64, base))
-  await expect(checkPeAddresses(path, ['0x20000000001fff'])).resolves.toBeUndefined()
-  await expect(checkPeAddresses(path, ['0x20000000002000'])).rejects.toMatchObject({ code: 'PE_ADDRESS_OUTSIDE_IMAGE' })
+  const range = await readPeImageRange(path)
+  expect(peAddressError(range, '0x20000000001fff')).toBeUndefined()
+  expect(peAddressError(range, '0x20000000002000')).toMatchObject({ code: 'PE_ADDRESS_OUTSIDE_IMAGE' })
 })
 
 it('leaves unknown, truncated and inconsistent images to the underlying tool', async () => {
@@ -62,8 +66,9 @@ it('leaves unknown, truncated and inconsistent images to the underlying tool', a
   ]
   for (const bytes of [Buffer.from('not PE'), Buffer.from('7f454c460201', 'hex'), ...mutations.map(mutate => mutate(pe()))]) {
     const { path } = await fixture(bytes)
-    expect(await readPeImageRange(path)).toBeUndefined()
-    await expect(checkPeAddresses(path, ['0x1'])).resolves.toBeUndefined()
+    const range = await readPeImageRange(path)
+    expect(range).toBeUndefined()
+    expect(peAddressError(range, '0x1')).toBeUndefined()
   }
 })
 
@@ -87,19 +92,17 @@ async function providerFixture() {
   }))
   vi.mocked(runProcess).mockResolvedValue({ stdout: '{"code":"return;"}', stderr: '', exitCode: 0,
     signal: null, timedOut: false, cancelled: false, truncated: false })
-  const run = (operation: string, parameters: Record<string, string | { operation: string; address: string }[]>) => {
+  const run = (operation: string, parameters: AnalysisOperation['parameters']) => {
     const request = operationSchema.parse({ provider: 'tool-adapter', operation, assetId: 'file', environmentId: 'host', impact: 'observe', parameters })
     return provider.run(provider.resolve(request, context), context)
   }
   return { root, context, run }
 }
 
-it.each(['r2ghidra.decompile', 'radare2.disassemble', 'radare2.xrefs-from', 'radare2.batch'])
+it.each(['r2ghidra.decompile', 'radare2.disassemble', 'radare2.xrefs-from'])
 ('rejects an outside address before %s runs and releases its input', async (operation) => {
   const { root, run } = await providerFixture()
-  const parameters: Parameters<typeof run>[1] = operation === 'radare2.batch'
-    ? { queries: [{ operation: 'xrefs-from', address: '0x18001000' }] } : { address: '0x18001000' }
-  await expect(run(operation, parameters)).rejects.toThrow(
+  await expect(run(operation, { address: '0x18001000' })).rejects.toThrow(
     'Virtual address 0x18001000 is outside the PE image range [0x180000000, 0x180002000). ImageBase is 0x180000000. Check the virtual address against this imported binary; no address was substituted.')
   expect(runProcess).not.toHaveBeenCalled()
   expect(await readdir(join(root, 'runs'))).toEqual([])
@@ -122,4 +125,40 @@ it('allows references to an external target without requiring the target to be m
     signal: null, timedOut: false, cancelled: false, truncated: false })
   await run('radare2.xrefs-to', { address: '0x18001000' })
   expect(vi.mocked(runProcess).mock.calls[0]?.[3]).toContain('aa;axtj @ 0x18001000')
+})
+
+it('returns results around an out-of-range PE query in their original batch positions', async () => {
+  const { root, run } = await providerFixture()
+  vi.mocked(runProcess).mockResolvedValue({ stdout: '[[{"name":"ReadFile"}],[{"offset":6442455040,"opcode":"ret"}]]',
+    stderr: '', exitCode: 0, signal: null, timedOut: false, cancelled: false, truncated: false })
+  const result = await run('radare2.batch', { queries: [
+    { operation: 'imports' },
+    { operation: 'xrefs-from', address: '0x18001000' },
+    { operation: 'disassemble', address: '0x180001000', count: 1 },
+  ] })
+  expect(runProcess).toHaveBeenCalledOnce()
+  expect(vi.mocked(runProcess).mock.calls[0]?.[3][5]).toBe('?e [;iij;?e ,;pdj 1 @ 0x180001000;?e ]')
+  expect(result.failure).toBeUndefined()
+  expect(result.incomplete).toBe(true)
+  const saved = adapterResultSchema.parse(JSON.parse(Buffer.from(result.bytes).toString()))
+  expect(saved.items).toMatchObject([
+    { queryIndex: 0, operation: 'imports', items: [{ name: 'ReadFile' }], incomplete: false },
+    { queryIndex: 1, operation: 'xrefs-from', items: [], incomplete: true },
+    { queryIndex: 2, operation: 'disassemble', items: [{ offset: 6442455040, opcode: 'ret' }], incomplete: false },
+  ])
+  expect(saved.items[1]).toHaveProperty('failure', expect.stringContaining('Virtual address 0x18001000 is outside the PE image range'))
+  expect(await readdir(join(root, 'runs'))).toEqual([])
+})
+
+it('returns query errors without launching r2 when every batch address is outside the PE image', async () => {
+  const { root, run } = await providerFixture()
+  const result = await run('radare2.batch', { queries: [{ operation: 'xrefs-from', address: '0x18001000' }] })
+  expect(runProcess).not.toHaveBeenCalled()
+  expect(result.failure).toBeUndefined()
+  const saved = adapterResultSchema.parse(JSON.parse(Buffer.from(result.bytes).toString()))
+  expect(saved).toMatchObject({ raw: null, incomplete: true, items: [{
+    queryIndex: 0, operation: 'xrefs-from', incomplete: true, items: [],
+  }] })
+  expect(saved.items[0]).toHaveProperty('failure', expect.stringContaining('ImageBase is 0x180000000'))
+  expect(await readdir(join(root, 'runs'))).toEqual([])
 })

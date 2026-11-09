@@ -101,7 +101,7 @@ toolAdapters 的 maxItems、maxInstructions、maxPackets 和 graceMs 默认分�
 
 命令、静态观察和适配器失败保留系统错误码。ENOENT 表示路径不存在，EACCES/EPERM 表示权限拒绝，ENOEXEC 表示可执行格式不支持；恢复建议不会根据文字猜测杀软或网络原因。未知失败按原样传播。`security_help` 说明已保存证据 ID 与原生工具／源码引用；失败和不完整观察不等同于分析完成。
 
-`security_radare2` 支持 `operation: batch`，`queries` 包含固定操作及可选的 address/count、JSON 字面子串 filter、offset 和 limit。一次调用只初始化一次 r2，并只执行一次所需分析。各查询保留 total、nextOffset、选中记录和独立错误；原始输出仍保存在证据中。offset 在过滤后生效。读取已存证据分页不会重新运行 r2；采集截断仍需缩小查询，有续页不代表结果完整。
+`security_radare2` 支持 `operation: batch`，`queries` 包含固定操作及可选的 address/count、JSON 字面子串 filter、offset 和 limit。一次调用最多初始化一次 r2，所需分析只执行一次。各查询保留 total、nextOffset、选中记录和独立错误；原始输出仍保存在证据中。PE 镜像地址校验仅使越界的子查询失败，其余查询照常执行并保留原索引。offset 在过滤后生效。读取已存证据分页不会重新运行 r2；采集截断仍需缩小查询，有续页不代表结果完整。
 
 可选插件 `@deepseek-ai/dsh-experimental-security-analysis/debugger` 注册 `debugger/run`，通过批准的计划在单次断点采集观察：本机 Windows PE 使用 CDB，托管 Linux Docker 的 ELF 使用 GDB/MI。参数选择 engine、breakpoint、argv 和定长 memory 区域，同时保留寄存器。执行使用不可变的已导入样本，并复用计划、审批、超时、证据和子进程归属管理。不支持任意命令或附加已有进程。CDB 架构须匹配样本，本机调试使用宿主用户权限。Frida trace 可用 capture 指定 ABI 参数索引、returnValue、带 enter/leave 时机的 memory 区域及 maxCalls；读取失败和事件上限会标记输出不完整。
 

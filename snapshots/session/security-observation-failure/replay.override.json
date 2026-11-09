@@ -210,9 +210,9 @@
         "index": 0,
         "block": {
           "type": "tool-call",
-          "id": "adapter-functions",
+          "id": "adapter-pe-batch",
           "name": "security_radare2",
-          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"operation\":\"functions\"}"
+          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"operation\":\"batch\",\"queries\":[{\"operation\":\"imports\"},{\"operation\":\"xrefs-from\",\"address\":\"0x18001000\"},{\"operation\":\"disassemble\",\"address\":\"0x180001000\",\"count\":1}]}"
         }
       },
       {
