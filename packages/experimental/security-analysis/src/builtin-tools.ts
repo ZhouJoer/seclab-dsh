@@ -797,6 +797,73 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
       ],
     },
     {
+      'id': 'binwalk',
+      'label': 'binwalk',
+      'description': 'Firmware signature scan and extraction / 固件 签名 扫描 提取',
+      'category': 'reverse',
+      'tags': [
+        'reverse',
+        'binary',
+        'firmware',
+      ],
+      'commands': [
+        'binwalk',
+      ],
+      'args': [
+        '--help',
+      ],
+      'url': 'https://github.com/ReFirmLabs/binwalk',
+      'guide': 'Invoke the measured native command and prefixArgs for bounded output relevant to the current question. Signature matches locate candidate containers, filesystems and compressed sections with their file offsets; preserve offsets and match text. Extraction writes derived outputs beside the input in the permitted environment; record the output root and treat every carved file as untrusted derived data. A signature hit does not establish a valid or complete image, and an unmatched or failed extraction is format uncertainty, not proof of encryption or absence. Reuse an existing extraction whose identity matches before extracting again.',
+      'skills': [
+        'security-firmware',
+      ],
+    },
+    {
+      'id': 'ubi-reader',
+      'label': 'ubi_reader',
+      'description': 'UBI and UBIFS image extraction / UBI 镜像 提取',
+      'category': 'reverse',
+      'tags': [
+        'reverse',
+        'binary',
+        'firmware',
+      ],
+      'commands': [
+        'ubireader_extract_images',
+        'ubireader_extract_files',
+      ],
+      'args': [
+        '--help',
+      ],
+      'url': 'https://github.com/onekey-sec/ubi_reader',
+      'guide': 'Invoke the measured native command and prefixArgs for bounded output relevant to the current question. State the input image, the physical erase-block size when specified, and the output directory; extraction produces derived images or files, never original evidence. Raw NAND dumps need out-of-band data removed and the correct block size before results are meaningful; parser errors are format uncertainty, not proof of absence. Record which volume or file each conclusion came from.',
+      'skills': [
+        'security-firmware',
+      ],
+    },
+    {
+      'id': 'unsquashfs',
+      'label': 'unsquashfs',
+      'description': 'SquashFS filesystem extraction / Squashfs 文件系统 提取',
+      'category': 'reverse',
+      'tags': [
+        'reverse',
+        'binary',
+        'firmware',
+      ],
+      'commands': [
+        'unsquashfs',
+      ],
+      'args': [
+        '-version',
+      ],
+      'url': 'https://github.com/plougher/squashfs-tools',
+      'guide': 'Invoke the measured native command and prefixArgs for bounded output relevant to the current question. Extract into a fresh output directory, record the input image and listing summary, and treat extracted files as untrusted derived data. Keep the original image untouched; a failed or partial extraction is format uncertainty, not proof of absence. Prefer the smallest listing or single-file extraction that answers the question.',
+      'skills': [
+        'security-firmware',
+      ],
+    },
+    {
       'id': 'git',
       'label': 'git',
       'description': 'Repository history inspection for imported checkouts / 漏洞挖掘 补丁 提交 历史',
@@ -902,12 +969,15 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
     {
       'id': 'iot',
       'label': 'IoT / 物联网',
-      'toolIds': ['tshark', 'packet-capture', 'radare2', 'r2ghidra', 'readelf', 'objdump', 'strings', 'unicorn', 'nmap'],
+      'toolIds': ['tshark', 'packet-capture', 'radare2', 'r2ghidra', 'readelf', 'objdump', 'strings', 'unicorn', 'nmap', 'binwalk', 'ubi-reader', 'unsquashfs'],
     },
     {
       'id': 'firmware',
       'label': 'Firmware and native binaries',
       'toolIds': [
+        'binwalk',
+        'ubi-reader',
+        'unsquashfs',
         'radare2',
         'r2ghidra',
         'readelf',

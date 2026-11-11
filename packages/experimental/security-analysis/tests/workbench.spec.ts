@@ -25,7 +25,7 @@ import { openTaskSettings } from '../src/task-settings.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 async function harness(generateReport?: (prompt: string, signal: AbortSignal) => Promise<string>,
-  citationReader?: ConstructorParameters<typeof SecurityController>[6], selfApprove = false) {
+  citationReader?: ConstructorParameters<typeof SecurityController>[6], selfApprove = false, objective = 'Inspect an owned sample') {
   const root = await mkdtemp(join(tmpdir(), 'dsh-security-workbench-'))
   const ctx = new Context()
   const backend = new JsonStorageBackend(root)
@@ -73,7 +73,7 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
       operator,
     )
   await send(
-    { kind: 'create', title: 'Lab', objective: 'Inspect an owned sample', moduleSelection: { mode: 'manual', modules: ['reverse.android', 'reverse.native', 'web', 'iot'], reason: 'Provider lifecycle fixture' }, environmentIds: ['local'], maxAttempts: 3 },
+    { kind: 'create', title: 'Lab', objective, moduleSelection: { mode: 'manual', modules: ['reverse.android', 'reverse.native', 'web', 'iot'], reason: 'Provider lifecycle fixture' }, environmentIds: ['local'], maxAttempts: 3 },
     true,
   )
   const path = join(root, 'sample.exe')
@@ -87,8 +87,8 @@ async function harness(generateReport?: (prompt: string, signal: AbortSignal) =>
 const outcomeReport = JSON.stringify({ assessment: '离线复现得到任务结果，未运行原始应用。', scope: [], attackPath: [],
   objectives: [], findings: [], excludedIndices: [], lessons: [], uncovered: [] })
 
-async function completionFixture(generate?: (prompt: string, signal: AbortSignal) => Promise<string>) {
-  const fixture = await harness(generate ?? (async () => outcomeReport))
+async function completionFixture(generate?: (prompt: string, signal: AbortSignal) => Promise<string>, objective?: string) {
+  const fixture = await harness(generate ?? (async () => outcomeReport), undefined, false, objective)
   fixture.controller.providers.register(new BinaryProvider())
   const evidence = await fixture.controller.observe('parent', { provider: 'binary', operation: 'hex',
     assetId: fixture.assetId, environmentId: 'local', parameters: {}, impact: 'observe' }, 'outcome-evidence', new AbortController().signal)
@@ -106,6 +106,7 @@ it('saves outcomes without findings and reuses the report across chat and operat
   expect(controller.projects()[0]!.completion).toBeUndefined()
   await send(action)
   expect(controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion?.status).toBe('saved')
+  expect(controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion?.detail).toBe('')
   await send({ kind: 'report' })
   const report = controller.view('parent').records.find(item => item.kind === 'report')!
   if (report.kind !== 'report') throw new Error('Missing report')
@@ -123,6 +124,16 @@ it('saves outcomes without findings and reuses the report across chat and operat
   expect(controller.view('parent').records.filter(item => item.kind === 'finding')).toHaveLength(0)
   expect(generate.mock.calls[0]?.[0]).toContain('first / second / third / fourth')
   expect(generate.mock.calls[0]?.[0]).toContain('引用')
+})
+
+it('advises recording findings when a vulnerability objective completes without one', async () => {
+  const { send, controller, action } = await completionFixture(undefined, '分析这个固件，找出可能的漏洞。')
+  await send(action)
+  const advisory = controller.projects().find(project => project.id === controller.binding('parent')!.engagementId)?.completion
+  expect(advisory).toMatchObject({ status: 'saved' })
+  expect(advisory?.detail).toContain('security_command (finding)')
+  await send({ kind: 'report' })
+  expect(controller.projects()[0]!.completion).toMatchObject({ status: 'completed', detail: '' })
 })
 
 it('retains saved outcomes after artifact publication failure and retries through report', async () => {

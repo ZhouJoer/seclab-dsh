@@ -1,7 +1,7 @@
 /** Model pages preserve durable identities without repeating source bodies. @module */
 import { expect, it } from 'vitest'
 import { modelPage, recordDetail, commandReceipt, sourceEvidenceLines } from '../src/workbench/model-view.ts'
-import { assetSchema, delegationSchema, evidenceSchema, type WorkbenchView } from '../src/workbench/model.ts'
+import { assetSchema, delegationSchema, engagementSchema, evidenceSchema, taskCompletionSchema, type WorkbenchView } from '../src/workbench/model.ts'
 it('pages mixed material kinds and target scopes without copying artifact bodies', () => {
   const artifact = { sha256: 'a'.repeat(64), size: 4000, mediaType: 'application/octet-stream' }
   const values = [
@@ -92,6 +92,20 @@ it('bounds successful mutation receipts when many records change', () => {
   expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(256)
   expect(result).toMatchObject({ committed: true, revision: 7, totalChanged: 20, hasMore: true })
   expect(result.changed.length).toBeGreaterThan(0)
+})
+
+it('carries a saved completion advisory and drops it once published', () => {
+  const completion = (status: 'saved' | 'completed') => taskCompletionSchema.parse({ status, updatedAt: 1,
+    detail: status === 'saved' ? 'Record the established weakness as a finding before completing.' : '',
+    results: [{ title: 'Result', result: 'Observed.', evidenceIds: ['e0'] }], limitations: '' })
+  const project = (status: 'saved' | 'completed') => engagementSchema.parse({ id: 'project', title: 'Vulnerability review',
+    objective: 'find the weakness', environmentIds: [], stopped: false, maxAttempts: 3, completion: completion(status) })
+  const saved: WorkbenchView = { revision: 2, records: [{ kind: 'engagement', value: project('saved') }, ...fixture().records.slice(0, 1)] }
+  expect(commandReceipt({ revision: 1, records: [] }, saved, 2048)).toMatchObject({
+    advisory: 'Record the established weakness as a finding before completing.',
+  })
+  const completed: WorkbenchView = { revision: 3, records: [{ kind: 'engagement', value: project('completed') }, ...fixture().records.slice(0, 1)] }
+  expect(commandReceipt(saved, completed, 2048).advisory).toBeUndefined()
 })
 
 it('reads a long record in exact revision-bound UTF-8 pages', () => {

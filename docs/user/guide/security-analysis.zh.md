@@ -58,7 +58,7 @@ pnpm security:doctor python unicorn radare2 tshark jadx --save
 
 将[环境示例](../../../apps/cli/config/examples/security-analysis/external-container.json)复制到 `.dsh/security-environments.json`，修改容器名称和容器内工作目录。宿主 `cwd` 相对此 JSON 文件解析，因此 `".."` 表示仓库目录。`pnpm security` 按 ID 将环境合并到 profile 模板。`defaultEnvironmentIds` 为新任务选择环境；已有任务保留已保存的选择。修改环境声明后重启安全 profile。
 
-示例使用当前 Docker context。将 Docker 安装项的 `prefixArgs` 设为 `["--context", "YOUR_CONTEXT"]`，即可选择其他已配置的 context，包括通过 SSH 或 TLS 连接的远程 daemon。宿主需要该 context 的凭据和传输程序。`externalContainer` 接入已运行的容器，不创建挂载、不启动服务、不改变网络，也不管理其生命周期。工具参数使用容器内文件系统；宿主文件不会自动上传。网络可达性由所选容器和 daemon 决定。
+示例使用当前 Docker context。将 Docker 安装项的 `prefixArgs` 设为 `["--context", "YOUR_CONTEXT"]`，即可选择其他已配置的 context，包括通过 SSH 或 TLS 连接的远程 daemon。宿主需要该 context 的凭据和传输程序。`externalContainer` 接入已运行的容器，不创建挂载、不启动服务、不改变网络，也不管理其生命周期。工具参数使用容器内文件系统；宿主文件不会自动上传。分析固件等宿主样本时，请用样本目录的绑定挂载重建容器（并把 `workdir` 指向挂载点），或改用工作区挂载自动生效的受管 Docker 环境。内置目录提供 `binwalk`、`ubi-reader` 和 `unsquashfs` 定义，用于签名扫描和 UBI/SquashFS 提取；在该环境的 `tools` 中注册其容器内命令后，即可经审批计划执行。网络可达性由所选容器和 daemon 决定。
 
 登记外部 Web 目标时，将运行环境选择为 `kali`。显式登记会把 Kali 加入已有任务范围，获批的 HTTP 序列通过该容器内的 Python 运行。目标 origin 与允许的 IP/CIDR 范围必须能从容器访问。凭据与响应脱敏仍由 Host 管理。Docker、容器或 Python 不可用时，计划准备会失败，不会回退到 Host 网络。
 
@@ -224,7 +224,7 @@ Nuclei 与 Metasploit 专用 provider 执行、审核模块目录、Vulhub 编�
 <a id="cve-blind-rediscovery"></a>
 ## CVE 盲测复现基准
 
-挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。先用 `pnpm security:toolbox` 构建 toolbox 镜像（可传 `--base <image>` / `--tag <tag>`）；镜像安装 git、cmake、make、gcc、clang、pkg-config、autoconf/automake/libtool 和 POSIX shell，并内置 `/opt/dsh-toolbox/diffcheck.py`（在两个构建根下各跑一次同一复现程序，记录有界差分观察）。在 `environments[].tools` 下注册工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。
+挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。先用 `pnpm security:toolbox` 构建 toolbox 镜像（可传 `--base <image>` / `--tag <tag>`）；镜像安装 git、cmake、make、gcc、clang、pkg-config、autoconf/automake/libtool、POSIX shell 以及固件提取工具（binwalk、squashfs-tools、ubi_reader），并内置 `/opt/dsh-toolbox/diffcheck.py`（在两个构建根下各跑一次同一复现程序，记录有界差分观察）。在 `environments[].tools` 下注册工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。该基准需要可导入的源码树和修复引用（或两个版本）；没有源码的固件镜像不是基准案例——按普通调查任务运行，它会加载 `security-firmware` 方法，也可使用同一 toolbox 镜像中的提取工具。
 
 该能力为实验性且仅限手动：对话不会自动启动挖掘，工具箱只在折叠卡片中展示。`pnpm security:cve-bench prepare [--force]` 将每个种子案例固定的漏洞与修复 commit 克隆到 `.dsh/cve-bench/`，写出 `patch.diff` 作为唯一线索，并生成盲测任务与 overlay。`pnpm security:cve-bench run [--launch]` 打印无头启动命令，或以 `--launch` 直接执行；无头会话把工作台存储钉在案例工作区内，对该一次性工作区开启 `approval.sessionSelfApprove`（会话自建任务并自批 mining 计划；其他所有场景仍默认逐条 operator 审批），并对 `webAccess: off` 的案例禁用 web 搜索/抓取工具，使盲态约束落在机制而非提示词上。`pnpm security:cve-bench verify --case <id>` 在 toolbox 镜像内重执行每对已记录的 mining 运行，结构化解析 AddressSanitizer 报告并写出 `verify.json`；`pnpm security:cve-bench grade --case <id>` 读取案例 journal（或 `--report <report.json>` 导出）评分，机械差分结果优先于文本匹配。无头结果按设计不出现在操作员的 Web 工作台里。`pnpm security:cve-bench web --case <id>` 在准备好的案例工作区上打开常规 Web 工作台，供操作员驱动运行：在对话 Workbench 概览页的“挖掘任务”表单提交目标（源码路径、二进制上传或网页目标，以及再发现线索），在计划审批中逐条批准 mining 计划，结束后对同一份 journal 执行 `verify` 与 `grade`。`pnpm security:cve-bench review --case <id>` 则把同一工作台打开在已完成运行的 journal 上，可在现有侧栏浏览任务、计划、证据与 finding；两个入口都不改动任何网页功能。任务全程看不到 CVE 编号或公告文字；复现标准是同一 PoC 在漏洞构建上触发 sanitizer 崩溃而修复构建正常结束。案例分 tier：`patch-guided` 把修复 diff 作为唯一线索交给会话，`version-diff` 只准备两个版本、不提供补丁文件，定位版本间的安全相关改动本身就是任务的一部分。把包含固定 commit 与评分字段的 JSON 放入 `resources/cve-cases/` 即可新增案例；`cve: "PENDING"` 表示修复尚无公告编号。
 

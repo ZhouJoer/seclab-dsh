@@ -64,6 +64,8 @@ import {
 export { commandSchema, type SecurityCommand } from './commands.ts'
 
 const text = z.string().trim().min(1)
+/** Objectives that promise weakness discovery; completion advisories cite findings for them. */
+const vulnerabilityObjective = /漏洞|vulnerabilit|weakness|cve|exploit/iu
 function supportsExternalHttp(environment: SecurityEnvironment | undefined): environment is SecurityEnvironment {
   return environment !== undefined && (environment.kind === 'local' || environment.kind === 'docker')
 }
@@ -1487,10 +1489,14 @@ export class SecurityController {
           }
           for (const recommendation of outcome.recommendations ?? []) if (!view.records.some(record => record.kind === 'finding' &&
             record.value.id === recommendation.findingId && record.value.engagementId === project.id && record.value.status !== 'refuted')) throw new Error('Recommendation cites a foreign finding')
+          const findings = view.records.filter(record => record.kind === 'finding' && record.value.engagementId === project.id)
+          const detail = action.kind === 'complete-task' && !findings.length && vulnerabilityObjective.test(current.objective)
+            ? 'Vulnerability-oriented task completed without a recorded finding; record established weaknesses with security_command (finding) and request independent review for a formal verdict.'
+            : ''
           return [...records, { kind: 'engagement', value: { ...current, completion: taskCompletionSchema.parse({
             operationId: command.operationId,
             summary: outcome.summary, methods: outcome.methods, analysis: outcome.analysis, recommendations: outcome.recommendations,
-            results, limitations: outcome.limitations, status: action.kind === 'complete-task' ? 'saved' : 'running', detail: '', updatedAt: Date.now(),
+            results, limitations: outcome.limitations, status: action.kind === 'complete-task' ? 'saved' : 'running', detail, updatedAt: Date.now(),
             checkpointId: action.kind === 'complete-task'
               ? view.records.filter(record => record.kind === 'checkpoint').filter(record => record.value.engagementId === project.id).at(-1)?.value.id
               : current.completion?.checkpointId,

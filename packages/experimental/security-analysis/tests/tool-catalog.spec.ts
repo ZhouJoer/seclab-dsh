@@ -11,6 +11,7 @@ it.each([
   ['逆向', 'radare2'], ['reverse', 'radare2'], ['web', 'curl'], ['HTTP', 'curl'],
   ['IoT', 'tshark'], ['物联网', 'tshark'], ['MQTT', 'tshark'], ['pcapng', 'tshark'],
   ['BLE', 'tshark'], ['Wi-Fi', 'tshark'], ['bluetooth', 'tshark'],
+  ['固件', 'binwalk'], ['UBI', 'ubi-reader'], ['squashfs', 'unsquashfs'],
 ])('discovers a relevant tool for %s without a probe', (query, expected) => {
   const { tools, collections } = new ToolCatalog().read()
   expect(discoverTools(tools, collections, { query }).map(tool => tool.id)).toContain(expected)
@@ -21,6 +22,8 @@ it('offers overlapping analysis collections and preserves existing selections', 
   expect(discoverTools(tools, collections, { collectionIds: ['iot'] }).map(tool => tool.id))
     .toEqual(expect.arrayContaining(['tshark', 'radare2']))
   expect(discoverTools(tools, collections, { collectionIds: ['reverse'] }).map(tool => tool.id)).toContain('radare2')
+  expect(discoverTools(tools, collections, { collectionIds: ['firmware'] }).map(tool => tool.id))
+    .toEqual(expect.arrayContaining(['binwalk', 'ubi-reader', 'unsquashfs', 'radare2']))
   expect(discoverTools(tools, collections, { collectionIds: ['capture'] }).map(tool => tool.id))
     .toEqual(['packet-capture', 'tshark'])
 })

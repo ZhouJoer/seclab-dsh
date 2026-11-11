@@ -12,8 +12,8 @@
   en: 1975641eff097321
   zh: f5d10d6356fa3d0e
 /security-analysis-workbench/1-prepare-the-profile/existing-local-or-remote-docker-containers:
-  en: ef837375a7b7a6fc
-  zh: 3d89ff1bdc860c34
+  en: 03abd248ac7717b1
+  zh: 979a0862cfb721d6
 /security-analysis-workbench/1-prepare-the-profile/launch:
   en: 9332b95d214cbe79
   zh: c432aa66ac889e0e
@@ -48,8 +48,8 @@
   en: f2b9ab482e023a73
   zh: cc9030ade5ef46ae
 /security-analysis-workbench/cve-blind-rediscovery-benchmark:
-  en: 9a1ea22f6880bd0c
-  zh: 154de50b0af6918e
+  en: 0567535859eda8e0
+  zh: b6a5c58fc4f032e1
 /security-analysis-workbench/source-and-static-frontend-projects:
   en: a6d24d35f960e337
   zh: dc3dbd9161cfa6ee

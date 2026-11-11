@@ -201,6 +201,7 @@ export interface CommandReceipt {
   totalChanged: number
   hasMore: boolean
   report?: { id: string; path: string }
+  advisory?: string
 }
 /** Return changed record identities after a committed mutation.
  * @param before - caller-scoped state before the command.
@@ -215,10 +216,12 @@ export function commandReceipt(before: WorkbenchView, after: WorkbenchView, maxB
   const completedId = after.records.find(item => item.kind === 'engagement')?.value.completion?.reportId
   const reports = after.records.filter(item => item.kind === 'report')
   const published = reports.find(item => item.value.id === completedId) ?? reports.at(-1)
+  const savedDetail = after.records.find(item => item.kind === 'engagement')?.value.completion
   const receipt: CommandReceipt = { revision: after.revision, committed: true, changed, totalChanged: changed.length, hasMore: false,
     ...(published ? { report: { id: published.value.id, path: '/api/security.report?' + new URLSearchParams({
       projectId: published.value.engagementId, reportId: published.value.id,
     }).toString() } } : {}),
+    ...(savedDetail?.status === 'saved' && savedDetail.detail ? { advisory: savedDetail.detail } : {}),
   }
   while (Buffer.byteLength(JSON.stringify(receipt)) > maxBytes && receipt.changed.length) {
     receipt.changed.pop()

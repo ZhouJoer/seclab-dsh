@@ -83,3 +83,16 @@
             command: pkg-config
             versionArgs: [--version]
             source: Toolbox image
+          # Firmware extraction tools shipped by the same toolbox recipe.
+          - id: binwalk
+            command: binwalk
+            versionArgs: [--help]
+            source: Toolbox image
+          - id: ubi-reader
+            command: ubireader_extract_images
+            versionArgs: [--help]
+            source: Toolbox image
+          - id: unsquashfs
+            command: unsquashfs
+            versionArgs: [-version]
+            source: Toolbox image
