@@ -3,6 +3,9 @@ scenario: advisor-jev
 profile: sdk
 composition: advisor-jev
 recording: authored
+sessionFormat:
+  version: 4
+  coverage: [retired-notices]
 header:
   class: advisor-jev
   pin: true

@@ -17,7 +17,7 @@ export interface AnalysisHomeInjected {
   hooks: { destination: ObservableSnapshot<AnalysisDestination> }
 }
 
-/** Render creation or the exact task requested by native navigation.
+/** Render creation or the exact task requested by native navigation; successful creation returns the global destination to overview.
  * @param props - native workspace facts, task actions and shared destination.
  * @returns the selected analysis surface. */
 export function AnalysisHome(props: DashboardActions & AnalysisCreationActions & InjectFace<AnalysisHomeInjected>
@@ -35,7 +35,9 @@ export function AnalysisHome(props: DashboardActions & AnalysisCreationActions &
   return <section className={css.root}>
     <div className={css.main}>
       <button onClick={() => { props.selectDestination('') }}>{props.t('dashboardBack')}</button>
-      {workspaceId ? <AnalysisCreation key={workspaceId} {...props} workspaceId={workspaceId} /> : <section className={css.creation}>
+      {workspaceId ? <AnalysisCreation key={workspaceId} {...props} workspaceId={workspaceId} openChat={(id) => {
+        props.selectDestination(''); props.openChat(id)
+      }} /> : <section className={css.creation}>
         <h2>{props.t('newAnalysis')}</h2><p>{props.t('dashboardNoWorkspace')}</p>
         <label>{props.t('dashboardWorkspacePath')}<input value={path} onChange={(event) => { setPath(event.target.value) }} /></label>
         {error && <p role="alert">{error}</p>}

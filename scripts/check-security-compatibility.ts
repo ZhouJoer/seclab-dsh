@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { pnpmInvocation } from './pnpm-invocation.ts'
+import { securitySessionEvents, verifySecurityPatchInventory, verifySecuritySessionEvents } from './security-compatibility-inventory.ts'
 
 const manifest = z.object({
   version: z.literal(1),
@@ -14,6 +15,7 @@ const manifest = z.object({
   requiredSessionEvents: z.array(z.string()).nonempty(),
   patches: z.array(z.object({
     id: z.string().min(1),
+    behavior: z.string().min(1),
     paths: z.array(z.string()).nonempty(),
     consumers: z.array(z.string()).nonempty(),
     checks: z.array(z.string()).nonempty(),
@@ -28,9 +30,17 @@ for (const patch of manifest.patches) {
 }
 await execa('git', ['merge-base', '--is-ancestor', manifest.upstreamCommit, 'HEAD'])
 await execa('git', ['merge-base', '--is-ancestor', manifest.reviewedForkCommit, 'HEAD'])
+const baseline = (await execa('git', ['ls-tree', '-r', '--name-only', manifest.upstreamCommit])).stdout.split('\n')
+const changed = (await execa('git', ['diff', '--no-renames', '--name-only', manifest.upstreamCommit])).stdout.split('\n')
+const untracked = (await execa('git', ['ls-files', '--others', '--exclude-standard'])).stdout.split('\n')
+verifySecurityPatchInventory(baseline, [...changed, ...untracked], manifest.patches.flatMap(patch => patch.paths))
+const eventPath = 'packages/core/session/src/known-event-types.ts'
+const upstreamEvents = (await execa('git', ['show', `${manifest.upstreamCommit}:${eventPath}`])).stdout
+verifySecuritySessionEvents(securitySessionEvents(upstreamEvents), securitySessionEvents(readFileSync(eventPath, 'utf8')), manifest.requiredSessionEvents)
 const forkCommit = (await execa('git', ['rev-parse', 'HEAD'])).stdout
 const dirty = (await execa('git', ['status', '--porcelain'])).stdout.length > 0
 console.log(JSON.stringify({ upstreamCommit: manifest.upstreamCommit, forkCommit, dirty, reviewedForkCommit: manifest.reviewedForkCommit }))
+if (process.argv.includes('--inventory-only')) process.exit(0)
 
 async function pnpm(args: string[]): Promise<void> {
   const invocation = pnpmInvocation(args)
@@ -58,12 +68,15 @@ await execa(process.execPath, ['--input-type=module', '-e', `
 `], { stdio: 'inherit' })
 
 const unitChecks = new Set([
+  'scripts/security-compatibility-inventory.spec.ts',
   'scripts/start-security.spec.ts', 'scripts/security-tools.spec.ts',
   'packages/experimental/security-analysis/tests/workbench.spec.ts',
   'packages/experimental/security-analysis/tests/external-environments.spec.ts',
   'packages/experimental/client-ui-security-analysis/tests/conversation-progress.client.spec.tsx',
   'scripts/verify-repository-references.spec.ts',
-  ...manifest.patches.flatMap(patch => patch.checks).filter(path => !path.startsWith('snapshots/')),
+  ...manifest.patches.flatMap(patch => patch.checks).filter(path => !path.startsWith('snapshots/') && !path.endsWith('.corpus.ts')),
 ])
 await pnpm(['exec', 'vitest', 'run', ...unitChecks])
-await pnpm(['run', 'test:snapshot', '-t', 'security|helper|advisor-jev|background-job-admission'])
+await pnpm(['exec', 'vitest', 'run', '--config', 'vitest.snapshot.config.ts', 'scripts/session-snapshot-corpus.corpus.ts'])
+await pnpm(['exec', 'vitest', 'run', '--config', 'vitest.snapshot.config.ts', '-t', 'security|helper|advisor-jev|background-job-admission'])
+await pnpm(['run', 'test:web:built', 'apps/web/tests/security-workbench.e2e.ts'])

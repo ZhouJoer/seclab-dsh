@@ -45,6 +45,7 @@
       name: '@deepseek-ai/dsh-experimental-security-analysis'
       config:
         analysisTurnTokens: 360000
+        analysisWrapUpSteps: 5
         maxDurationMs: 1800000
         maxDerivedAssets: 1024
         evolution:
@@ -123,6 +124,10 @@
                 command: pkg-config
                 versionArgs: [--version]
                 source: Toolbox image
+              - id: sh
+                command: sh
+                versionArgs: [-c, 'echo ready']
+                source: Toolbox image
     - id: security-environments
       name: '@deepseek-ai/dsh-experimental-security-analysis/environment'
     - id: security-ghidra
@@ -137,8 +142,6 @@
       name: '@deepseek-ai/dsh-experimental-security-analysis/packet-capture'
     - id: security-mining
       name: '@deepseek-ai/dsh-experimental-security-analysis/mining'
-    - id: security-debugger
-      name: '@deepseek-ai/dsh-experimental-security-analysis/debugger'
     - id: security-frida
       name: '@deepseek-ai/dsh-experimental-security-analysis/frida'
     - id: security-android

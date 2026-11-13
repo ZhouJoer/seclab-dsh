@@ -1,7 +1,7 @@
 /** Command discovery and complete output preservation for the CLI reference. */
 
 import { describe, expect, it } from 'vitest'
-import { collectCliHelp, parseCliHelp, prefetchHelp, topLevelHelpArgs } from './gen-cli-help.ts'
+import { cliHelpConcurrency, collectCliHelp, parseCliHelp, prefetchHelp, topLevelHelpArgs } from './gen-cli-help.ts'
 
 interface PendingRead {
   args: string
@@ -27,6 +27,20 @@ async function flush(): Promise<void> {
 }
 
 describe('CLI help discovery', () => {
+  it('bounds profile boots and honors serial aggregate runs and explicit help concurrency', () => {
+    expect(cliHelpConcurrency({}, 20)).toBe(2)
+    expect(cliHelpConcurrency({ CI: 'true' }, 20)).toBe(2)
+    expect(cliHelpConcurrency({}, 1)).toBe(1)
+    expect(cliHelpConcurrency({ DSH_GATE_CONCURRENCY: '1' }, 20)).toBe(1)
+    expect(cliHelpConcurrency({ DSH_GATE_CONCURRENCY: '8' }, 20)).toBe(2)
+    expect(cliHelpConcurrency({ DSH_GATE_CONCURRENCY: '1', DSH_CLI_HELP_CONCURRENCY: '3' }, 20)).toBe(3)
+  })
+
+  it.each(['0', '-1', '1.5', '3.5', 'no', ''])('rejects invalid help or aggregate concurrency %j', (value) => {
+    expect(() => cliHelpConcurrency({ DSH_CLI_HELP_CONCURRENCY: value }, 20)).toThrow('DSH_CLI_HELP_CONCURRENCY')
+    expect(() => cliHelpConcurrency({ DSH_GATE_CONCURRENCY: value }, 20)).toThrow('DSH_GATE_CONCURRENCY')
+  })
+
   it('reads command rows while retaining wrapped descriptions and examples', () => {
     const help = 'Usage: dsh\r\n\r\nCommands:\r\n  web [options]  Serve the browser\r\n                 with a wrapped description\r\n  plugin         Manage plugins\r\n\r\nExamples:\r\n  dsh web\r\n'
     const result = parseCliHelp(help)

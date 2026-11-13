@@ -1,6 +1,20 @@
 # Replay patch shared by the ordinary headless snapshot composition. The model
 # script comes from the scenario's committed session JSONL.
 
+# Recorded tools and command output use Bash independently of the replay host OS.
+# Windows replay requires a working Bash on PATH, such as Git Bash.
+- id: bash-sandbox
+  disabled: false
+
+- id: pwsh-sandbox
+  disabled: true
+
+- id: tool-bash
+  disabled: false
+
+- id: tool-pwsh
+  disabled: true
+
 - id: llm-deepseek
   name: '@deepseek-ai/dsh-llm-deepseek-api-key'
   disabled: true

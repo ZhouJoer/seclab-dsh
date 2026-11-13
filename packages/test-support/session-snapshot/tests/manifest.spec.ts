@@ -58,6 +58,13 @@ describe('snapshot manifest', () => {
     expect(writesCurrentSessionFixtures(retained, 'refresh')).toBe(false)
   })
 
+  it('retains retired model notices as immutable replay input', () => {
+    const manifest = parseSnapshotManifest('version: 1\nprofile: sdk\nsessionFormat:\n  version: 4\n  coverage: [retired-notices]\n')
+    expect(manifest.sessionFormat).toEqual({ version: 4, coverage: ['retired-notices'] })
+    expect(writesCurrentSessionFixtures(manifest, 'record')).toBe(false)
+    expect(writesCurrentSessionFixtures(manifest, 'refresh')).toBe(false)
+  })
+
   it('parses a read-only session reference', () => {
     expect(parseSnapshotManifest([
       'version: 1',

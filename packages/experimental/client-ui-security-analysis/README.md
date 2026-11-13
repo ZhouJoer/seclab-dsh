@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Start an analysis from the native New chat menu or the workbench. Configured workspaces open a blank native chat directly; missing environment settings are collected first. Starting does not send a message. A shield before each associated sidebar conversation title opens its exact workbench and stays in place when row actions appear. The conversation header switches between chat and workbench. The primary conversation shares the task name; historical conversations keep their own names.
+Start an analysis from the native New chat menu or the workbench. Configured workspaces open a blank native chat directly; missing environment settings are collected first. Starting does not send a message. After creation, reopening the global workbench shows the task overview without creating another task. A shield before each associated sidebar conversation title opens its exact workbench and stays in place when row actions appear. The conversation header switches between chat and workbench. The primary conversation shares the task name; historical conversations keep their own names.
 
 ## Table of Contents
 

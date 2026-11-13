@@ -56,10 +56,10 @@ describe('recorded-session corpus policy', () => {
       .toThrow('Session corpus lacks v3 coverage: adjacent-migration')
   })
 
-  it('retains retired tools in the current format without claiming migration coverage', () => {
+  it.each(['retired-tools', 'retired-notices'] as const)('retains %s in the current format without claiming migration coverage', (coverage) => {
     const retired = {
       key: 'web/retired', selectedVersions: [SESSION_FORMAT_VERSION],
-      retained: { version: SESSION_FORMAT_VERSION, coverage: ['retired-tools'] as const },
+      retained: { version: SESSION_FORMAT_VERSION, coverage: [coverage] },
     }
     expect(assertSnapshotCorpusPolicy([current, baseline, completeV0, ...adjacent, retired]).retainedScenarios)
       .toBe(2 + adjacent.length)
@@ -68,6 +68,9 @@ describe('recorded-session corpus policy', () => {
     expect(() => assertSnapshotCorpusPolicy([current, completeV0, ...adjacent, {
       ...retired, selectedVersions: [SESSION_FORMAT_VERSION + 1],
       retained: { ...retired.retained, version: SESSION_FORMAT_VERSION + 1 },
+    }])).toThrow('retained Session format must precede')
+    expect(() => assertSnapshotCorpusPolicy([{
+      ...retired, retained: { version: SESSION_FORMAT_VERSION, coverage: [coverage, 'adjacent-migration'] },
     }])).toThrow('retained Session format must precede')
   })
 
@@ -135,14 +138,16 @@ describe('recorded-session corpus policy', () => {
       selectedVersions: Array<number>(3).fill(SESSION_FORMAT_VERSION),
       retained: { version: SESSION_FORMAT_VERSION, coverage: ['retired-tools'] as const } }
     const currentMajority = { ...current, selectedVersions: Array<number>(9).fill(SESSION_FORMAT_VERSION) }
+    const retiredAdvisor = { key: 'sdk/advisor-jev', selectedVersions: [SESSION_FORMAT_VERSION, SESSION_FORMAT_VERSION],
+      retained: { version: SESSION_FORMAT_VERSION, coverage: ['retired-notices'] as const } }
     expect(assertSnapshotCorpusPolicy([
-      baseline, currentMajority,
+      baseline, currentMajority, current, retiredAdvisor,
       { ...completeV0, selectedVersions: Array<number>(9).fill(0) }, ...adjacent, ...retiredOffice, retiredSecurity,
-    ]).retainedRoles).toBe(16)
+    ]).retainedRoles).toBe(18)
     expect(() => assertSnapshotCorpusPolicy([
-      baseline, currentMajority,
+      baseline, currentMajority, current, retiredAdvisor,
       { ...completeV0, selectedVersions: Array<number>(10).fill(0) }, ...adjacent, ...retiredOffice, retiredSecurity,
-    ])).toThrow('Session corpus retains 17 historical roles; maximum is 16')
+    ])).toThrow('Session corpus retains 19 historical roles; maximum is 18')
     expect(() => assertSnapshotCorpusPolicy([
       { ...baseline, selectedVersions: [3] }, completeV0, ...adjacent,
     ])).toThrow(`Session corpus requires a baseline/current majority; baseline=1, current=0, retained=${1 + adjacent.length}`)

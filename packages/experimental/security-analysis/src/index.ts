@@ -35,7 +35,7 @@ import { analysisScripts } from './analysis-scripts.ts'
 import { discoverScripts } from './script-discovery.ts'
 import type { AnalysisScript } from './analysis-script-types.ts'
 import { randomUUID } from 'node:crypto'
-import { AsyncLocalStorage } from 'node:async_hooks'
+import { installWorkspaceArchive } from './workspace-archive.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { UserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -292,7 +292,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private readonly catalog: ToolCatalog
   private readonly toolConfiguration: LocalToolConfiguration
   private controller: SecurityController | undefined
-  private readonly archiveRequest = new AsyncLocalStorage<{ projectId: string; input: unknown }>()
+  private readonly manageWorkspaceProject: ReturnType<typeof installWorkspaceArchive>
   private creationQueue = Promise.resolve()
   private delegationCount = 0
   /** Domain initialization and recovery complete before accepting operations. */
@@ -347,43 +347,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       config.environments, config.toolAdapters.bindings)
     validateTaskIntake(config.taskIntake, config.environments.map(environment => environment.id))
     this.ready = this.initialize()
-    ctx.inject(['workspaceRegistry'], (scope) => {
-      scope.on('workspace/session-archive-change', async (request, next) => {
-        const controller = await this.ready
-        const journal = this.journal
-        assert(journal, 'Initialized workbench requires its journal')
-        const carried = this.archiveRequest.getStore()
-        const binding = journal.view().records.find(item => item.kind === 'binding' && item.value.sessionId === request.sessionId)
-        const project = carried ? controller.projects(true).find(item => item.id === carried.projectId)
-          : controller.projects(true).find(item => binding?.kind === 'binding' && item.id === binding.value.engagementId
-            && (item.mainSessionId ?? journal.mainSession(item.id)) === request.sessionId)
-        if (!project) return next()
-        if (controller.mainSession(project.id) !== request.sessionId) throw new Error('Primary conversation changed; reload the task')
-        const input = carried?.input ?? { operationId: randomUUID(), expectedRevision: journal.view().revision,
-          action: { kind: request.archived ? 'archive' : 'restore' } }
-        if (carried) {
-          const parsed = z.object({ operationId: z.string(), expectedRevision: z.number(),
-            action: z.object({ kind: z.enum(['archive', 'restore']) }).strict() }).strict().parse(input)
-          if (journal.replay(parsed.operationId, { projectId: project.id, request: parsed })
-            && Boolean(project.archived) !== request.archived) {
-            throw new RemoteError('security/archive-superseded', 'A newer task action replaced this request; reload the task', { projectId: project.id })
-          }
-        }
-        if (carried || Boolean(project.archived) !== request.archived) {
-          await controller.manageProject(project.id, input, (settled) => {
-            const observed = settled.catch((error: unknown) => { this.ctx.logger.warn('Security cancellation failed: %s', String(error)) })
-            this.pending.add(observed)
-            void observed.finally(() => { this.pending.delete(observed) })
-          })
-        }
-        try { await next() }
-        catch (cause) {
-          throw new RemoteError('security/archive-sync-incomplete', 'Task state was saved; conversation synchronization failed. Retry the same action.',
-            { projectId: project.id, taskArchived: request.archived,
-              sessionArchived: scope.workspaceRegistry.archivedSessionIds.includes(request.sessionId) }, { cause })
-        }
-      })
-    })
+    this.manageWorkspaceProject = installWorkspaceArchive(ctx, this.ready, () => this.journal, this.pending)
     ctx.inject(['skills'], (skillCtx) => {
       installSecurityMethods(skillCtx)
     })
@@ -1639,22 +1603,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
    */
   @Remote('manageProject')
   async manageProject(projectId: string, input: string): Promise<string> {
-    const controller = await this.ready
+    await this.ready
     const request: unknown = JSON.parse(input)
-    const archive = z.object({ operationId: z.string().trim().min(1), expectedRevision: z.number().int().nonnegative(),
-      action: z.object({ kind: z.enum(['archive', 'restore']) }).strict() }).strict().safeParse(request)
-    const workspaces = this.ctx.get('workspaceRegistry')
-    let result: ReturnType<SecurityController['projects']>
-    if (archive.success && workspaces) {
-      const sessionId = controller.mainSession(projectId)
-      if (!sessionId) throw new Error('Task has no primary conversation; reload the task')
-      await this.archiveRequest.run({ projectId, input: archive.data }, async () => {
-        const id = brandString<SessionId>(sessionId)
-        if (archive.data.action.kind === 'archive') await workspaces.archiveSession(id, { stopActivity: true })
-        else await workspaces.unarchiveSession(id)
-      })
-      result = controller.projects(true)
-    } else result = await controller.manageProject(projectId, request)
+    const result = await this.manageWorkspaceProject(this.ctx, projectId, request)
     assert(this.journal, 'Initialized workbench requires its journal')
     this.index?.rebuild(this.journal.view().records)
     return JSON.stringify(result)

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "upstreamCommit": "b830ec950faba0a46dda564be3e2d854afed94f1",
-  "reviewedForkCommit": "4e61252456b485804424b385c3f1770edaf726a5",
+  "reviewedForkCommit": "e3629f5dcbeeeb4ba8c433c6891b71d438a669bd",
   "requiredSessionEvents": [
     "helper/start",
     "helper/end",
@@ -9,14 +9,16 @@
     "helper/auto-start",
     "helper/auto-end",
     "advisor-jev/start",
-    "advisor-jev/end"
+    "advisor-jev/end",
+    "helper/codex-trace",
+    "subagent-codex/tool"
   ],
   "patches": [
     {
       "id": "windows-process-status",
       "paths": [
-        "packages/subprocess/subprocess/src/windows-status.ts",
-        "packages/subprocess/subprocess/src/index.ts"
+        "packages/subprocess/subprocess/src/index.ts",
+        "packages/subprocess/subprocess/src/windows-status.ts"
       ],
       "consumers": [
         "packages/experimental/security-analysis/src/workbench/process.ts"
@@ -24,12 +26,16 @@
       "checks": [
         "packages/subprocess/subprocess/tests/windows-status.spec.ts"
       ],
-      "retireWhen": "Upstream exports equivalent Windows termination diagnostics and every consumer is updated."
+      "retireWhen": "Upstream exports equivalent Windows termination diagnostics and every consumer is updated.",
+      "behavior": "Signed and unsigned Windows loader exit codes produce actionable diagnostics."
     },
     {
       "id": "windows-acl",
       "paths": [
-        "packages/sandbox/sandbox-windows-acl/src"
+        "packages/sandbox/sandbox-windows-acl/src/acl.ts",
+        "packages/sandbox/sandbox-windows-acl/src/grant.ts",
+        "packages/sandbox/sandbox-windows-acl/src/index.ts",
+        "packages/sandbox/sandbox-windows-acl/src/win32-abi.ts"
       ],
       "consumers": [
         "packages/sandbox/sandbox-windows-acl/src/index.ts"
@@ -37,7 +43,8 @@
       "checks": [
         "packages/sandbox/sandbox-windows-acl/tests"
       ],
-      "retireWhen": "Upstream ACL grants and failure cleanup pass the Windows ownership tests."
+      "retireWhen": "Upstream ACL grants and failure cleanup pass the Windows ownership tests.",
+      "behavior": "ACL grants preserve resource ownership and clean up partial grants on failure."
     },
     {
       "id": "subagent-metrics",
@@ -50,7 +57,8 @@
       "checks": [
         "packages/experimental/security-analysis/tests/workbench-loader.spec.ts"
       ],
-      "retireWhen": "Upstream supplies equivalent child usage and completion fields without changing saved reports."
+      "retireWhen": "Upstream supplies equivalent child usage and completion fields without changing saved reports.",
+      "behavior": "Child results carry actual model, reasoning effort and cumulative token usage."
     },
     {
       "id": "optional-security-build",
@@ -66,12 +74,17 @@
       "checks": [
         "scripts/start-security.spec.ts"
       ],
-      "retireWhen": "Upstream optional bundle discovery and browser bundling resolve security packages without local lists."
+      "retireWhen": "Upstream optional bundle discovery and browser bundling resolve security packages without local lists.",
+      "behavior": "The source launcher resolves optional security bundles and their browser imports."
     },
     {
       "id": "codex-consultation",
       "paths": [
-        "packages/subagent/subagent-codex/src"
+        "packages/subagent/subagent-codex/src/consultation.ts",
+        "packages/subagent/subagent-codex/src/index.ts",
+        "packages/subagent/subagent-codex/src/run.ts",
+        "packages/subagent/subagent-codex/src/tool-records.ts",
+        "packages/subagent/subagent-codex/src/wire.ts"
       ],
       "consumers": [
         "packages/experimental/security-analysis/src"
@@ -79,14 +92,16 @@
       "checks": [
         "packages/subagent/subagent-codex/tests/subagent-codex.spec.ts"
       ],
-      "retireWhen": "Upstream supports equivalent consultation and cancellation with readable saved output."
+      "retireWhen": "Upstream supports equivalent consultation and cancellation with readable saved output.",
+      "behavior": "Consultations retain selected answers, tool observations and cancellation outcomes."
     },
     {
       "id": "required-session-events",
       "paths": [
         "packages/core/session/src/known-event-types.ts",
         "packages/subagent/helper/src/types.ts",
-        "packages/experimental/advisor-jev/src"
+        "packages/experimental/advisor-jev/src/types.ts",
+        "packages/subagent/subagent-codex/src/tool-records.ts"
       ],
       "consumers": [
         "packages/core/session",
@@ -98,7 +113,8 @@
         "snapshots/sdk/helper",
         "snapshots/sdk/advisor-jev"
       ],
-      "retireWhen": "Every supported reader recognizes required events; retain committed historical generations."
+      "retireWhen": "Every supported reader recognizes required events; retain committed historical generations.",
+      "behavior": "Saved helper, advisor and Codex tool events are recognized by Session readers."
     },
     {
       "id": "job-policy",
@@ -111,15 +127,16 @@
       "checks": [
         "packages/jobs/tool-jobs/tests/tool-jobs.spec.ts"
       ],
-      "retireWhen": "Upstream supports explicit activity waits and unbounded wake configuration; preserve security preset policy."
+      "retireWhen": "Upstream supports explicit activity waits and unbounded wake configuration; preserve security preset policy.",
+      "behavior": "Activity waits return progress while completion notification ownership remains intact."
     },
     {
       "id": "storage-consumer-drain",
       "paths": [
-        "packages/storage/storage/src/index.ts",
         "packages/storage/storage-domain/src/index.ts",
         "packages/storage/storage-json/src/index.ts",
-        "packages/storage/storage-sqlite/src/index.ts"
+        "packages/storage/storage-sqlite/src/index.ts",
+        "packages/storage/storage/src/index.ts"
       ],
       "consumers": [
         "packages/experimental/security-analysis/src/activity-observer.ts"
@@ -130,7 +147,347 @@
         "packages/storage/storage-sqlite/tests/sqlite-backend.spec.ts",
         "packages/experimental/security-analysis/tests/workbench-loader.spec.ts"
       ],
-      "retireWhen": "Upstream retains already-disposing consumers and completes their final writes before closing domains and storage backends."
+      "retireWhen": "Upstream retains already-disposing consumers and completes their final writes before closing domains and storage backends.",
+      "behavior": "Storage providers await consumer cleanup and final writes before releasing resources."
+    },
+    {
+      "id": "session-controller-integration",
+      "paths": [
+        "packages/api/session-controller/src/agent.ts",
+        "packages/api/session-controller/src/client/contract/sessions.ts",
+        "packages/api/session-controller/src/client/index.ts",
+        "packages/api/session-controller/src/client/sessions/service.ts",
+        "packages/api/session-controller/src/commands.ts",
+        "packages/api/session-controller/src/index.ts"
+      ],
+      "consumers": [
+        "packages/experimental/client-ui-security-analysis/src/client/index.ts",
+        "packages/experimental/client-ui-security-analysis/src/client/directory.ts",
+        "packages/experimental/security-analysis/src/index.ts"
+      ],
+      "checks": [
+        "packages/api/session-controller/tests",
+        "packages/experimental/client-ui-security-analysis/tests/first-message.client.spec.ts",
+        "packages/experimental/security-analysis/tests/workbench-loader.spec.ts"
+      ],
+      "behavior": "Task identity reservation, presentation and preparation before prompt admission.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "terminal-controller-integration",
+      "paths": [
+        "packages/api/terminal-controller/src/client/index.ts"
+      ],
+      "consumers": [
+        "packages/api/terminal-controller/src"
+      ],
+      "checks": [
+        "packages/api/terminal-controller/tests"
+      ],
+      "behavior": "Independent tab ownership for multiple terminal surfaces.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-conversation-integration",
+      "paths": [
+        "packages/client/ui-conversation/src/client/apply.ts",
+        "packages/client/ui-conversation/src/client/contract/slots.ts",
+        "packages/client/ui-conversation/src/client/service.ts",
+        "packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx",
+        "packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css",
+        "packages/client/ui-conversation/src/client/skeleton/ConversationSession.tsx"
+      ],
+      "consumers": [
+        "packages/experimental/client-ui-security-analysis/src/client/index.ts",
+        "packages/experimental/client-ui-security-analysis/src/client/directory.ts",
+        "packages/experimental/security-analysis/src/index.ts"
+      ],
+      "checks": [
+        "packages/client/ui-conversation/tests",
+        "packages/experimental/client-ui-security-analysis/tests/workbench.client.spec.tsx"
+      ],
+      "behavior": "Prepare before retiring drafts and attachments; task navigation beside chat.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-layout-integration",
+      "paths": [
+        "packages/client/ui-layout/src/client/AppFrame.module.css",
+        "packages/client/ui-layout/src/client/AppFrame.tsx",
+        "packages/client/ui-layout/src/client/index.ts",
+        "packages/client/ui-layout/src/client/service.ts",
+        "packages/client/ui-layout/src/client/stores.ts"
+      ],
+      "consumers": [
+        "packages/experimental/research-workbench/src/client/index.ts"
+      ],
+      "checks": [
+        "packages/client/ui-layout/tests"
+      ],
+      "behavior": "Lifetime-scoped bottom placement for the research workbench.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-plugin-manager-integration",
+      "paths": [
+        "packages/client/ui-plugin-manager/src/client/index.ts"
+      ],
+      "consumers": [
+        "packages/client/ui-plugin-manager/src"
+      ],
+      "checks": [
+        "packages/client/ui-plugin-manager/tests"
+      ],
+      "behavior": "Open a selected plugin configuration from the workbench.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-sidebar-integration",
+      "paths": [
+        "packages/client/ui-sidebar/src/client/HeaderLeadingControls.tsx",
+        "packages/client/ui-sidebar/src/client/NewSessionOptions.tsx",
+        "packages/client/ui-sidebar/src/client/SidebarRoot.module.css",
+        "packages/client/ui-sidebar/src/client/SidebarRoot.tsx",
+        "packages/client/ui-sidebar/src/client/contract/slots.ts",
+        "packages/client/ui-sidebar/src/client/index.ts",
+        "packages/client/ui-sidebar/src/client/locales.ts"
+      ],
+      "consumers": [
+        "packages/experimental/client-ui-security-analysis/src/client/index.ts",
+        "packages/experimental/client-ui-security-analysis/src/client/directory.ts",
+        "packages/experimental/security-analysis/src/index.ts"
+      ],
+      "checks": [
+        "packages/client/ui-sidebar/tests"
+      ],
+      "behavior": "Creation menu entries and persistent task badges in native navigation.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-sidebar-documentpreview-integration",
+      "paths": [
+        "packages/client/ui-sidebar-documentpreview/src/client/index.ts",
+        "packages/client/ui-sidebar-documentpreview/src/client/pdf/LazyPdfBody.tsx",
+        "packages/client/ui-sidebar-documentpreview/src/client/pdf/Viewport.tsx",
+        "packages/client/ui-sidebar-documentpreview/src/client/pdf/index.ts",
+        "packages/client/ui-sidebar-documentpreview/src/client/pdf/load.ts",
+        "packages/client/ui-sidebar-documentpreview/src/client/pdf/pdf.tsx"
+      ],
+      "consumers": [
+        "packages/client/ui-sidebar-documentpreview/src"
+      ],
+      "checks": [
+        "packages/client/ui-sidebar-documentpreview/tests"
+      ],
+      "behavior": "Reusable document viewports and lazy loading in multiple surfaces.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-sidebar-terminal-integration",
+      "paths": [
+        "packages/client/ui-sidebar-terminal/src/client/LazyTerminalBody.tsx",
+        "packages/client/ui-sidebar-terminal/src/client/Viewport.tsx",
+        "packages/client/ui-sidebar-terminal/src/client/index.ts",
+        "packages/client/ui-sidebar-terminal/src/client/terminal.tsx"
+      ],
+      "consumers": [
+        "packages/client/ui-sidebar-terminal/src"
+      ],
+      "checks": [
+        "packages/client/ui-sidebar-terminal/tests"
+      ],
+      "behavior": "Reusable terminal viewports and lazy loading in multiple surfaces.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-tool-integration",
+      "paths": [
+        "packages/client/ui-tool/src/client/contract/slots.ts"
+      ],
+      "consumers": [
+        "packages/client/ui-tool/src"
+      ],
+      "checks": [
+        "packages/client/ui-tool/tests"
+      ],
+      "behavior": "Shared tool presentation types for workbench consumers.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "ui-workspace-integration",
+      "paths": [
+        "packages/client/ui-workspace/src/client/contract/slots.ts",
+        "packages/client/ui-workspace/src/client/index.ts",
+        "packages/client/ui-workspace/src/client/locales.ts",
+        "packages/client/ui-workspace/src/client/navigation.ts",
+        "packages/client/ui-workspace/src/client/rows/Rows.tsx",
+        "packages/client/ui-workspace/src/client/shortcuts.ts",
+        "packages/client/ui-workspace/src/client/toast/register.ts",
+        "packages/client/ui-workspace/src/client/tree.ts"
+      ],
+      "consumers": [
+        "packages/experimental/client-ui-security-analysis/src/client/index.ts",
+        "packages/experimental/client-ui-security-analysis/src/client/directory.ts",
+        "packages/experimental/security-analysis/src/index.ts"
+      ],
+      "checks": [
+        "packages/client/ui-workspace/tests",
+        "packages/experimental/client-ui-security-analysis/tests/navigation.client.spec.tsx",
+        "packages/experimental/client-ui-security-analysis/tests/dashboard.client.spec.tsx"
+      ],
+      "behavior": "Persistent task conversations, title delegation, navigation and archive retry.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "tools-integration",
+      "paths": [
+        "packages/core/tools/src/index.ts"
+      ],
+      "consumers": [
+        "packages/core/tools/src"
+      ],
+      "checks": [
+        "packages/core/tools/tests"
+      ],
+      "behavior": "Scheduler symbol identity across loaded module instances.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "cordis-client-runner-integration",
+      "paths": [
+        "packages/extensions/cordis-client-runner/src/client/api-catalog.ts",
+        "packages/extensions/cordis-client-runner/src/client/slot-catalog.ts"
+      ],
+      "consumers": [
+        "packages/extensions/cordis-client-runner/src"
+      ],
+      "checks": [
+        "packages/extensions/cordis-client-runner/tests"
+      ],
+      "behavior": "Generated API and slot catalogs reflect the installed plugin interfaces.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "tool-cordis-integration",
+      "paths": [
+        "packages/extensions/tool-cordis/src/api-catalog.ts"
+      ],
+      "consumers": [
+        "packages/extensions/tool-cordis/src"
+      ],
+      "checks": [
+        "packages/extensions/tool-cordis/tests"
+      ],
+      "behavior": "Generated API and slot catalogs reflect the installed plugin interfaces.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "tool-fs-integration",
+      "paths": [
+        "packages/fs/tool-fs/src/read-render.ts",
+        "packages/fs/tool-fs/src/read.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-analysis/src/citations.ts"
+      ],
+      "checks": [
+        "packages/fs/tool-fs/tests"
+      ],
+      "behavior": "Line truncation metadata for verifiable source citations.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "pwsh-local-integration",
+      "paths": [
+        "packages/shell/pwsh-local/src/index.ts"
+      ],
+      "consumers": [
+        "packages/shell/pwsh-local/src"
+      ],
+      "checks": [
+        "packages/shell/pwsh-local/tests"
+      ],
+      "behavior": "Preserve native process exit status from PowerShell commands.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "shell-integration",
+      "paths": [
+        "packages/shell/shell/src/index.ts",
+        "packages/shell/shell/src/render.ts"
+      ],
+      "consumers": [
+        "packages/shell/shell/src"
+      ],
+      "checks": [
+        "packages/shell/shell/tests"
+      ],
+      "behavior": "Signed Windows exit status and diagnostics in shell output.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "tool-pwsh-integration",
+      "paths": [
+        "packages/shell/tool-pwsh/src/background.ts",
+        "packages/shell/tool-pwsh/src/render.ts"
+      ],
+      "consumers": [
+        "packages/shell/tool-pwsh/src"
+      ],
+      "checks": [
+        "packages/shell/tool-pwsh/tests"
+      ],
+      "behavior": "Windows process diagnostics in background PowerShell results.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "client-runtime-integration",
+      "paths": [
+        "packages/test-support/client-runtime/src/sessions.ts"
+      ],
+      "consumers": [
+        "packages/test-support/client-runtime/src"
+      ],
+      "checks": [
+        "packages/test-support/client-runtime/tests"
+      ],
+      "behavior": "Session test doubles implementing presentation and reservation.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "session-snapshot-integration",
+      "paths": [
+        "packages/test-support/session-snapshot/src/manifest.ts",
+        "packages/test-support/session-snapshot/src/normalize.ts",
+        "packages/test-support/session-snapshot/src/suite.ts"
+      ],
+      "consumers": [
+        "packages/test-support/session-snapshot/src",
+        "snapshots/sdk/advisor-jev"
+      ],
+      "checks": [
+        "packages/test-support/session-snapshot/tests",
+        "scripts/session-snapshot-corpus-policy.spec.ts",
+        "scripts/session-snapshot-corpus.corpus.ts",
+        "snapshots/sdk/sdk.snapshot.ts"
+      ],
+      "behavior": "Recorded helper and workbench session replay preserves historical input, including retired model notices, while checking separate current writer output.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
+    },
+    {
+      "id": "workspace-integration",
+      "paths": [
+        "packages/workspace/workspace/src/index.ts"
+      ],
+      "consumers": [
+        "packages/experimental/security-analysis/src/workspace-archive.ts"
+      ],
+      "checks": [
+        "packages/workspace/workspace/tests",
+        "packages/experimental/security-analysis/tests/workbench-loader.spec.ts"
+      ],
+      "behavior": "Bidirectional archive synchronization with retry after partial commits.",
+      "retireWhen": "Upstream provides the documented behavior and all listed consumers pass their checks after switching to it."
     }
   ]
 }

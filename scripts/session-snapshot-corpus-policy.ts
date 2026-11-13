@@ -22,8 +22,8 @@ export interface SnapshotCorpusGenerationSummary {
 }
 
 const RETAINED_BASELINE_VERSION = 3
-// Includes retired Office tools and the security workbench's parent, report-model and evolution Sessions.
-const MAX_RETAINED_ROLES = 16
+// Includes retired Office/security tools and the advisor's parent/child Sessions with retired notices.
+const MAX_RETAINED_ROLES = 18
 const REQUIRED_V0_COVERAGE = new Set([
   'multi-hop',
   'packed-row',
@@ -72,13 +72,14 @@ export function assertSnapshotCorpusPolicy(
         `${scenario.key}: selected Session generation v${mismatched} does not match expected v${expectedVersion}`,
       )
     }
-    const retiredTools = scenario.retained.coverage.length === 1 && scenario.retained.coverage[0] === 'retired-tools'
+    const retiredBehavior = scenario.retained.coverage.length === 1
+      && (scenario.retained.coverage[0] === 'retired-tools' || scenario.retained.coverage[0] === 'retired-notices')
     if (!Number.isSafeInteger(scenario.retained.version)
       || scenario.retained.version < 0 || scenario.retained.version > SESSION_FORMAT_VERSION
-      || (scenario.retained.version === SESSION_FORMAT_VERSION && !retiredTools)) {
-      throw new Error(`${scenario.key}: retained Session format must precede current v${SESSION_FORMAT_VERSION} unless it pins retired tools at that version`)
+      || (scenario.retained.version === SESSION_FORMAT_VERSION && !retiredBehavior)) {
+      throw new Error(`${scenario.key}: retained Session format must precede current v${SESSION_FORMAT_VERSION} unless it pins retired tools or notices at that version`)
     }
-    const allowedCoverage = retiredTools ? new Set(['retired-tools']) : scenario.retained.version === 0
+    const allowedCoverage = retiredBehavior ? new Set(['retired-tools', 'retired-notices']) : scenario.retained.version === 0
       ? REQUIRED_V0_COVERAGE
       : REQUIRED_ADJACENT_COVERAGE
     if (scenario.retained.coverage.some(item => !allowedCoverage.has(item))) {

@@ -2,7 +2,7 @@
 
 import { execFile } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { availableParallelism, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
@@ -176,11 +176,23 @@ export async function collectCliHelp(
   return [...pages.values()]
 }
 
-async function collectHelp(): Promise<HelpPage[]> {
-  const concurrency = Number(process.env.DSH_CLI_HELP_CONCURRENCY ?? defaultParallelism())
+/**
+ * Bound concurrent profile boots, respecting a lower aggregate budget.
+ * @param env - Help-specific override and aggregate worker budget.
+ * @param cpus - CPU count available to this process.
+ * @returns Positive invocation count; explicit help concurrency takes precedence.
+ */
+export function cliHelpConcurrency(env: NodeJS.ProcessEnv = process.env, cpus = availableParallelism()): number {
+  const explicit = env.DSH_CLI_HELP_CONCURRENCY
+  const concurrency = Number(explicit ?? env.DSH_GATE_CONCURRENCY ?? defaultParallelism(env, cpus))
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
-    throw new Error('DSH_CLI_HELP_CONCURRENCY must be a positive integer')
+    throw new Error(`${explicit === undefined ? 'DSH_GATE_CONCURRENCY' : 'DSH_CLI_HELP_CONCURRENCY'} must be a positive integer`)
   }
+  return explicit === undefined ? Math.min(2, concurrency) : concurrency
+}
+
+async function collectHelp(): Promise<HelpPage[]> {
+  const concurrency = cliHelpConcurrency()
   const directory = mkdtempSync(join(tmpdir(), 'dsh-cli-help-'))
   const profiles = Object.keys(PROFILE_TEMPLATES)
   // Concurrent profile boots share the repository worker budget.

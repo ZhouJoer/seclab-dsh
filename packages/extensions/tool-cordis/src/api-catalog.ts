@@ -5607,7 +5607,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CommandReceipt',
-    declaration: 'export interface CommandReceipt {\n    revision: number;\n    committed: boolean;\n    changed: {\n        kind: SecurityRecord[\'kind\'];\n        id: string;\n    }[];\n    totalChanged: number;\n    hasMore: boolean;\n    report?: {\n        id: string;\n        path: string;\n    };\n}',
+    declaration: 'export interface CommandReceipt {\n    revision: number;\n    committed: boolean;\n    changed: {\n        kind: SecurityRecord[\'kind\'];\n        id: string;\n    }[];\n    totalChanged: number;\n    hasMore: boolean;\n    report?: {\n        id: string;\n        path: string;\n    };\n    advisory?: string;\n}',
   },
   {
     name: 'CommandResult',

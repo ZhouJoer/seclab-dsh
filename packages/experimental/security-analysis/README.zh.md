@@ -250,6 +250,8 @@ Cookie、Bearer、Basic 和表单/JSON 登录身份保存在 Host credentials �
 <details>
 <summary>实现细节</summary>
 
+任务与会话归档由 `workspace-archive.ts` 协调。任务状态先于原生会话状态保存，同步未完成时保留操作身份以便重试。[兼容清单](../../../scripts/security-compatibility.json) 记录共享源码补丁、消费者、行为检查与撤除条件。在仓库根目录运行 `pnpm run check:security-compatibility --inventory-only`，检查固定上游祖先、精确共享源码归属和必读 Session 事件，包含工作区改动及上游已有包中的新增文件。完整命令还会构建并运行消费者、录制会话和浏览器检查。
+
 角色工具筛选处理继承的工具，包括全局工具和预设工具。`advisor` 等会话专属工具保留在所属作用域中；执行守卫对每次工具调用检查角色能力集，包括这些会话专属工具。
 
 仅限 Host 的 `securityWorkbench.getAnalysisPhase(agent)` 同步读取当前权限，返回 `exploring`、`closing` 或 `finalizing`，即时反映实际累计用量及保存成功状态。计量只保存在当前进程中；重载插件或释放 Agent 会清空计量，不从 Session 日志重建。

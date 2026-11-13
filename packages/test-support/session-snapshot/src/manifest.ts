@@ -83,12 +83,13 @@ export type SnapshotSessionFormatCoverage =
   | 'shipped-profile'
   | 'adjacent-migration'
   | 'retired-tools'
+  | 'retired-notices'
 
 /** Explicit historical generation retained by an owning scenario. */
 export interface SnapshotSessionFormatManifest {
   /** Selected fixture generation; absent manifest metadata tracks the current writer. */
   readonly version: number
-  /** Migration or retired-tool behavior that requires this immutable fixture. */
+  /** Migration, retired tool, or retired model notice that requires this immutable fixture. */
   readonly coverage: readonly SnapshotSessionFormatCoverage[]
 }
 
@@ -154,6 +155,7 @@ const SESSION_FORMAT_COVERAGE = new Set<SnapshotSessionFormatCoverage>([
   'shipped-profile',
   'adjacent-migration',
   'retired-tools',
+  'retired-notices',
 ])
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 

@@ -250,6 +250,8 @@ One versioned HTTP artifact stores observations and skipped-step reasons under s
 <details>
 <summary>Implementation details</summary>
 
+Task and conversation archival is coordinated by `workspace-archive.ts`. Task state is saved before native conversation state; an incomplete synchronization retains the operation identity for retry. The [compatibility inventory](../../../scripts/security-compatibility.json) records shared-source patches, consumers, behavior checks and retirement conditions. From the repository root, `pnpm run check:security-compatibility --inventory-only` checks the pinned upstream ancestry, exact shared-source ownership and required Session events, including working-tree edits and new files in upstream-owned packages. The full command additionally builds and runs consumer, recorded-session and browser checks.
+
 Role masks select inherited tools, including global tools and preset tools. Session-local tools such as `advisor` remain registered in their owning scope; the execution guard applies the role capability set to every tool call, including those local tools.
 
 The Host-only `securityWorkbench.getAnalysisPhase(agent)` reads the current permission synchronously as `exploring`, `closing` or `finalizing`, including accrued usage and a successful save. Accounting is process-local; reloading the plugin or disposing the Agent clears it rather than reconstructing it from Session logs.
