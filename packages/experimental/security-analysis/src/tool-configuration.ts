@@ -2,10 +2,12 @@
 import { createHash } from 'node:crypto'
 import { dirname, isAbsolute, join, parse } from 'node:path'
 import { existsSync } from 'node:fs'
-import { opendir } from 'node:fs/promises'
+import { mkdir, opendir } from 'node:fs/promises'
+import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { homedir } from 'node:os'
+import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
-import { readToolSettings, standaloneTool, writeSecurityToolsFile, type SecurityToolPin, type SecurityToolSettings } from './local-tools.ts'
+import { readToolSettings, standaloneTool, type SecurityToolPin, type SecurityToolSettings } from './local-tools.ts'
 import { toolboxCatalog } from './toolbox.ts'
 import type { ToolDefinition } from './tool-definitions.ts'
 import type { ToolboxConfiguration, ToolboxFiles, ToolboxInventory } from './toolbox-types.ts'
@@ -16,6 +18,7 @@ import { supportsAdapterEnvironment, toolAdapters, type ToolAdapterDefinition } 
 export const toolConfigurationInput = z.union([z.object({
   action: z.enum(['probe', 'save', 'remove']), id: z.string(), revision: z.string(),
   command: z.string().default(''), prefixArgs: z.array(z.string()).default([]), versionArgs: z.array(z.string()).default([]),
+  temporaryDirectory: z.string().min(1).optional(),
   defaultEnvironmentId: z.string().min(1).optional(),
 }).strict(), z.object({ action: z.literal('bind'), id: z.string(), revision: z.string(),
   defaultEnvironmentId: z.string().min(1) }).strict(),
@@ -40,6 +43,33 @@ export class LocalToolConfiguration {
     this.apply(document)
     return document.installations[this.environment?.id ?? 'local'] ?? {}
   }
+  /** Capture the complete project installation revision without selecting an environment.
+   * @returns revision used by installation preview and commit.
+   */
+  revision(): string { return revision(this.document()) }
+
+  /** Apply a verified deployment image's tool defaults after its configuration commit.
+   * @param environment - existing environment with its new verified deployment tools.
+   */
+  replaceDefaults(environment: SecurityEnvironment): void {
+    this.defaults.set(environment.id, structuredClone(environment.tools))
+    this.refresh()
+  }
+
+  /** Hold the project writer lock while publishing a related environment selection.
+   * @param expectedRevision - project installation revision captured by the plan.
+   * @param publish - environment commit performed while installation writers are excluded.
+   * @returns publication result.
+   */
+  async atRevision<T>(expectedRevision: string, publish: () => Promise<T>): Promise<T> {
+    const check = async () => {
+      if (this.revision() !== expectedRevision) throw new Error('Tool configuration changed; reload before saving')
+      return publish()
+    }
+    if (!this.path) return check()
+    await mkdir(dirname(this.path), { recursive: true })
+    return withFileLock(this.path, check)
+  }
   private apply(document: SecurityToolSettings): void {
     for (const environment of this.environments) {
       const tools = new Map(this.defaults.get(environment.id)?.map(tool => [tool.id, tool]))
@@ -56,6 +86,8 @@ export class LocalToolConfiguration {
       for (const [id, pin] of Object.entries(pins)) {
         if (environment.kind === 'local' && !isAbsolute(pin.command)) throw new Error(`${id}: choose an absolute executable path`)
         if (pin.command.includes('\0')) throw new Error(`${id}: executable contains a null character`)
+        if (pin.temporaryDirectory && (environment.kind !== 'local' || !isAbsolute(pin.temporaryDirectory)))
+          throw new Error(`${id}: private temporary directories require an absolute local path`)
       }
     }
     for (const [id, environmentId] of Object.entries({ ...this.defaultBindings, ...document.bindings })) {
@@ -70,26 +102,24 @@ export class LocalToolConfiguration {
    * @param expectedRevision - configuration captured before probing.
    * @returns whether any installations were saved.
    */
-  reconcile(inventory: ToolboxInventory, expectedRevision: string): boolean {
+  async reconcile(inventory: ToolboxInventory, expectedRevision: string): Promise<boolean> {
     if (this.path === undefined || inventory.kind !== 'local') return false
-    const document = this.document()
-    if (revision(document) !== expectedRevision) throw new Error('Tool configuration changed during discovery; inspect again')
-    const pins = document.installations[inventory.environmentId] ?? {}
-    let changed = false
-    for (const row of inventory.tools) {
-      const definition = this.catalog().find(item => item.id === row.id)
-      if (!definition || definition.dependency || definition.provider || !definition.commands.length
+    return this.mutate(expectedRevision, (document) => {
+      const pins = document.installations[inventory.environmentId] ?? {}
+      let changed = false
+      for (const row of inventory.tools) {
+        const definition = this.catalog().find(item => item.id === row.id)
+        if (!definition || definition.dependency || definition.provider || !definition.commands.length
         || this.defaults.get(inventory.environmentId)?.some(item => item.id === row.id)
         || pins[row.id] || row.status !== 'available' || row.candidates || !isAbsolute(row.command)) continue
-      pins[row.id] = { command: row.command, prefixArgs: row.prefixArgs ?? [], versionArgs: definition.args }
-      changed = true
-    }
-    if (changed) {
-      document.installations[inventory.environmentId] = pins
-      writeSecurityToolsFile(this.path, JSON.stringify(document, null, 2) + '\n')
-      this.apply(document)
-    }
-    return changed
+        pins[row.id] = { command: row.command, prefixArgs: row.prefixArgs ?? [], versionArgs: definition.args }
+        changed = true
+      }
+      if (changed) {
+        document.installations[inventory.environmentId] = pins
+      }
+      return changed
+    })
   }
   /** Require an environment supporting managed adapter execution.
    * @param id - configured environment identity.
@@ -170,6 +200,7 @@ export class LocalToolConfiguration {
         !toolboxCatalog.some(tool => tool.id === id && !tool.commands.length)).map((id) => {
         const tool = environment.tools.find(tool => tool.id === id)
         return { id, command: tool?.command ?? '', prefixArgs: tool?.prefixArgs ?? [],
+          ...(tool?.temporaryDirectory ? { temporaryDirectory: tool.temporaryDirectory } : {}),
           versionArgs: tool?.versionArgs ?? standaloneTool(id, toolboxCatalog).args, saved: Object.hasOwn(pins, id) }
       }) }
   }
@@ -181,25 +212,25 @@ export class LocalToolConfiguration {
    * @param defaultEnvironmentId - optional fixed execution binding for the tool.
    * @returns committed configuration, already applied to subsequent operations.
    */
-  commit(id: string, pin: SecurityToolPin | undefined, expectedRevision: string,
-    environmentId = this.environment?.id ?? '', defaultEnvironmentId?: string): ToolboxConfiguration {
+  async commit(id: string, pin: SecurityToolPin | undefined, expectedRevision: string,
+    environmentId = this.environment?.id ?? '', defaultEnvironmentId?: string): Promise<ToolboxConfiguration> {
     if (this.path === undefined) throw new Error('Tool configuration is read-only')
     standaloneTool(id, this.catalog())
     const environment = this.editableEnvironment(environmentId)
     if (pin && (pin.command.includes('\0') || !pin.command.trim() || !pin.versionArgs.length
-      || (environment.kind === 'local' && !isAbsolute(pin.command))))
+      || (environment.kind === 'local' && !isAbsolute(pin.command))
+      || (pin.temporaryDirectory !== undefined && (environment.kind !== 'local' || !isAbsolute(pin.temporaryDirectory) || pin.temporaryDirectory.includes('\0')))))
       throw new Error('Invalid executable installation for ' + id)
-    const document = this.document()
-    if (revision(document) !== expectedRevision) throw new Error('Tool configuration changed; reload before saving')
-    const pins = document.installations[environmentId] ?? {}
-    if (pin) pins[id] = pin
-    else Reflect.deleteProperty(pins, id)
-    document.installations[environmentId] = pins
-    if (defaultEnvironmentId !== undefined) {
-      this.editableEnvironment(defaultEnvironmentId)
-      document.bindings[id] = defaultEnvironmentId
-    }
-    writeSecurityToolsFile(this.path, JSON.stringify(document, null, 2) + '\n')
+    await this.mutate(expectedRevision, (document) => {
+      const pins = document.installations[environmentId] ?? {}
+      if (pin) pins[id] = pin
+      else Reflect.deleteProperty(pins, id)
+      document.installations[environmentId] = pins
+      if (defaultEnvironmentId !== undefined) {
+        this.editableEnvironment(defaultEnvironmentId)
+        document.bindings[id] = defaultEnvironmentId
+      }
+    })
     return this.read(environmentId)
   }
 
@@ -210,19 +241,55 @@ export class LocalToolConfiguration {
    * @param environmentId - Environment whose installation view is returned.
    * @returns committed settings for subsequent calls.
    */
-  bind(id: string, target: string | undefined, expectedRevision: string, environmentId: string): ToolboxConfiguration {
+  async bind(id: string, target: string | undefined, expectedRevision: string, environmentId: string): Promise<ToolboxConfiguration> {
     if (this.path === undefined) throw new Error('Tool configuration is read-only')
     const adapter = toolAdapters.find(adapter => adapter.id === id)
     if (!adapter) throw new Error('Unknown tool adapter: ' + id)
     if (adapter.bindingId !== id) throw new Error('Configure the ' + adapter.bindingId + ' binding for ' + id)
     this.editableEnvironment(environmentId)
     if (target !== undefined) this.adapterEnvironment(adapter, target)
-    const document = this.document()
-    if (revision(document) !== expectedRevision) throw new Error('Tool configuration changed; reload before saving')
-    if (target === undefined) Reflect.deleteProperty(document.bindings, id)
-    else document.bindings[id] = target
-    writeSecurityToolsFile(this.path, JSON.stringify(document, null, 2) + '\n')
+    await this.mutate(expectedRevision, (document) => {
+      if (target === undefined) Reflect.deleteProperty(document.bindings, id)
+      else document.bindings[id] = target
+    })
     return this.read(environmentId)
+  }
+
+  /** Commit all verified installations together without changing adapter bindings.
+   * @param pins - installations verified by the reviewed recipe.
+   * @param expectedRevision - configuration observed before installation.
+   * @param environmentId - environment receiving the installations.
+   * @returns committed configuration for subsequent analysis.
+   */
+  async commitInstallations(pins: Record<string, SecurityToolPin>, expectedRevision: string,
+    environmentId: string): Promise<ToolboxConfiguration> {
+    const environment = this.editableEnvironment(environmentId)
+    for (const [id, pin] of Object.entries(pins)) {
+      standaloneTool(id, this.catalog())
+      if (!pin.command.trim() || pin.command.includes('\0') || !pin.versionArgs.length
+        || environment.kind === 'local' && !isAbsolute(pin.command)
+        || pin.temporaryDirectory !== undefined && (environment.kind !== 'local' || !isAbsolute(pin.temporaryDirectory) || pin.temporaryDirectory.includes('\0')))
+        throw new Error('Invalid executable installation for ' + id)
+    }
+    await this.mutate(expectedRevision, (document) => {
+      document.installations[environmentId] = { ...document.installations[environmentId], ...pins }
+    }, document => Object.entries(pins).every(([id, pin]) => isDeepStrictEqual(document.installations[environmentId]?.[id], pin)))
+    return this.read(environmentId)
+  }
+
+  private async mutate<T>(expectedRevision: string, change: (document: SecurityToolSettings) => T,
+    alreadyApplied?: (document: SecurityToolSettings) => boolean): Promise<T> {
+    const path = this.path
+    if (path === undefined) throw new Error('Tool configuration is read-only')
+    await mkdir(dirname(path), { recursive: true })
+    return withFileLock(path, async () => {
+      const document = this.document()
+      if (revision(document) !== expectedRevision && !alreadyApplied?.(document)) throw new Error('Tool configuration changed; reload before saving')
+      const result = change(document)
+      await writeFileAtomic(path, JSON.stringify(document, null, 2) + '\n', { mode: 0o600 })
+      this.apply(document)
+      return result
+    })
   }
 }
 function revision(pins: SecurityToolSettings): string {

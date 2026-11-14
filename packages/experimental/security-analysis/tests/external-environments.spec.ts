@@ -68,6 +68,20 @@ it('joins the Host client on cancellation without stopping or deleting the exter
   expect(environment.containerId).toBeUndefined()
 })
 
+it('uses a selected private temporary directory only for a local child process', async () => {
+  const { ctx, subprocess } = fixture()
+  const temporaryDirectory = join(process.cwd(), '工具 安装', 'tmp')
+  const local: SecurityEnvironment = { id: 'local', label: 'Host', kind: 'local', cwd: process.cwd(), tools: [
+    { id: 'example', command: process.execPath, temporaryDirectory, versionArgs: ['--version'], source: 'Managed' },
+  ] }
+  const previous = { TMP: process.env.TMP, TEMP: process.env.TEMP }
+  await runProcess(ctx, local, 'example', [], { ...limits, signal: new AbortController().signal })
+  expect(subprocess.spawn.mock.calls[0]?.[0].env).toEqual({ TMP: temporaryDirectory, TEMP: temporaryDirectory })
+  expect({ TMP: process.env.TMP, TEMP: process.env.TEMP }).toEqual(previous)
+  for (const changed of [{ kind: 'docker' }, { tools: [{ ...local.tools[0], temporaryDirectory: 'relative' }] }])
+    expect(() => parseSecurityEnvironments([{ ...local, ...changed }])).toThrow('Private temporary')
+})
+
 it('rejects external lifecycle mutations before launching Docker', async () => {
   const { ctx, subprocess } = fixture()
   const manager = new LocalEnvironmentManager(ctx, { timeoutMs: 30000, maxOutputBytes: 8192, graceMs: 3000,

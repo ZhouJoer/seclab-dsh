@@ -1,3 +1,4 @@
+import { installationZh, installationEn } from './installation-locales.ts'
 /** Security workbench dictionaries. @module */
 import { moduleZh, moduleEn } from './module-locales.ts'
 import { httpZh, httpEn } from './http-locales.ts'
@@ -6,6 +7,15 @@ import { taskContextZh, taskContextEn } from './task-context-locales.ts'
 export const NS = 'security-workbench'
 /** Chinese operator-facing security copy. */
 export const zh = {
+  ...installationZh,
+  toolGhidraCaches: '查看 Ghidra 项目缓存', toolGhidraCacheEmpty: '尚无项目缓存', toolGhidraCacheBusy: '正在使用',
+  toolGhidraCacheComplete: '分析已完成', toolGhidraCacheIncomplete: '分析未完成', toolGhidraCacheRemove: '清理缓存',
+  toolTemporaryDirectory: '此工具的临时目录（可选）', toolStateFilter: '工具状态', toolConfigured: '已配置', toolNeedsAttention: '需要处理',
+  toolInstallationDetails: '安装详情与诊断', toolAdoptInstallation: '采用此安装', toolCandidateInstallations: '检测到的安装',
+  toolCheckInstallation: '安装', toolCheckCompatibility: '版本兼容', toolCheckConnection: '适配器连接', toolCheckTarget: '设备或样本前提',
+  toolHealthPassed: '通过', toolHealthFailed: '需要处理', toolCheckUnknown: '未检查', toolCheckNotRequired: '不适用',
+  toolStartEnvironment: '启动环境', toolStopEnvironment: '停止环境',
+  toolContainerPathsHint: '工具路径位于容器内；宿主安装目录用于下载和构建文件，镜像的存储位置由 Docker 管理。',
   startupTitle: '安全分析', startupChooseWorkspace: '选择工作目录', startupChooseEnvironment: '待选择分析环境',
   startupSelected: '安全分析 · 已选择', startupOrdinary: '普通聊天', startupModified: '配置未保存',
   startupTaskSettings: '本次配置', startupWorkspaceDefaults: '工作区默认', startupEnvironment: '分析环境',
@@ -222,12 +232,13 @@ export const zh = {
   toolPackFilter: '工具包',
   toolCheckFiltered: '检测筛选结果',
   toolPreferenceTitle: '本次会话工具偏好', toolPreferenceSelected: '已指定工具', toolPreferenceAutomatic: '未限定，按需选择',
-  toolPreferenceHelp: '集合只选择已配置、可检查的适配器，展开工具列表可查看原因。应用时检查依赖；失败会保留选择和已应用设置。',
+  toolPreferenceHelp: '优先使用所选适配器；Shell 可辅助分析，仍遵守任务权限与审批。集合只选择已配置、可检查的适配器，展开工具列表可查看原因。应用时检查依赖；失败会保留选择和已应用设置。',
   toolPreferenceAuto: '恢复自动选择',
   toolPreferenceUnsaved: '修改尚未应用，可继续使用已应用设置开始分析',
   toolPreferenceFailed: '工具偏好未应用，已保留选择和原设置。请修复下方问题后重试：',
   toolPreferenceRetry: '重试应用当前选择',
-  toolPreferenceNoAdapter: '（仅支持自动选择下的脚本工作流）',
+  toolPreferenceNoAdapter: '（无可预选的专用适配器）',
+  toolPreferenceUnavailable: '已保存的偏好包含失效项，请恢复自动选择或检查并应用新的选择：',
   toolPreferenceNeedsSample: '（需先导入样本，不能预先检查）',
   toolPreferenceNoProvider: '（适配器服务未启用）',
   toolPreferenceNeedsConfiguration: '（请先在工具箱配置路径和执行环境）',
@@ -358,7 +369,7 @@ export const zh = {
   toolNoMatches: '没有匹配的工具，请调整筛选或搜索条件',
   toolDiagnostics: '完整版本与诊断',
   toolDedicatedInterface: '已有专用分析接口（配置与审批另行检查）：',
-  toolboxHelp: '配置各环境中的工具安装和默认执行环境。工具需手动安装；检测可能启动已配置的托管容器，但不会安装软件或拉取镜像。',
+  toolboxHelp: '管理各环境中的工具与默认执行环境。检测只读取状态；安装、采用检测结果和启动环境均需单独操作。',
   toolAvailable: '可用', toolMissing: '未找到', toolProbeError: '检测失败', toolUnchecked: '未检查',
   toolRuntime: '脚本运行时', toolReverse: '逆向与静态分析', toolDevice: '设备工具', toolWeb: 'Web 工具', toolUtility: '辅助工具', toolCustom: '自定义工具',
   toolViaShell: '通过原生 Shell 调用', toolViaPlugin: '通过所选运行时插件调用', toolViaPython: '通过选定 Python 导入', toolViaProvider: '通过专用分析接口调用',
@@ -612,6 +623,15 @@ export const zh = {
 export type SecurityKey = keyof typeof zh
 /** English operator-facing security copy. */
 export const en: Record<SecurityKey, string> = {
+  ...installationEn,
+  toolGhidraCaches: 'Inspect Ghidra project cache', toolGhidraCacheEmpty: 'No cached projects', toolGhidraCacheBusy: 'In use',
+  toolGhidraCacheComplete: 'Analysis complete', toolGhidraCacheIncomplete: 'Analysis incomplete', toolGhidraCacheRemove: 'Remove cache',
+  toolTemporaryDirectory: 'Temporary directory for this tool (optional)', toolStateFilter: 'Tool status', toolConfigured: 'Configured', toolNeedsAttention: 'Needs attention',
+  toolInstallationDetails: 'Installation details and diagnostics', toolAdoptInstallation: 'Use this installation', toolCandidateInstallations: 'Detected installations',
+  toolCheckInstallation: 'Installation', toolCheckCompatibility: 'Version compatibility', toolCheckConnection: 'Adapter connection', toolCheckTarget: 'Device or sample prerequisites',
+  toolHealthPassed: 'Passed', toolHealthFailed: 'Needs attention', toolCheckUnknown: 'Not checked', toolCheckNotRequired: 'Not applicable',
+  toolStartEnvironment: 'Start environment', toolStopEnvironment: 'Stop environment',
+  toolContainerPathsHint: 'Tool paths are inside the container. The host installation directory holds downloads and build files; Docker controls image storage.',
   startupTitle: 'Security analysis', startupChooseWorkspace: 'Choose a workspace', startupChooseEnvironment: 'Choose an analysis environment',
   startupSelected: 'Security analysis · selected', startupOrdinary: 'Regular chat', startupModified: 'Unsaved settings',
   startupTaskSettings: 'This task', startupWorkspaceDefaults: 'Workspace defaults', startupEnvironment: 'Analysis environments',
@@ -828,12 +848,13 @@ export const en: Record<SecurityKey, string> = {
   toolPackFilter: 'Tool pack',
   toolCheckFiltered: 'Check filtered tools',
   toolPreferenceTitle: 'Active session tool preferences', toolPreferenceSelected: 'Selected tools', toolPreferenceAutomatic: 'Unrestricted, selected as needed',
-  toolPreferenceHelp: 'Collections select only configured, checkable adapters. Expand the tool list for prerequisites. Applying checks dependencies; failures retain your draft and applied settings.',
+  toolPreferenceHelp: 'Prefer selected adapters. Shell may assist analysis under existing task permissions and approvals. Collections select only configured, checkable adapters; expand the tool list for prerequisites. Applying checks dependencies; failures retain your draft and applied settings.',
   toolPreferenceAuto: 'Restore automatic selection',
   toolPreferenceUnsaved: 'Changes are not applied. You can start analysis with the currently applied settings.',
   toolPreferenceFailed: 'Preferences were not applied. Your draft and previous settings are retained. Fix the following issue and retry:',
   toolPreferenceRetry: 'Retry applying this selection',
-  toolPreferenceNoAdapter: '(Script workflow requires automatic selection)',
+  toolPreferenceNoAdapter: '(No dedicated adapter available for selection)',
+  toolPreferenceUnavailable: 'Saved preferences include unavailable entries. Restore automatic selection or check and apply a new selection:',
   toolPreferenceNeedsSample: '(Requires an imported sample; cannot check in advance)',
   toolPreferenceNoProvider: '(Adapter provider is unavailable)',
   toolPreferenceNeedsConfiguration: '(Configure paths and execution environment in Toolbox)',
@@ -963,7 +984,7 @@ export const en: Record<SecurityKey, string> = {
   toolNoMatches: 'No matching tools. Adjust the filters or search.',
   toolDiagnostics: 'Full version and diagnostics',
   toolDedicatedInterface: 'Dedicated analysis interface (configuration and approval checked separately):',
-  toolboxHelp: 'Configure tool installations and default execution environments. Install tools manually; inspection may start configured managed containers but does not install software or pull images.',
+  toolboxHelp: 'Manage tool installations and default execution environments. Inspection only reads status; installing, adopting an installation and starting an environment are separate actions.',
   toolAvailable: 'Available', toolMissing: 'Not found', toolProbeError: 'Inspection failed', toolUnchecked: 'Not checked',
   toolRuntime: 'Script runtimes', toolReverse: 'Reverse and static analysis', toolDevice: 'Device tools', toolWeb: 'Web tools', toolUtility: 'Utilities', toolCustom: 'Custom tools',
   toolViaShell: 'Call through native Shell', toolViaPlugin: 'Call through the radare2 plugin', toolViaPython: 'Import through the selected Python', toolViaProvider: 'Call through the dedicated provider',

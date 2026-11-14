@@ -1,12 +1,15 @@
 /** Manage definition packs and inspect installations in selected security environments. @module */
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { dshHomePath } from '../packages/util/home-paths/src/index.ts'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
-import { LocalEnvironmentManager, Config as EnvironmentConfig } from '../packages/experimental/security-analysis/src/environment-local.ts'
+import { withFileLock } from '../packages/util/atomic-write/src/index.ts'
+import { manageToolInstallations } from './security-tool-installations.ts'
+import { withExistingToolSelection } from '../packages/experimental/security-analysis/src/tool-installation-store.ts'
 import { ToolCatalog } from '../packages/experimental/security-analysis/src/tool-catalog.ts'
 import { discoverTools, type ToolDefinition } from '../packages/experimental/security-analysis/src/tool-definitions.ts'
 import { inspectToolbox } from '../packages/experimental/security-analysis/src/toolbox.ts'
@@ -18,17 +21,12 @@ import { readSecurityEnvironments, readSecurityTools, readToolSettings, resolveS
 async function inspectTools(environment: SecurityEnvironment, requested: string[], catalog: ToolDefinition[],
   directories: readonly string[] = []): Promise<ToolboxInventory> {
   const ctx = new Context()
-  const manager = new LocalEnvironmentManager(ctx, EnvironmentConfig())
   try {
     await ctx.plugin(LocalSubprocess)
-    if (environment.kind === 'docker' && !environment.externalContainer) await manager.start(environment, new AbortController().signal)
     return await inspectToolbox(ctx, environment, { durationMs: 15000, maxOutputBytes: 65536, graceMs: 3000 },
       new AbortController().signal, requested, catalog, directories)
   } finally {
-    try {
-      if (environment.kind === 'docker' && !environment.externalContainer && environment.containerId)
-        await manager.stop(environment, new AbortController().signal)
-    } finally { await ctx.fiber.dispose() }
+    await ctx.fiber.dispose()
   }
 }
 
@@ -104,31 +102,41 @@ async function manageEnvironmentTools(action: string, selected: string[], option
         environment.tools = [...environment.tools.filter(item => item.id !== tool.id), {
           id: tool.id, ...installation,
           versionArgs: previous?.versionArgs ?? definition.args, source: previous?.source ?? tool.source,
+          ...(previous?.temporaryDirectory ? { temporaryDirectory: previous.temporaryDirectory } : {}),
         }]
       }
     }
   }
   if (action === 'set' || action === 'remove' || options.save) {
     if (managed) {
-      if (JSON.stringify(readToolSettings(options.settingsFile, 'local', catalog)) !== expectedSettings
-        || readFileSync(options.file, 'utf8') !== expected) throw new Error('Tool configuration changed; run the command again before saving')
-      const pins = settings.installations[environment.id] ?? {}
-      if (action === 'remove') Reflect.deleteProperty(pins, selected[0] ?? '')
-      else for (const tool of environment.tools.filter(tool => ids.length ? ids.includes(tool.id) : true))
-        pins[tool.id] = { command: tool.command, prefixArgs: tool.prefixArgs ?? [], versionArgs: tool.versionArgs }
-      settings.installations[environment.id] = pins
-      writeSecurityToolsFile(options.settingsFile, JSON.stringify(settings, null, 2) + '\n')
+      await withExistingToolSelection(dshHomePath('security', 'tool-installations'), options.settingsFile,
+        environment.tools.map(tool => ({ command: tool.command, prefixArgs: tool.prefixArgs ?? [],
+          ...(tool.temporaryDirectory ? { temporaryDirectory: tool.temporaryDirectory } : {}) })), async () => {
+          await mkdir(dirname(options.settingsFile), { recursive: true })
+          await withFileLock(options.file, () => withFileLock(options.settingsFile, () => {
+            if (JSON.stringify(readToolSettings(options.settingsFile, 'local', catalog)) !== expectedSettings
+              || readFileSync(options.file, 'utf8') !== expected) throw new Error('Tool configuration changed; run the command again before saving')
+            const pins = settings.installations[environment.id] ?? {}
+            if (action === 'remove') Reflect.deleteProperty(pins, selected[0] ?? '')
+            else for (const tool of environment.tools.filter(tool => ids.length ? ids.includes(tool.id) : true))
+              pins[tool.id] = { command: tool.command, prefixArgs: tool.prefixArgs ?? [], versionArgs: tool.versionArgs,
+                ...(tool.temporaryDirectory ? { temporaryDirectory: tool.temporaryDirectory } : {}) }
+            settings.installations[environment.id] = pins
+            writeSecurityToolsFile(options.settingsFile, JSON.stringify(settings, null, 2) + '\n')
+            return Promise.resolve()
+          }))
+        })
       console.log(`Saved ${options.settingsFile}. Refresh the toolbox to apply.`)
     } else {
-      writeSecurityEnvironments(options.file, configuration, expected)
+      await writeSecurityEnvironments(options.file, configuration, expected)
       console.log(`Saved ${options.file}. Restart the security profile to apply environment changes.`)
     }
   } else console.log(`Environments: ${options.file}`)
 }
 
-/** Execute the tool manager without installing software or starting the application.
+/** Execute operator discovery, registration and reviewed installation commands.
  * @param args - action, tool identifiers and optional configuration/search paths.
- * @returns completion after read-only probes and requested pin updates.
+ * @returns completion after requested operations settle; discovery does not install or start containers.
  */
 export async function manageSecurityTools(args: string[]): Promise<void> {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
@@ -138,13 +146,16 @@ export async function manageSecurityTools(args: string[]): Promise<void> {
     'version-arg': { type: 'string', multiple: true },
     environment: { type: 'string' }, environments: { type: 'string' },
     config: { type: 'string' }, dir: { type: 'string', multiple: true }, save: { type: 'boolean' }, help: { type: 'boolean' },
+    digest: { type: 'string' }, 'request-id': { type: 'string' }, confirm: { type: 'string', multiple: true },
+    option: { type: 'string', multiple: true }, action: { type: 'string' }, limits: { type: 'string' }, follow: { type: 'boolean' },
   } })
   if (values.help) {
-    console.log('pnpm security:tools [import PACK.json [--replace] | export PACK_ID FILE.json | list | doctor [ids...] | scan [ids...] [--dir DIR] [--save] | set ID COMMAND | remove ID]\nOptions: --environment ID; --environments FILE; --config FILE (versioned installation settings); --catalog FILE; --tag TAG; --collection ID; --dir DIR (local scan/doctor, repeatable); --save (scan/doctor only); --arg=ARG, --version-arg=ARG (repeatable, set only). Definitions describe discovery commands and probes; installations belong to the selected environment. Environment changes require restarting the security profile.')
+    console.log('pnpm security:tools [import PACK.json [--replace] | export PACK_ID FILE.json | list | doctor [ids...] | scan [ids...] [--dir DIR] [--save] | set ID COMMAND | remove ID]\nInstallation: install-recipes | install-root [DIRECTORY] | install-preview RECIPE [--action install|repair|upgrade] [--option NAME=VALUE] | install-apply PLAN --digest DIGEST --request-id ID [--confirm ID] | install-status [OPERATION] [--follow] | install-cancel OPERATION | install-reconcile OPERATION | install-remove-preview INSTALLATION\nOptions: --environment ID; --environments FILE; --config FILE (versioned installation settings); --catalog FILE; --tag TAG; --collection ID; --dir DIR (local scan/doctor, repeatable); --save (scan/doctor only); --arg=ARG, --version-arg=ARG (repeatable, set only); --limits FILE (installation resource limits). Discovery does not install software or start containers. Installation apply follows the operation until it settles. Environment changes require restarting the security profile.')
     return
   }
   const [action = 'list', ...selected] = positionals
-  if (!['list', 'scan', 'doctor', 'set', 'remove', 'import', 'export'].includes(action)) throw new Error(`Unknown action: ${action}`)
+  const installAction = ['install-recipes', 'install-root', 'install-preview', 'install-apply', 'install-status', 'install-cancel', 'install-reconcile', 'install-remove-preview'].includes(action)
+  if (!installAction && !['list', 'scan', 'doctor', 'set', 'remove', 'import', 'export'].includes(action)) throw new Error(`Unknown action: ${action}`)
   if (values.save && action !== 'scan' && action !== 'doctor') throw new Error('--save is only valid with scan or doctor')
   if (values.dir && action !== 'scan' && action !== 'doctor') throw new Error('--dir is only valid with scan or doctor')
   if ((action === 'list' && selected.length) || (action === 'set' && selected.length !== 2) || (action === 'remove' && selected.length !== 1))
@@ -173,6 +184,14 @@ export async function manageSecurityTools(args: string[]): Promise<void> {
     return
   }
   const snapshot = store.read()
+  if (installAction) {
+    const installerArgs = [action, ...selected]
+    for (const name of ['digest', 'request-id', 'action', 'limits'] as const) if (values[name] !== undefined) installerArgs.push('--' + name, values[name])
+    for (const name of ['confirm', 'option'] as const) for (const value of values[name] ?? []) installerArgs.push('--' + name, value)
+    if (values.follow) installerArgs.push('--follow')
+    await manageToolInstallations(installerArgs, { file, environmentsFile, environmentId: values.environment ?? 'local', catalog: snapshot.tools })
+    return
+  }
   if (values.environment) {
     await manageEnvironmentTools(action, selected, { id: values.environment, file: environmentsFile, settingsFile: file, snapshot,
       tags: values.tag, collections: values.collection, prefixArgs: values.arg, versionArgs: values['version-arg'], save: values.save })
@@ -221,7 +240,8 @@ export async function manageSecurityTools(args: string[]): Promise<void> {
           console.log(`  base: ${tool.python.basePrefix} | pip: ${tool.python.pipAvailable ? 'available' : 'missing'}`)
         } else if (tool.dependency && tool.location) console.log('  module: ' + tool.location)
         if (!tool.dependency && (action === 'set' || values.save)) pins[id] = { command: tool.command,
-          prefixArgs: tool.prefixArgs ?? [], versionArgs: pins[id]?.versionArgs ?? toolDefinition(id).args }
+          prefixArgs: tool.prefixArgs ?? [], versionArgs: pins[id]?.versionArgs ?? toolDefinition(id).args,
+          ...(pins[id]?.temporaryDirectory ? { temporaryDirectory: pins[id].temporaryDirectory } : {}) }
       } else {
         if (status === 'error') unhealthy = true
         else if (status === 'missing') missing++
@@ -243,10 +263,16 @@ export async function manageSecurityTools(args: string[]): Promise<void> {
     return
   }
   if (action === 'set' || action === 'remove' || values.save) {
-    const document = readToolSettings(file, 'local', toolboxCatalog)
-    if (JSON.stringify(document) !== expectedSettings) throw new Error('Tool configuration changed; run the command again before saving')
-    document.installations.local = pins
-    writeSecurityToolsFile(file, JSON.stringify(document, null, 2) + '\n')
+    await withExistingToolSelection(dshHomePath('security', 'tool-installations'), file, Object.values(pins), async () => {
+      await mkdir(dirname(file), { recursive: true })
+      await withFileLock(file, () => {
+        const document = readToolSettings(file, 'local', toolboxCatalog)
+        if (JSON.stringify(document) !== expectedSettings) throw new Error('Tool configuration changed; run the command again before saving')
+        document.installations.local = pins
+        writeSecurityToolsFile(file, JSON.stringify(document, null, 2) + '\n')
+        return Promise.resolve()
+      })
+    })
     console.log(`Saved ${file}. Refresh the toolbox to apply.`)
   } else console.log(`Configuration: ${file}`)
 }

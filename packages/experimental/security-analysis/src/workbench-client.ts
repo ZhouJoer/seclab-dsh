@@ -16,6 +16,12 @@ export type { CheckCoverage, ProjectCoverage } from './workbench/coverage.ts'
 export type { SecurityActivity, SecurityActivityBrief, SecurityActivityFrame, SecurityActivityPage, SecurityToolUsage } from './workbench/activity.ts'
 export type { SecurityCommand } from './workbench/commands.ts'
 export type { ToolboxDirectory, ToolboxInventory, ToolboxTool, ToolboxAdapter, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles, ToolboxInstallation } from './toolbox-types.ts'
+export type { ToolboxCheck, ToolboxEnvironment } from './toolbox-types.ts'
+export type { ToolInstallationRoot, ToolInstallationRequest, ToolInstallationPlan, ToolInstallationOperation,
+  ToolInstallationFrame, ManagedToolInstallation, ToolInstallationPhase, ToolInstallationPlanId, ToolInstallationOperationId,
+  ToolInstallationRequestId, ManagedToolInstallationId } from './tool-installation-types.ts'
+export type { ToolInstallationRecipeSummary } from './tool-installation-recipes.ts'
+export type { GhidraHeadlessCache } from './ghidra-headless.ts'
 
 export type { ToolCatalogSnapshot, ToolPackPreview } from './tool-catalog.ts'
 export type { ToolDefinition, ToolPack, ToolPreferences, ToolPreferenceOptions } from './tool-definitions.ts'

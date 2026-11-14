@@ -5,7 +5,7 @@ import * as chokidar from 'chokidar'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { afterEach, describe, expect, it, vi, onTestFinished } from 'vitest'
@@ -43,6 +43,7 @@ import Skills from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import Security from '../src/workbench/index.ts'
 import type { SecurityEnvironment, ToolInstallation } from '../src/workbench/providers.ts'
+import { ToolInstallationStore } from '../src/tool-installation-store.ts'
 import { findingHash } from '../src/workbench/assessment.ts'
 import { SecurityActivityStore } from '../src/workbench/activity.ts'
 import { bindDelegatedChild } from './delegation-fixture.ts'
@@ -50,7 +51,8 @@ import { peImageBytes } from './pe-fixture.ts'
 import type { SessionBinding } from '../src/workbench/model.ts'
 import type { EvolutionConfig } from '../src/evolution.ts'
 import { evolutionInputSchema } from '../src/evolution-model.ts'
-import * as Ghidra from '../src/ghidra-provider.ts'
+import * as GhidraHeadless from '../src/ghidra-headless.ts'
+import { ToolAdapterProvider } from '../src/tool-adapter-provider.ts'
 import * as Frida from '../src/frida-provider.ts'
 import * as Debugger from '../src/debugger-provider.ts'
 import * as Android from '../src/android-provider.ts'
@@ -211,7 +213,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { advisor?: boolean; jobs?: boolean; browser?: boolean; bindings?: Record<string, string>; deviceId?: string; programs?: Ghidra.GhidraBinding[]; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { advisor?: boolean; jobs?: boolean; browser?: boolean; externalKali?: boolean; bindings?: Record<string, string>; deviceId?: string; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -252,7 +254,6 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
       },
     ],
     ['security', Security],
-    ['ghidra', Ghidra],
     ['frida', Frida],
     ['debugger', Debugger],
     ['android', Android],
@@ -301,32 +302,32 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
               ? { root: join(root, 'domain') }
               : name === 'storage-domain'
                 ? { backend: 'json' }
-                : name === 'ghidra'
-                  ? { programs: options.programs ?? [] }
-                  : name === 'security'
-                    ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
-                      ...(options.evolution ? { evolution: options.evolution } : {}),
-                      ...(options.analysisTurnTokens === undefined ? {} : { analysisTurnTokens: options.analysisTurnTokens }),
-                      ...(options.analysisReviewSteps === undefined ? {} : { analysisReviewSteps: options.analysisReviewSteps }),
-                      ...(options.analysisWrapUpSteps === undefined ? {} : { analysisWrapUpSteps: options.analysisWrapUpSteps }),
-                      ...(options.analysisProgressCalls === undefined ? {} : { analysisProgressCalls: options.analysisProgressCalls }),
-                      ...(options.maxConcurrentDelegations === undefined ? {}
-                        : { maxConcurrentDelegations: options.maxConcurrentDelegations }),
-                      ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
-                      ...(options.delegationTimeoutMs === undefined ? {} : { delegationTimeoutMs: options.delegationTimeoutMs }),
-                      ...(options.analysisCountCacheReads === undefined ? {}
-                        : { analysisCountCacheReads: options.analysisCountCacheReads }),
-                      ...(options.taskIntake ? { taskIntake: { maxAttempts: 3,
-                        ...(options.taskIntake === 'default' ? { defaultEnvironmentIds: ['local'] } : {}), workspaces: [
-                          { cwd: options.taskIntake === 'current' ? root : join(root, 'other'), environmentIds: ['local'] },
-                        ] } } : {}),
-                      root: join(root, 'workbench'), importRoots: [root], toolCatalogPath: join(root, 'catalog.json'),
-                      ...(options.adapters ? { ...(options.adapters === 'deployment' ? {} : { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' } }),
-                        toolAdapters: { bindings: { radare2: 'local', ...options.bindings } } } : {}),
-                      environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root,
-                        ...(options.deviceId ? { deviceId: options.deviceId } : {}), tools: options.installations ?? [] },
-                      ...(options.advisor ? [{ id: 'mining', kind: 'local', label: 'Mining', cwd: root, tools: options.installations ?? [] }] : [])] }
-                    : {},
+                : name === 'security'
+                  ? { knowledgeIntervalMs, ...(options.dedicatedModel === false ? {} : { knowledgeProvider: 'fixture', knowledgeModel: 'fixture' }),
+                    ...(options.evolution ? { evolution: options.evolution } : {}),
+                    ...(options.analysisTurnTokens === undefined ? {} : { analysisTurnTokens: options.analysisTurnTokens }),
+                    ...(options.analysisReviewSteps === undefined ? {} : { analysisReviewSteps: options.analysisReviewSteps }),
+                    ...(options.analysisWrapUpSteps === undefined ? {} : { analysisWrapUpSteps: options.analysisWrapUpSteps }),
+                    ...(options.analysisProgressCalls === undefined ? {} : { analysisProgressCalls: options.analysisProgressCalls }),
+                    ...(options.maxConcurrentDelegations === undefined ? {}
+                      : { maxConcurrentDelegations: options.maxConcurrentDelegations }),
+                    ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
+                    ...(options.delegationTimeoutMs === undefined ? {} : { delegationTimeoutMs: options.delegationTimeoutMs }),
+                    ...(options.analysisCountCacheReads === undefined ? {}
+                      : { analysisCountCacheReads: options.analysisCountCacheReads }),
+                    ...(options.taskIntake ? { taskIntake: { maxAttempts: 3,
+                      ...(options.taskIntake === 'default' ? { defaultEnvironmentIds: ['local'] } : {}), workspaces: [
+                        { cwd: options.taskIntake === 'current' ? root : join(root, 'other'), environmentIds: ['local'] },
+                      ] } } : {}),
+                    root: join(root, 'workbench'), importRoots: [root], toolCatalogPath: join(root, 'catalog.json'),
+                    ...(options.adapters ? { ...(options.adapters === 'deployment' ? {} : { toolConfiguration: { path: join(root, 'tools.json'), environmentId: 'local' } }),
+                      toolAdapters: { bindings: { radare2: 'local', ...options.bindings } } } : {}),
+                    environments: [{ id: 'local', kind: 'local', label: 'Host', cwd: root,
+                      ...(options.deviceId ? { deviceId: options.deviceId } : {}), tools: options.installations ?? [] },
+                    ...(options.externalKali ? [{ id: 'kali', kind: 'docker', label: 'Kali', cwd: root,
+                      externalContainer: { name: 'fixture-kali', workdir: '/tmp' }, tools: options.installations ?? [] }] : []),
+                    ...(options.advisor ? [{ id: 'mining', kind: 'local', label: 'Mining', cwd: root, tools: options.installations ?? [] }] : [])] }
+                  : {},
       })),
     ),
   )
@@ -671,6 +672,58 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
     } finally { ownedDone.resolve(undefined); otherDone.resolve(undefined); await Promise.all([owned, other, disposal]) }
   })
 
+  it('joins a resident provider already disposing before releasing its environment during root shutdown', async () => {
+    const { ctx, controller } = await load()
+    const provider = controller.providers.get('tool-adapter')
+    if (!(provider instanceof ToolAdapterProvider)) throw new Error('Expected the loaded tool adapter provider')
+    const environment: SecurityEnvironment = { id: 'resident-managed', kind: 'docker', label: 'Resident environment fixture',
+      cwd: roots[roots.length - 1]!, image: 'fixture', containerId: 'fixture-owned-container', tools: [] }
+    controller.options.environments.push(environment)
+    const entered = Promise.withResolvers<undefined>()
+    const complete = Promise.withResolvers<undefined>()
+    const joined = Promise.withResolvers<'joined'>()
+    const stopped = Promise.withResolvers<'stopped'>()
+    onTestFinished(() => { complete.resolve(undefined) })
+    const originalDispose = provider.dispose.bind(provider)
+    const originalClose = provider.closeEnvironment.bind(provider)
+    const dispose = vi.spyOn(ToolAdapterProvider.prototype, 'dispose').mockImplementation(async () => {
+      entered.resolve(undefined)
+      await complete.promise
+      await originalDispose()
+    })
+    const close = vi.spyOn(ToolAdapterProvider.prototype, 'closeEnvironment').mockImplementation(async (id) => {
+      expect(id).toBe(environment.id)
+      joined.resolve('joined')
+      await complete.promise
+      await originalClose(id)
+    })
+    const owns = vi.spyOn(Environments.LocalEnvironmentManager.prototype, 'owns').mockImplementation(id => id === environment.id)
+    const stop = vi.spyOn(Environments.LocalEnvironmentManager.prototype, 'stop').mockImplementation(async (selected) => {
+      expect(selected).toBe(environment)
+      stopped.resolve('stopped')
+      delete selected.containerId
+    })
+    let finished = false
+    const disposal = ctx.fiber.dispose().then(() => { finished = true })
+    try {
+      await entered.promise
+      expect(await Promise.race([joined.promise, stopped.promise])).toBe('joined')
+      expect(controller.providers.get('tool-adapter')).toBe(provider)
+      expect(stop).not.toHaveBeenCalled()
+      expect(finished).toBe(false)
+      complete.resolve(undefined)
+      await disposal
+      expect(close).toHaveBeenCalledExactlyOnceWith(environment.id)
+      expect(stop).toHaveBeenCalledOnce()
+      expect(environment.containerId).toBeUndefined()
+      expect(controller.providers.list()).not.toContain('tool-adapter')
+    } finally {
+      complete.resolve(undefined)
+      await disposal
+      dispose.mockRestore(); close.mockRestore(); owns.mockRestore(); stop.mockRestore()
+    }
+  })
+
   it('rejects unknown scope kinds instead of presenting imported materials as absent', async () => {
     const { ctx, agent } = await load()
     for (const kind of ['assets', 'project']) {
@@ -688,7 +741,7 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
       moduleSelection: { mode: 'manual', modules: ['reverse.android'], reason: '' } }))
     expect(controller.moduleSelection(agent.id)).toEqual({ mode: 'manual', modules: ['reverse.android'], reason: '' })
     expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('security_jadx')
-    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_ghidra')
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_ghidra_headless')
   })
 
   it('selects Android through the model, loads its method and derives saved evidence with the fixed script', async () => {
@@ -721,7 +774,7 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
     expect((await controller.artifacts.read(evidence.value.artifact)).toString()).toContain('arm64-v8a')
     expect(model.requests[0]?.tools?.some(tool => tool.name === 'security_apk')).toBe(false)
     expect(model.requests[1]?.tools?.some(tool => tool.name === 'security_apk')).toBe(true)
-    expect(model.requests[1]?.tools?.some(tool => tool.name === 'security_ghidra')).toBe(false)
+    expect(model.requests[1]?.tools?.some(tool => tool.name === 'security_ghidra_headless')).toBe(false)
   }, 30_000)
 
   it('refreshes module skills and tools after committed selection and keeps manual choices operator-owned', async () => {
@@ -736,7 +789,7 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
       action: { kind: 'modules', selection: { mode: 'auto', modules: ['reverse.android'], reason: 'Imported APK' } } })
     expect(await active()).toEqual(['security-android', 'security-investigation'])
     expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain('security_jadx')
-    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_ghidra')
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).not.toContain('security_ghidra_headless')
     await send({ kind: 'modules', selection: { mode: 'manual', modules: ['reverse.native'], reason: 'Inspect library' } })
     expect(await active()).toContain('security-native')
     expect(await active()).not.toContain('security-android')
@@ -943,51 +996,6 @@ else if (args.includes('--output')) {
     expect(spawn).toHaveBeenCalledTimes(count)
     expect(await readdir(join(root, 'workbench', 'runs'))).toEqual([])
     expect(controller.activity!.usage(controller.binding(agent.id)!.engagementId).find(row => row.tool === id)?.completed).toBe(1)
-  })
-
-  it('queries a bound Ghidra service through its adapter without executable configuration or database writes', async () => {
-    const bytes = Buffer.from('owned Ghidra input'), sha256 = createHash('sha256').update(bytes).digest('hex')
-    const token = 'fixture-token-'.repeat(4), calls: string[] = []
-    const server = createServer((request, response) => {
-      calls.push(request.url ?? '')
-      if (request.headers.authorization !== 'Bearer ' + token || request.headers['x-dsh-sha256'] !== sha256) {
-        response.writeHead(403); response.end(); return
-      }
-      response.writeHead(200, { 'X-DSH-SHA256': sha256, 'X-DSH-Ghidra-Version': 'fixture' })
-      response.end('0x401000 main\n0x402000 parse_packet\n')
-    })
-    onTestFinished(async () => { server.closeAllConnections(); await new Promise<void>((resolve, reject) => {
-      server.close((error) => { if (error) reject(error); else resolve() })
-    }) })
-    server.listen(0, '127.0.0.1'); await once(server, 'listening')
-    const address = server.address()
-    if (!address || typeof address === 'string') throw new Error('Missing server address')
-    const { ctx, agent, controller, model } = await load(false, 0, { adapters: true, bindings: { ghidra: 'local' },
-      programs: [{ sha256, programId: '/fixture', token, baseUrl: 'http://127.0.0.1:' + String(address.port) }] })
-    const send = operator(controller, agent), root = roots[roots.length - 1]!
-    await send({ kind: 'create', title: 'Ghidra adapter', moduleSelection: { mode: 'manual', modules: ['reverse.native'], reason: 'Adapter fixture' }, objective: 'Read the bound program', environmentIds: ['local'], maxAttempts: 3 })
-    const path = join(root, 'sample.bin'); await writeFile(path, bytes)
-    await send({ kind: 'import', path, label: 'Owned sample' })
-    const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
-    if (asset.kind !== 'asset') throw new Error('Missing asset')
-    const args = { assetId: asset.value.id, operation: 'functions', limit: 2 }
-    model.nativeCalls = [{ name: 'security_ghidra', args }]
-    agent.followup(webPrompt('Read two functions from the configured Ghidra program.'))
-    await agent.whenIdle()
-    const evidence = controller.view(agent.id).records.find(record => record.kind === 'evidence')
-    expect(evidence).toMatchObject({ kind: 'evidence', value: { provider: 'ghidra', incomplete: false } })
-    const query = new URL(calls[0]!, 'http://localhost')
-    expect(query.pathname).toBe('/methods')
-    expect(Object.fromEntries(query.searchParams)).toEqual({ limit: '2', offset: '0' })
-    for (const denied of [{ ...args, token }, { ...args, operation: 'rename', address: '0x401000', name: 'changed' },
-      { ...args, environmentId: 'other' }, { assetId: asset.value.id, operation: 'identity', address: '0x401000' }])
-      expect((await execute(ctx, agent, 'security_ghidra', denied, JSON.stringify(denied))).isError).toBe(true)
-    expect(calls).toHaveLength(1)
-    const discovery = await execute(ctx, agent, 'security_capabilities', { toolIds: ['ghidra'], details: true })
-    expect(JSON.stringify(discovery)).not.toContain(token)
-    expect(JSON.stringify(discovery)).not.toContain(String(address.port))
-    expect(ctx.securityWorkbench.toolboxConfiguration('local').adapters?.find(adapter => adapter.id === 'ghidra'))
-      .toMatchObject({ status: 'unchecked', provider: 'ghidra', bindingId: 'ghidra' })
   })
 
   it('runs deployment-only adapters and rejects model installation overrides before spawning', async () => {
@@ -1278,7 +1286,8 @@ else if (args.includes('--output')) {
     expect(request).toContain('query security_capabilities')
     expect(request).toContain('Prefer native machine-readable results')
     expect(request).toContain('observed contents of all relevant materials')
-    expect(request).toContain('Checked preferences disable native Shell execution')
+    expect(request).toContain('Tool preferences prioritize selected healthy adapters')
+    expect(request).not.toContain('disable native Shell execution')
     expect(request).not.toContain('/tools/radare2')
     expect(request).not.toContain('USBPcapCMD.exe')
     expect(request).not.toContain('pdgj')
@@ -1341,7 +1350,7 @@ else if (args.includes('--output')) {
     await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: [], tags: [], collectionIds: [] }))
     expect(await ctx.securityWorkbench.toolPreferences(agent)).toEqual({ toolIds: [], tags: [], collectionIds: [] })
   })
-  it('checks preferences before committing and blocks native execution until the selection is cleared', async () => {
+  it('checks preferences before committing without restricting auxiliary native execution', async () => {
     const installations = [{ id: 'radare2', command: process.execPath,
       prefixArgs: ['-e', 'console.log("fixture 1.0")', '--'], versionArgs: ['--version'], source: 'Fixture' },
     { id: 'tshark', command: process.execPath, prefixArgs: ['-e', 'process.exit(23)', '--'], versionArgs: ['--version'], source: 'Fixture' }]
@@ -1353,7 +1362,6 @@ else if (args.includes('--output')) {
     const options = await ctx.securityWorkbench.toolPreferenceOptions(agent)
     expect(options.tools.find(tool => tool.id === 'radare2')?.unavailable).toBeUndefined()
     expect(options.tools.find(tool => tool.id === 'r2pipe')?.unavailable).toBe('adapter')
-    expect(options.tools.find(tool => tool.id === 'ghidra')?.unavailable).toBe('sample')
     expect(options.tools.find(tool => tool.id === 'strings')?.unavailable).toBe('configuration')
     expect(options.collections.find(group => group.id === 'firmware')?.toolIds).toEqual(['radare2', 'r2ghidra'])
     expect(ctx.securityWorkbench.toolboxDirectory('local').inventory.tools.find(tool => tool.id === 'radare2')?.status).toBe('not-checked')
@@ -1361,18 +1369,86 @@ else if (args.includes('--output')) {
     expect(ctx.securityWorkbench.toolboxConfiguration('local').adapters).toContainEqual(expect.objectContaining({ id: 'radare2', status: 'ready' }))
     await expect(select(['tshark'])).rejects.toThrow('Adapter check failed')
     await expect(select(['frida'])).rejects.toThrow('no dedicated adapter')
-    await expect(select(['ghidra'])).rejects.toThrow('imported sample')
     expect((await ctx.securityWorkbench.toolPreferences(agent)).toolIds).toEqual(['radare2'])
-    expect((await execute(ctx, agent, 'security_capabilities', { toolIds: ['radare2'], details: true, native: true })).isError).toBe(true)
-    expect((await execute(ctx, agent, 'security_environment', { environmentId: 'local', toolId: 'radare2', native: true })).isError).toBe(true)
+    const capabilities = await execute(ctx, agent, 'security_capabilities', { toolIds: ['radare2'], details: true, native: true })
+    expect(capabilities.isError, JSON.stringify(capabilities)).toBe(false)
+    const environment = await execute(ctx, agent, 'security_environment', { environmentId: 'local', toolId: 'radare2', native: true })
+    expect(environment.isError, JSON.stringify(environment)).toBe(false)
+    expect(JSON.stringify(environment)).toContain(JSON.stringify(process.execPath).slice(1, -1))
     const shell = process.platform === 'win32' ? 'pwsh' : 'bash'
-    const blocked = await execute(ctx, agent, shell, { command: 'echo adapter-bypass', description: 'Test adapter enforcement' })
-    expect(blocked.isError).toBe(true)
-    expect(JSON.stringify(blocked)).toContain('dedicated adapters')
+    const auxiliary = await execute(ctx, agent, shell, { command: 'echo auxiliary-calculation', description: 'Check auxiliary native execution' })
+    expect(auxiliary.isError, JSON.stringify(auxiliary)).toBe(false)
+    expect(JSON.stringify(auxiliary)).toContain('auxiliary-calculation')
+    expect((await ctx.securityWorkbench.toolPreferences(agent)).toolIds).toEqual(['radare2'])
+    const scripts = await execute(ctx, agent, 'security_capabilities', { kind: 'scripts' })
+    expect(JSON.stringify(scripts)).toContain('"nativePreferenceAllowed":true')
     await select([])
-    const allowed = await execute(ctx, agent, shell, { command: 'echo restored-native', description: 'Test restored native workflow' })
+    const allowed = await execute(ctx, agent, shell, { command: 'echo restored-native', description: 'Test restored native workflow' }, 'restored-native')
     expect(allowed.isError, JSON.stringify(allowed)).toBe(false)
     expect(JSON.stringify(allowed)).toContain('restored-native')
+  })
+  it('allows auxiliary directory listing with Ghidra headless preferred while preserving module, role and stopped-project guards', async () => {
+    const javaHome = join(tmpdir(), 'selected-ghidra-jdk')
+    const ghidra = join(tmpdir(), 'selected-ghidra')
+    const inspect = vi.spyOn(GhidraHeadless, 'inspectGhidraHeadlessInstallation').mockResolvedValue({
+      version: '12.2', location: ghidra, javaHome, javaVersion: '21.0.5', architecture: 'amd64',
+    })
+    onTestFinished(() => { inspect.mockRestore() })
+    const { ctx, agent, controller } = await load(false, 0, { native: true, adapters: true,
+      bindings: { 'ghidra-headless': 'local' }, installations: [{ id: 'ghidra-headless',
+        command: join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
+        prefixArgs: ['-Djava.system.class.loader=ghidra.GhidraClassLoader', '-cp',
+          join(ghidra, 'Ghidra', 'Framework', 'Utility', 'lib', 'Utility.jar'), 'ghidra.Ghidra', 'ghidra.app.util.headless.AnalyzeHeadless'],
+        versionArgs: [], source: 'Selected Ghidra fixture' }] })
+    const root = agent.session.header.cwd
+    if (!root) throw new Error('Missing fixture working directory')
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Preferred Ghidra', objective: 'Locate the owned sample', environmentIds: ['local'],
+      maxAttempts: 2, moduleSelection: { mode: 'manual', modules: [], reason: 'Operator has not enabled analysis' } })
+    await writeFile(join(root, 'auxiliary-sample.bin'), 'owned sample')
+    await send({ kind: 'import', path: join(root, 'auxiliary-sample.bin'), label: 'Owned sample' })
+    const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')
+    if (asset?.kind !== 'asset') throw new Error('Missing sample')
+    await ctx.securityWorkbench.toolPreferences(agent, JSON.stringify({ toolIds: ['ghidra-headless'], tags: [], collectionIds: [] }))
+    expect(inspect).toHaveBeenCalledOnce()
+    const options = await ctx.securityWorkbench.toolPreferenceOptions(agent)
+    expect(options.tools.some(tool => tool.id === 'ghidra')).toBe(false)
+    expect(options.tools.some(tool => tool.id === 'ghidra-headless')).toBe(true)
+    const catalog = ctx.securityWorkbench.toolCatalog().tools
+    expect(catalog.some(tool => tool.id === 'ghidra')).toBe(false)
+    expect(catalog.some(tool => tool.id === 'ghidra-headless')).toBe(true)
+    const scope = scopeOf(agent.ctx)
+    if (!scope) throw new Error('Missing agent scope')
+    const prompt = JSON.stringify(await ctx.systemPrompt.assemble({ agent, scope }))
+    expect(prompt).toContain('Prefer these healthy adapters')
+    expect(prompt).toContain('Shell remains available for auxiliary file inspection')
+    expect(prompt).toContain('preserve the failed evidence and do not silently change the selected executable or environment')
+    expect(prompt).toContain('moduleEnabled')
+    const shell = process.platform === 'win32' ? 'pwsh' : 'bash'
+    const listing = await execute(ctx, agent, shell, { command: process.platform === 'win32' ? 'Get-ChildItem -LiteralPath . -Name' : 'ls',
+      workdir: root, description: 'Locate the imported sample' })
+    expect(listing.isError, JSON.stringify(listing)).toBe(false)
+    expect(JSON.stringify(listing)).toContain('auxiliary-sample.bin')
+    expect((await ctx.securityWorkbench.toolPreferences(agent)).toolIds).toEqual(['ghidra-headless'])
+    const disabled = await execute(ctx, agent, 'security_ghidra_headless', { assetId: asset.value.id, operation: 'identity' })
+    expect(disabled.isError).toBe(true)
+    expect(JSON.stringify(disabled)).toContain('Analysis module is not enabled')
+    await send({ kind: 'modules', selection: { mode: 'manual', modules: ['reverse.native'], reason: 'Operator enabled static analysis' } })
+    const tools = ctx.tools.schemas(agent).map(tool => tool.name)
+    expect(tools).toContain('security_ghidra_headless')
+    expect(tools).not.toContain('security_ghidra')
+    const childId = SessionId('preferred-ghidra-reviewer')
+    await bindDelegatedChild(controller, agent.id, childId, asset.value.id, 'reviewer')
+    const { agent: child } = await ctx.agents.create({ sessionId: childId, parentAgent: agent,
+      meta: { parentSession: agent.id, origin: 'subagent', delegationDepth: 1 } })
+    const reviewer = await execute(ctx, child, shell, { command: 'echo forbidden-reviewer', description: 'Check reviewer restriction' })
+    expect(reviewer.isError).toBe(true)
+    expect(JSON.stringify(reviewer)).toContain('role')
+    await send({ kind: 'stop' })
+    const stopped = await execute(ctx, agent, shell, { command: 'echo forbidden-stopped', description: 'Check stopped project restriction' })
+    expect(stopped.isError).toBe(true)
+    expect(JSON.stringify(stopped)).toContain('stopped')
+    expect(inspect).toHaveBeenCalledOnce()
   })
   it('discovers inactive capabilities and scripts, reads unchecked cache and appends operator environments', async () => {
     const { ctx, agent, controller } = await load()
@@ -1653,7 +1729,7 @@ else if (args.includes('--output')) {
   })
   it('loads independent providers and logs model-visible scope through the unchanged loop', async () => {
     const { ctx, agent, controller, model } = await load()
-    expect(controller.providers.list().sort()).toEqual(['android', 'binary', 'debugger', 'external-web', 'frida', 'ghidra', 'native', 'offline', 'packet-capture', 'source', 'tool-adapter', 'web'])
+    expect(controller.providers.list().sort()).toEqual(['android', 'binary', 'debugger', 'external-web', 'frida', 'native', 'offline', 'packet-capture', 'source', 'tool-adapter', 'web'])
     expect(controller.environments.list()).toEqual(['local'])
     agent.followup(
       createUserMessage({ content: [{ type: 'text', text: 'Inspect the scope.' }], source: { kind: 'user' } }),
@@ -2137,7 +2213,7 @@ else if (args.includes('--output')) {
         expect((await execute(ctx, child, name)).isError).toBe(true)
       const capabilities = await execute(ctx, child, 'security_capabilities', { providerId: 'binary', details: true })
       expect(capabilities.isError).toBe(false)
-      expect(JSON.stringify(await execute(ctx, child, 'security_capabilities', { providerId: 'ghidra', details: true }))).toContain('hexadecimal address')
+      expect(JSON.stringify(await execute(ctx, child, 'security_capabilities', { providerId: 'tool-adapter', details: true }))).toContain('ghidra-headless.decompile')
       expect(JSON.stringify(capabilities)).toContain('minLength')
       if (role === 'reconnaissance' || role === 'reverse-analyst') {
         const observed = await execute(ctx, child, 'security_static', {
@@ -2150,7 +2226,7 @@ else if (args.includes('--output')) {
           expect(evidence.value.provider).toBe('binary')
           expect((await controller.artifacts.read(evidence.value.artifact)).toString()).toContain('73616d706c65')
         }
-        expect((await execute(ctx, child, 'security_environment', { environmentId: 'local' })).isError).toBe(false)
+        expect((await execute(ctx, child, 'security_environment', { environmentId: 'local', cached: true })).isError).toBe(false)
         expect((await execute(ctx, child, 'security_environment', { environmentId: 'foreign' })).isError).toBe(true)
       }
       if (role === 'researcher' || role === 'reviewer') {
@@ -2162,6 +2238,42 @@ else if (args.includes('--output')) {
           .rejects.toThrow('role')
       }
     }
+  })
+  it('exposes installation management through its operator service without opening the shared ledger during ordinary analysis', async () => {
+    const opened = vi.spyOn(ToolInstallationStore, 'open')
+    onTestFinished(() => { opened.mockRestore() })
+    const { ctx, agent } = await load()
+    const methods = remoteMethods(ctx.securityToolInstallations)
+    expect(methods.map(method => method.method)).toEqual(expect.arrayContaining([
+      'root', 'setRoot', 'recipes', 'preview', 'apply', 'get', 'list', 'follow', 'cancel', 'reconcile', 'previewRemoval',
+    ]))
+    expect(methods.some(method => method.method === 'withExistingSelection' || method.method === 'close')).toBe(false)
+    expect(ctx.securityToolInstallations.typertRemote.namespace).toBe('securityToolInstallations')
+    expect(ctx.securityToolInstallations.recipes().some(recipe => recipe.id === 'ghidra-headless')).toBe(true)
+    expect(ctx.tools.schemas(agent).some(tool => /(?:install|uninstall|repair)/u.test(tool.name))).toBe(false)
+    expect(opened).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+    expect(opened).not.toHaveBeenCalled()
+  })
+  it('reports a real installation process failure through the injected subprocess service in the Loader', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'dsh-installation-loader-')); roots.push(home)
+    const previousHome = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    onTestFinished(() => { if (previousHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousHome })
+    const helper = join(home, 'docker-fixture.mjs')
+    await writeFile(helper, `const args = process.argv.slice(2), script = args.at(-1) ?? '';\nconst container = '${'a'.repeat(64)}';\nlet output = 'fixture tool 1.0';\nif (args.includes('info')) output = JSON.stringify({ ID: 'fixture-engine', OSType: 'linux' });\nelse if (args.includes('inspect')) output = args.includes('{{.Id}}') ? container : JSON.stringify({ Id: container, State: { Running: true } });\nelse if (args.includes('/etc/os-release')) output = 'ID=kali';\nelse if (script.includes('dpkg --audit')) output = '${'b'.repeat(64)}\\n${'c'.repeat(64)}';\nelse if (script.includes('--simulate')) output = 'Inst nmap (1.0 kali [amd64])';\nelse if (script.includes('DSH-PACKAGE')) output = "DSH-PACKAGE nmap 1.0\\n'https://example.test/nmap.deb' nmap_1.0_amd64.deb 20 SHA256:${'d'.repeat(64)}\\nDSH-SHA256 ${'d'.repeat(64)}";\nprocess.stdout.write(output);\n`)
+    const { ctx } = await load(false, 0, { adapters: true, externalKali: true,
+      installations: [{ id: 'docker', command: process.execPath, prefixArgs: [helper, '--host', 'unix:///fixture/daemon'], versionArgs: ['--version'], source: 'test' }] })
+    const manager = ctx.securityToolInstallations
+    await manager.setRoot(join(home, 'tools'), 0)
+    const plan = await manager.preview({ recipeId: 'kali-network', environmentId: 'kali', action: 'install', options: {} })
+    await writeFile(helper, "process.stderr.write('fixture daemon unavailable'); process.exitCode = 61;\n")
+    const operation = await manager.apply(plan.id, plan.digest, 'loader-installation', ['external-container'])
+    let final = operation
+    for await (const frame of manager.follow(operation.id, 0, new AbortController().signal)) final = frame.operation
+    expect(final).toMatchObject({ phase: 'failed', failure: { code: 'execution-failed' } })
+    expect(final.failure?.detail).toContain('fixture daemon unavailable')
+    await ctx.fiber.dispose()
   })
   it('does not infer authority from a parent session and releases profile effects', async () => {
     const { ctx, agent, controller, shell } = await load()

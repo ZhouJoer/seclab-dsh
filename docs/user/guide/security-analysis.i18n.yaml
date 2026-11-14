@@ -6,14 +6,14 @@
   en: 95f3d436cedff9cd
   zh: 702b3070e4e94393
 /security-analysis-workbench:
-  en: 2e6e9f96a064719e
-  zh: 5f765eafe071233c
+  en: 0081991d5c3db654
+  zh: e9c12e1bb11acff5
 /security-analysis-workbench/1-prepare-the-profile:
-  en: 1975641eff097321
-  zh: f5d10d6356fa3d0e
+  en: 58fe2be25771ad72
+  zh: 7dea5f6ffefa5f94
 /security-analysis-workbench/1-prepare-the-profile/existing-local-or-remote-docker-containers:
-  en: 03abd248ac7717b1
-  zh: 979a0862cfb721d6
+  en: bc75b423a1cf1a44
+  zh: e128a5f261830ed6
 /security-analysis-workbench/1-prepare-the-profile/launch:
   en: 9332b95d214cbe79
   zh: c432aa66ac889e0e
@@ -33,23 +33,23 @@
   en: 107f9e2cf4e4d94a
   zh: a0982d3570219583
 /security-analysis-workbench/3-collect-and-evaluate-evidence:
-  en: a47b5a347bef2413
-  zh: c6a1beb99d70664d
+  en: 74c3a37142484da2
+  zh: 327c9f7ade68075b
 /security-analysis-workbench/4-approve-and-stop-validation:
   en: 6f61dd707393ee28
   zh: 32b8d687441c1e44
 /security-analysis-workbench/verify-without-an-android-device:
-  en: fa28a6c5b36325e4
-  zh: ce1dc60a09865877
+  en: 60751301a059d77b
+  zh: 0fd49983cec9eba0
 /security-analysis-workbench/current-acceptance-limits:
-  en: 05637cc148e589a5
-  zh: b77c34c2d2d8116f
+  en: de33cf662fdc020d
+  zh: 2aef9228ece1c8bd
 /security-analysis-workbench/local-web-laboratory:
   en: f2b9ab482e023a73
   zh: cc9030ade5ef46ae
 /security-analysis-workbench/cve-blind-rediscovery-benchmark:
-  en: 0567535859eda8e0
-  zh: b6a5c58fc4f032e1
+  en: 9b26d1dfb59d1857
+  zh: 7ec3e723f93c6573
 /security-analysis-workbench/source-and-static-frontend-projects:
   en: a6d24d35f960e337
   zh: dc3dbd9161cfa6ee

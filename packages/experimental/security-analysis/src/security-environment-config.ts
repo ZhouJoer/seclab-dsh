@@ -20,6 +20,7 @@ export const securityEnvironmentSchema: Schema<SecurityEnvironment> = Schema.obj
   tools: Schema.array(Schema.object({
     id: Schema.string().required(), command: Schema.string().required(),
     prefixArgs: Schema.array(Schema.string()),
+    temporaryDirectory: Schema.union([Schema.const(undefined), Schema.string()]),
     versionArgs: Schema.array(Schema.string()).required(), source: Schema.string().required(),
   })).required(),
   discovery: Schema.union([Schema.const(undefined), Schema.object({
@@ -39,6 +40,9 @@ export function validateSecurityEnvironments(environments: readonly SecurityEnvi
     if (!isAbsolute(environment.cwd)) throw new Error('Environment working directories must be absolute Host paths')
     if (new Set(environment.tools.map(tool => tool.id)).size !== environment.tools.length)
       throw new Error('Tool IDs must be unique within an environment')
+    for (const tool of environment.tools) if (tool.temporaryDirectory !== undefined
+      && (environment.kind !== 'local' || !isAbsolute(tool.temporaryDirectory) || tool.temporaryDirectory.includes('\0')))
+      throw new Error('Private temporary directories require an absolute local path')
     if (environment.externalContainer && (environment.kind !== 'docker' || environment.image !== undefined))
       throw new Error('externalContainer requires a Docker environment without an image')
     if (environment.discovery && environment.kind !== 'local')

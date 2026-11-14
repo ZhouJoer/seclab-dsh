@@ -175,6 +175,8 @@
 .segments button { border: 0; background: transparent; color: inherit; }
 .segments button[aria-pressed='true'] { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-link); box-shadow: var(--dsw-elevation-panel); }
 .segments span { margin-left: 8px; font-size: 12px; }
+.toolDomains { flex-wrap: wrap; }
+.toolDomains button { flex-shrink: 0; white-space: nowrap; }
 .knowledgeToolbar input { min-width: 220px; padding: 9px 12px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: inherit; }
 .maintenance { padding: 12px 16px; border-radius: 8px; background: var(--dsw-alias-bg-layer-2); font-size: 12px; margin-bottom: 24px; }
 .noteGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; align-items: start; }

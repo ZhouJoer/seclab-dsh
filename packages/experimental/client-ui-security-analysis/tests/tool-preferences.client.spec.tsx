@@ -4,12 +4,73 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import type { ToolPreferences as Preferences } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { ToolPreferences } from '../src/client/ToolPreferences.tsx'
 import { preferenceOptions } from './preference-options.client.ts'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 afterEach(cleanup)
+it.each([
+  { language: 'Chinese', compact: true, copy: zh, common: commonZh },
+  { language: 'English', compact: true, copy: en, common: commonEn },
+  { language: 'Chinese', compact: false, copy: zh, common: commonZh },
+  { language: 'English', compact: false, copy: en, common: commonEn },
+])('explains adapter preference and Shell assistance in $language with compact=$compact', async ({ compact, copy, common }) => {
+  render(<ToolPreferences compact={compact} sessionId={SessionId('preference-help')} t={makeTranslate(copy, common)}
+    toolPreferences={async () => ({ toolIds: [], collectionIds: [], tags: [] })}
+    toolPreferenceOptions={async () => preferenceOptions} />)
+  const details = screen.getByText(copy.toolPreferenceTitle).closest('details')!
+  details.open = true; fireEvent(details, new Event('toggle'))
+  expect(screen.getByText(copy.toolPreferenceHelp).closest('details')).toBe(details)
+  expect(copy.toolPreferenceHelp).toContain('Shell')
+  await screen.findByRole('checkbox', { name: 'IoT / 物联网' })
+  screen.getByText(copy.toolChooseType).closest('details')!.open = true
+  const unsupported = screen.getByRole<HTMLInputElement>('checkbox', { name: /r2pipe/ })
+  expect(unsupported.disabled).toBe(true)
+  expect(unsupported.closest('label')?.textContent).toContain(copy.toolPreferenceNoAdapter)
+})
+
+it.each(['toolIds', 'collectionIds', 'tags'] as const)('keeps missing saved %s visible until automatic selection is applied', async (field) => {
+  const initial: Preferences = { toolIds: [], collectionIds: [], tags: [], [field]: ['missing-selection'] }
+  const action = vi.fn(async (_id: SessionId, input?: string) => input ? JSON.parse(input) as Preferences : initial)
+  render(<ToolPreferences compact eager sessionId={SessionId('missing-preference')} t={makeTranslate(zh, commonZh)}
+    toolPreferences={action} toolPreferenceOptions={async () => preferenceOptions} />)
+  const details = screen.getByText(zh.toolPreferenceTitle).closest('details')!
+  details.open = true; fireEvent(details, new Event('toggle'))
+  const unavailable = await screen.findByText(zh.toolPreferenceUnavailable, { exact: false })
+  expect(unavailable.textContent).toContain('missing-selection')
+  expect(details.querySelector('summary')?.textContent).toContain(zh.toolPreferenceSelected)
+  expect(details.querySelector('summary')?.textContent).not.toContain(zh.toolPreferenceAutomatic)
+  expect(action).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceAuto }))
+  await waitFor(() => { expect(details.querySelector('summary')?.textContent).toContain(zh.toolPreferenceAutomatic) })
+  expect(action).toHaveBeenLastCalledWith('missing-preference', JSON.stringify({ toolIds: [], collectionIds: [], tags: [] }))
+  expect(screen.queryByText(zh.toolPreferenceUnavailable, { exact: false })).toBeNull()
+  expect(screen.queryByRole('button', { name: zh.toolPreferenceAuto })).toBeNull()
+})
+
+it('retains missing saved selections when clearing fails and allows retry', async () => {
+  const initial: Preferences = { toolIds: ['missing-selection'], collectionIds: [], tags: [] }
+  const action = vi.fn(async (_id: SessionId, input?: string) => {
+    if (input) throw new Error('Save unavailable')
+    return initial
+  })
+  render(<ToolPreferences compact eager sessionId={SessionId('missing-retry')} t={makeTranslate(zh, commonZh)}
+    toolPreferences={action} toolPreferenceOptions={async () => preferenceOptions} />)
+  const details = screen.getByText(zh.toolPreferenceTitle).closest('details')!
+  details.open = true; fireEvent(details, new Event('toggle'))
+  await screen.findByText(zh.toolPreferenceUnavailable, { exact: false })
+  fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceAuto }))
+  expect((await screen.findByRole('alert')).textContent).toContain('Save unavailable')
+  expect(details.querySelector('summary')?.textContent).toContain(zh.toolPreferenceSelected)
+  expect(screen.getByText(zh.toolPreferenceUnavailable, { exact: false }).textContent).toContain('missing-selection')
+  action.mockImplementation(async (_id, input) => input ? JSON.parse(input) as Preferences : initial)
+  fireEvent.click(screen.getByRole('button', { name: zh.toolPreferenceAuto }))
+  await waitFor(() => { expect(details.querySelector('summary')?.textContent).toContain(zh.toolPreferenceAutomatic) })
+  expect(action).toHaveBeenLastCalledWith('missing-retry', JSON.stringify({ toolIds: [], collectionIds: [], tags: [] }))
+})
+
 it('cancels compact tool edits without writing the saved selection', async () => {
   const action = vi.fn(async () => ({ toolIds: [], collectionIds: [], tags: [] }))
   const dirty = vi.fn()

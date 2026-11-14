@@ -10,7 +10,7 @@ export const securityToolNames = ['security_scope', 'security_capabilities', 'se
   'security_review', 'security_environment', 'security_capture_analysis', 'security_apk', 'security_analysis',
   'security_radare2', 'security_r2ghidra', 'security_tshark', 'security_jadx', 'security_file',
   'security_strings', 'security_readelf', 'security_objdump', 'security_nm',
-  'security_ghidra', 'security_adb', 'security_packet_capture'] as const
+  'security_ghidra_headless', 'security_adb', 'security_packet_capture'] as const
 
 const labels: Record<string, SecurityKey> = {
   security_capture_analysis: 'toolCaptureAnalysis',

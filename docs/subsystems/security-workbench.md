@@ -18,6 +18,10 @@ Task-owned module selections resolve to Agent skill scopes and tool admission in
 
 `ToolboxConfiguration.adapters` contains shared provider/operation declarations, optional installation identities, independent dependencies, supported environment IDs, binding sources and prerequisites. Service adapters need no executable. Health is transient and grants no authority. `configureTool` keeps route edits independent of installation edits; [Provider design](../../packages/experimental/security-analysis/README.md#provider-design) owns resolution, asset reuse and native discovery.
 
+`ctx.securityToolInstallations` owns the shared installation root, immutable plans and durable operations. `ToolInstallationRequest` selects a registered recipe, environment and action; `ToolInstallationPlan` freezes its sources, steps, destination and required confirmations. `ToolInstallationOperation` records progress and verified results, while `ToolInstallationFrame` exposes retained logs with a cursor and gap flag. `ManagedToolInstallation` receipts remain independent of project `SecurityToolPin` selections. The [installation types](../../packages/experimental/security-analysis/src/tool-installation-types.ts) define identities and recovery states; the [ledger schema](../../packages/experimental/security-analysis/src/tool-installation-store.ts) validates versioned home storage.
+
+`GhidraHeadlessCache` identifies an owned analysis project by its hash, completion marker and active lease. The operator API lists caches without creating directories and removes only an owned, unleased project. [Headless provider code](../../packages/experimental/security-analysis/src/ghidra-headless.ts) owns identity checks and cleanup; sample artifacts and saved evidence are independent of these reusable projects.
+
 `DeviceDirectory` contains configured environment choices and a cached or unchecked `DeviceInventory`. Independent prerequisite checks and branded `RadioDeviceId` values describe software, drivers and visible interfaces; observation timestamps distinguish retained data from failed refreshes. These values are transient and do not establish capture permission or radio readiness. See [device types](../../packages/experimental/security-analysis/src/device-types.ts).
 
 [Record schemas](../../packages/experimental/security-analysis/src/workbench/model.ts) define project, asset, check, evidence, finding, plan, execution, delegation and reviewed knowledge values. Each command appends one revision to the storage-domain journal. Artifact bytes are published before references. Session logs retain model-visible tool results; the domain journal owns check and delegation recovery. `SecurityDelegation` records an assigned question, immutable project and asset scope, execution outcome, child report and coordinator disposition. Jobs own live execution; a report's acceptance does not confirm a finding.
@@ -47,6 +51,97 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Optional Host and Docker owner for external HTTP execution and target credentials.
 
 Source: [`packages/experimental/security-analysis/src/external-web-provider.ts`](../../packages/experimental/security-analysis/src/external-web-provider.ts)
+
+<a id="ctxsecuritytoolinstallations--securitytoolinstallations"></a>
+
+### `ctx.securityToolInstallations` — `SecurityToolInstallations`
+
+Installs only immutable confirmed plans; a failed selection commit never erases installed output.
+
+```ts cordis-catalog
+/** List implemented installation recipes without probing or changing the Host.
+ * @returns explicit platform and environment choices for the operator picker.
+ */
+@Remote recipes(): ToolInstallationRecipeSummary[]
+
+/** Read the shared installation root and this Host's writer availability.
+ * @returns persisted root selection and manager availability.
+ */
+@Remote async root(): Promise<ToolInstallationRoot>
+
+/** Select the root for future installations; existing receipts and directories remain unchanged.
+ * @param directory - explicitly selected absolute Host directory.
+ * @param expectedRevision - root revision last displayed to the operator.
+ * @returns committed canonical root selection.
+ */
+@Remote setRoot(directory: string, expectedRevision: number): Promise<ToolInstallationRoot>
+
+/** Resolve a recipe preview without changing selected tools; metadata resolution may use disposable containers and downloads.
+ * @param request - registered recipe, environment, action and recipe options.
+ * @returns exact immutable commands, sources, destinations and required confirmations.
+ */
+@Remote async preview(request: ToolInstallationRequest): Promise<ToolInstallationPlan>
+
+/** Start one confirmed stored plan; replaying the same request returns the same operation.
+ * @param planId - stored preview identity.
+ * @param expectedDigest - digest of the complete preview displayed for confirmation.
+ * @param requestId - caller-generated idempotency identity, retained across connection retries.
+ * @param confirmations - every explicit exception accepted by the operator.
+ * @returns durable operation; follow observes asynchronous progress.
+ */
+@Remote apply(planId: ToolInstallationPlanId, expectedDigest: string, requestId: string, confirmations: string[]): Promise<ToolInstallationOperation>
+
+/** Read one durable operation, including its retained output and uncertain-outcome diagnosis.
+ * @param operationId - operation identity.
+ * @returns current durable operation.
+ */
+@Remote async get(operationId: ToolInstallationOperationId): Promise<ToolInstallationOperation>
+
+/** List shared installations and durable attempts across projects.
+ * @returns newest operations first, plus retained installation receipts.
+ */
+@Remote async list(): Promise<{ operations: ToolInstallationOperation[]; installations: ManagedToolInstallation[] }>
+
+/** Follow committed progress; a disconnected observer never cancels installation.
+ * @param operationId - operation identity.
+ * @param afterCursor - last observed durable cursor, or zero for retained history.
+ * @param signal - observer connection lifetime.
+ * @returns snapshots containing retained chunks newer than the requested cursor.
+ */
+@Remote({ mode: 'stream' }) async *follow(operationId: ToolInstallationOperationId, afterCursor: number, signal: AbortSignal): AsyncIterable<ToolInstallationFrame>
+
+/** Cancel owned execution and wait until its environment lease has been released.
+ * @param operationId - active operation identity.
+ * @returns settled operation; an atomic selection commit is allowed to finish.
+ */
+@Remote async cancel(operationId: ToolInstallationOperationId): Promise<ToolInstallationOperation>
+
+/** Inspect an uncertain or unbound attempt without rerunning installation commands.
+ * @param operationId - operation requiring reconciliation.
+ * @returns durable operation; follow observes the read-only verification and optional CAS commit.
+ */
+@Remote reconcile(operationId: ToolInstallationOperationId): Promise<ToolInstallationOperation>
+
+/** Preview deletion of one whole DSH-owned generation after checking every recorded project reference.
+ * @param installationId - receipt identity for the generation to remove.
+ * @returns a confirmed-plan preview covering all receipts sharing that generation.
+ */
+@Remote async previewRemoval(installationId: ManagedToolInstallationId): Promise<ToolInstallationPlan>
+
+/** Register a project's use of an existing managed tool before publishing its selection.
+ * @param pin - selected executable and any launcher dependency paths.
+ * @param publish - atomic project configuration commit.
+ * @returns the committed selection; pending removals reject adoption before publication.
+ */
+withExistingSelection<T>(pin: Pick<SecurityToolPin, 'command' | 'prefixArgs'>, publish: () => Promise<T>): Promise<T>
+
+/** Drain admitted requests, cancel execution and release writer ownership after all consumers settle.
+ * @returns completion after the shared ledger is closed.
+ */
+close(): Promise<void>
+```
+
+Source: [`packages/experimental/security-analysis/src/tool-installations.ts`](../../packages/experimental/security-analysis/src/tool-installations.ts)
 
 <a id="ctxsecurityworkbench--securityworkbench"></a>
 
@@ -187,6 +282,20 @@ async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityComm
  */
 @Remote('scriptCatalog') scriptCatalog(): AnalysisScript[]
 
+/** Change only a DSH-owned analysis container after an explicit operator action.
+ * @param environmentId - selected managed Docker environment.
+ * @param action - start or stop the owned container.
+ * @returns inventory after the settled lifecycle action.
+ */
+@Remote('toolboxEnvironment') async toolboxEnvironment(environmentId: string, action: 'start' | 'stop'): Promise<ToolboxDirectory>
+
+/** Inspect or remove a DSH-owned Ghidra cache after analysis releases it.
+ * @param environmentId - selected local or managed Docker environment.
+ * @param key - optional cache identity to remove; omission only lists entries.
+ * @returns current cache entries and their lease states.
+ */
+@Remote('ghidraCaches') async ghidraCaches(environmentId: string, key?: string): Promise<GhidraHeadlessCache[]>
+
 /** Validate an operator-selected pack without executing its commands.
  * @param input - JSON tool pack.
  * @returns import preview and identity conflicts.
@@ -213,7 +322,7 @@ async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityComm
  */
 @Remote('toolPreferenceOptions') async toolPreferenceOptions(agent: Agent): Promise<ToolPreferenceOptions>
 
-/** Read or check and update adapter preferences for the authenticated active session only.
+/** Read or check and update preferred adapters for the authenticated active session without changing execution permissions.
  * @param agent - carrier-resolved session; caller cannot nominate another agent.
  * @param input - optional JSON selection; empty arrays restore automatic discovery.
  * @returns the current selection after checking selected adapters and their installations; failures retain the previous selection.
@@ -226,7 +335,7 @@ async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityComm
  */
 @Remote('toolboxDirectory') toolboxDirectory(environmentId?: string): ToolboxDirectory
 
-/** Inspect installed tools, starting managed Docker from an existing image when necessary.
+/** Inspect installed tools without starting environments or saving installation choices.
  * @param environmentId - configured environment; omission selects the first local environment.
  * @param toolIds - selected definitions and their dependencies; omitted checks all.
  * @returns environment choices and current optional-tool observations.

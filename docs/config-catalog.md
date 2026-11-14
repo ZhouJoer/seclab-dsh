@@ -1248,12 +1248,14 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
-- `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:118`](../packages/experimental/security-analysis/src/index.ts)
+- `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections` · `subprocess`
+- `source`: [`packages/experimental/security-analysis/src/index.ts:126`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Acquisition, process and retained log limits for operator installations. */
+  toolInstallations: ToolInstallationConfig
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -1337,6 +1339,14 @@ export interface WorkbenchConfig {
   knowledgeModel?: string
 }
 
+/** Acquisition, execution and retained progress limits. */
+export interface ToolInstallationConfig extends ToolInstallationExecutorBounds {
+  /** Maximum total UTF-8 bytes retained in one operation's progress log. */
+  maxLogBytes: number
+  /** Maximum retained progress chunks per installation operation. */
+  maxLogChunks: number
+}
+
 /** Deployment-owned collection and teardown bounds. */
 export interface ToolAdapterLimits {
   /** Maximum semantic observations retained per analysis. */
@@ -1347,6 +1357,8 @@ export interface ToolAdapterLimits {
   maxPackets: number
   /** Time in milliseconds allowed for process cleanup. */
   graceMs: number
+  /** Headless analysis settings; absent configuration disables this adapter. */
+  ghidraHeadless?: GhidraHeadlessOptions
 }
 
 /** Deployment-owned analysis scheduling and model budgets. */
@@ -1453,6 +1465,48 @@ export interface SecurityEnvironment {
   }
 }
 
+/** Operator-configurable resource limits shared by installation recipes. */
+export interface ToolInstallationExecutorBounds {
+  /** Maximum milliseconds for each authenticated artifact download. */
+  downloadTimeoutMs: number
+  /** Maximum bytes per artifact download or selected executable digest. */
+  maxDownloadBytes: number
+  /** Maximum total uncompressed bytes extracted from one archive. */
+  maxExtractedBytes: number
+  /** Maximum entries accepted from one installation archive. */
+  maxArchiveEntries: number
+  /** Maximum milliseconds for each installer or verification subprocess. */
+  processTimeoutMs: number
+  /** Maximum retained bytes for each installer stdout or stderr stream. */
+  maxOutputBytes: number
+  /** Milliseconds available for owned subprocess termination and draining. */
+  graceMs: number
+  /** Maximum milliseconds for each preview metadata or temporary-environment subprocess. */
+  metadataTimeoutMs: number
+  /** Maximum bytes retained from each preview subprocess stream. */
+  maxMetadataBytes: number
+}
+
+/** Deployment-owned resource budgets; a relative cacheDirectory resolves beneath the selected environment workspace. */
+export interface GhidraHeadlessOptions {
+  /** Host project-cache directory; relative paths resolve below the selected workspace and cannot contain hidden components. */
+  cacheDirectory: string
+  /** Maximum Java heap in mebibytes for each headless process. */
+  maxHeapMb: number
+  /** Maximum Ghidra analysis workers and collector threads; JVM compilation uses at least two threads. */
+  maxCpu: number
+  /** Ghidra automatic-analysis deadline in seconds; expiry marks the output incomplete. */
+  analysisTimeoutSeconds: number
+  /** Per-function decompiler deadline in seconds. */
+  decompileTimeoutSeconds: number
+  /** Idle time before a resident JVM is closed and its complete analysis is saved. */
+  sessionIdleTimeoutMs: number
+  /** Maximum resident analysis JVMs owned by this provider. */
+  maxSessions: number
+  /** Delay between reads of atomically published protocol files. */
+  protocolPollIntervalMs: number
+}
+
 /** Host-owned resource selection for one exact workspace directory. */
 export interface TaskIntakeWorkspace {
   /** Absolute workspace directory eligible for automatic security task creation. */
@@ -1463,6 +1517,8 @@ export interface TaskIntakeWorkspace {
 
 /** Operator-configured tool location. */
 export interface ToolInstallation {
+  /** Private Host temporary directory for this executable; never changes global environment variables. */
+  temporaryDirectory?: string | undefined
   /** Provider-facing tool identity within one environment. */
   id: string
   /** Host executable or executable path inside the selected container. */

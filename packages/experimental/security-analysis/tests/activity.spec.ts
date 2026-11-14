@@ -34,7 +34,7 @@ async function harness() {
   } }
 }
 const invocation = (callId: string, projectId = 'project', checkpointId = 'recon') => ({
-  projectId, sessionId: 'session', callId, checkpointId, tools: ['ghidra'], verified: true, parameters: '{}',
+  projectId, sessionId: 'session', callId, checkpointId, tools: ['ghidra-headless'], verified: true, parameters: '{}',
 })
 it('retains progress coverage across restart, retries, aliases and late results', async () => {
   const { activity, reopen } = await harness()

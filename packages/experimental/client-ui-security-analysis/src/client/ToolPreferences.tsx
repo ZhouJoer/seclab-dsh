@@ -26,6 +26,15 @@ export function ToolPreferences(props: Props) {
   return <PreferenceEditor key={props.sessionId} {...props} />
 }
 
+function expandSelection(selection: Preferences, catalog: ToolPreferenceOptions): Preferences {
+  const ids = new Set([...selection.toolIds, ...catalog.collections
+    .filter(group => selection.collectionIds.includes(group.id)).flatMap(group => group.toolIds)])
+  const toolIds = selection.toolIds.length + selection.tags.length + selection.collectionIds.length
+    ? catalog.tools.filter(tool => ((!selection.toolIds.length && !selection.collectionIds.length) || ids.has(tool.id))
+      && (!selection.tags.length || selection.tags.some(tag => tool.tags.includes(tag)))).map(tool => tool.id) : []
+  return { toolIds, tags: [], collectionIds: [] }
+}
+
 function PreferenceEditor(props: Props) {
   const { t, sessionId } = props
   const [catalog, setCatalog] = useState<ToolPreferenceOptions>(), [selection, setSelection] = useState<Preferences>()
@@ -48,14 +57,8 @@ function PreferenceEditor(props: Props) {
     if (load) {
       setBusy(true); setError('')
       void Promise.all([props.toolPreferenceOptions(sessionId), props.toolPreferences(sessionId)]).then(([catalog, selection]) => {
-        const ids = new Set([...selection.toolIds, ...catalog.collections
-          .filter(group => selection.collectionIds.includes(group.id)).flatMap(group => group.toolIds)])
-        const selected = selection.toolIds.length + selection.tags.length + selection.collectionIds.length
-          ? catalog.tools.filter(tool => ((!selection.toolIds.length && !selection.collectionIds.length) || ids.has(tool.id))
-            && (!selection.tags.length || selection.tags.some(tag => tool.tags.includes(tag)))).map(tool => tool.id) : []
         if (active) {
-          const value = { toolIds: selected, tags: [], collectionIds: [] }
-          setCatalog(catalog); setSelection(value); setBaseline(value); setSaved(false)
+          setCatalog(catalog); setSelection(expandSelection(selection, catalog)); setBaseline(selection); setSaved(false)
         }
       }).catch((error: unknown) => { if (active) setError(String(error)) }).finally(() => { if (active) setBusy(false) })
     }
@@ -66,18 +69,26 @@ function PreferenceEditor(props: Props) {
     try {
       const next = await props.toolPreferences(sessionId, JSON.stringify(value))
       if (mounted.current) {
-        setSelection(next); setBaseline(next); setSaved(true); changed(false)
+        setSelection(catalog ? expandSelection(next, catalog) : next); setBaseline(next); setSaved(true); changed(false)
       }
     } catch (error) { if (mounted.current) setError(String(error)) }
     finally { if (mounted.current) setBusy(false) }
   }
+  const applied = baseline && catalog ? expandSelection(baseline, catalog) : baseline
+  const hasAppliedSelection = !!baseline && !!(baseline.toolIds.length + baseline.tags.length + baseline.collectionIds.length)
+  const unavailable = baseline && catalog ? [
+    ...baseline.toolIds.filter(id => !catalog.tools.some(tool => tool.id === id)),
+    ...baseline.collectionIds.filter(id => !catalog.collections.some(group => group.id === id)),
+    ...baseline.tags.filter(tag => !catalog.tools.some(tool => tool.tags.includes(tag))),
+  ] : []
   return <details className={css.card} onToggle={(event) => {
     if (event.currentTarget.open) setOpen(true)
   }}>
-    <summary><span>{t('toolPreferenceTitle')}</span>{props.eager && <span> · {baseline
-      ? baseline.toolIds.length ? `${catalog?.collections.filter(group => group.toolIds.length && group.toolIds.every(id => baseline.toolIds.includes(id))).map(group => group.label).join('、') || t('toolPreferenceSelected')} (${baseline.toolIds.length})`
+    <summary><span>{t('toolPreferenceTitle')}</span>{props.eager && <span> · {applied
+      ? hasAppliedSelection ? `${catalog?.collections.filter(group => group.toolIds.length && group.toolIds.every(id => applied.toolIds.includes(id))).map(group => group.label).join('、') || t('toolPreferenceSelected')}${applied.toolIds.length ? ` (${applied.toolIds.length})` : ''}`
         : t('toolPreferenceAutomatic') : t('loading')}{dirty && ' · ' + t('toolPreferenceUnsaved')}</span>}</summary>
-    {!props.compact && <p>{t('toolPreferenceHelp')}</p>}
+    <p>{t('toolPreferenceHelp')}</p>
+    {unavailable.length > 0 && <p role="status">{t('toolPreferenceUnavailable')} {unavailable.join('、')}</p>}
     {selection && <fieldset className={css.toolFields} disabled={busy || props.disabled}>
       {catalog?.collections.map(group => <label key={group.id}><input type="checkbox"
         disabled={!group.toolIds.length}
@@ -96,9 +107,9 @@ function PreferenceEditor(props: Props) {
       {tool.detail && <details><summary>{t('toolPreferenceDetails')}</summary>{tool.detail}</details>}</label>)}</div></details>
       {(!props.compact || dirty) && <button onClick={() => void apply(selection)}>{t('toolPreferenceSave')}</button>}
       {props.compact && dirty && <button onClick={() => {
-        setSelection(baseline); changed(false); setError(''); setSaved(false)
+        setSelection(applied); changed(false); setError(''); setSaved(false)
       }}>{t('startupCancelEdits')}</button>}
-      {(!props.compact || !dirty && selection.toolIds.length > 0)
+      {(!props.compact || hasAppliedSelection)
         && <button onClick={() => void apply({ toolIds: [], collectionIds: [], tags: [] })}>{t('toolPreferenceAuto')}</button>}
     </fieldset>}
     {!props.compact && saved && <p role="status">{t('toolPreferenceSaved')}</p>}

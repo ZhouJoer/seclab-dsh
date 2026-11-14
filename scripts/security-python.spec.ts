@@ -16,7 +16,7 @@ async function fixture() {
   } }, bindings: { jadx: 'local' } })
   await writeFile(config, saved)
   const base = join(directory, 'base')
-  const options = { python: join(base, 'python'), pythonArgs: [], config }
+  const options = { python: join(base, 'python'), pythonArgs: [], config, directory: join(directory, 'runtimes') }
   let environment = ''
   const calls: string[][] = []
   const run: PythonRunner = async (command, args) => {
@@ -113,7 +113,7 @@ it('documents explicit setup and environment retention in command help', async (
       [
         [
           "pnpm security:python --python EXECUTABLE [--python-arg=ARG] [--config FILE] [--timeout-ms 600000]
-      Requires standalone 64-bit Python 3.12–3.14. Creates a fresh environment, installs pinned dependencies and selects it only after validation. Existing environments are retained. Use the same --config for security:tools and toolConfiguration.path when overriding the profile defaults.",
+      Preview a Python analysis environment in the shared installation root. First select it with security:tools install-root DIRECTORY. Apply the returned plan with security:tools install-apply PLAN --digest DIGEST --request-id ID. Requires standalone 64-bit Python 3.12–3.14. The preview does not install software or change the selected interpreter.",
         ],
       ]
     `)

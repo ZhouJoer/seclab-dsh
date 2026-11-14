@@ -1,0 +1,17 @@
+.manager { display: grid; min-width: 0; gap: 12px; margin: 12px 0; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); }
+.manager p { margin: 0; overflow-wrap: anywhere; }
+.manager h3 { margin: 0; font-size: 16px; font-weight: 500; }
+.manager fieldset { display: grid; min-width: 0; gap: 10px; border: 0; padding: 0; margin: 0; }
+.manager input, .manager select { min-width: 0; max-width: 100%; padding: 8px; background: inherit; color: inherit; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 5px; }
+.field { display: grid; min-width: 0; gap: 5px; }
+.row { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; }
+.row button { white-space: normal; overflow-wrap: anywhere; }
+.path { overflow-wrap: anywhere; word-break: break-word; }
+.review { display: grid; min-width: 0; gap: 12px; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; }
+.review dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 0; }
+.review dt { color: var(--dsw-alias-label-secondary); }
+.review dd { margin: 0 0 6px; overflow-wrap: anywhere; }
+.logs { max-height: 320px; overflow: auto; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--dsw-alias-bg-layer-2); border-radius: 5px; font-size: 13px; }
+.list { display: grid; min-width: 0; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.list li { display: grid; min-width: 0; gap: 6px; padding: 10px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 6px; }
+.notice { color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }

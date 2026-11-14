@@ -12,11 +12,14 @@ export interface SecurityToolPin {
   command: string
   prefixArgs: string[]
   versionArgs: string[]
+  /** Private directory supplied as TMP and TEMP only for this executable. */
+  temporaryDirectory?: string | undefined
 }
 
 const settingsSchema = z.object({ version: z.literal(1),
   installations: z.record(z.string().min(1), z.record(z.string(), z.object({
     command: z.string().min(1), prefixArgs: z.array(z.string()), versionArgs: z.array(z.string()).min(1),
+    temporaryDirectory: z.string().min(1).optional(),
   }).strict())), bindings: z.record(z.string(), z.string().min(1)),
 }).strict()
 /** Environment-specific installations and operator-selected adapter routes. */
@@ -82,7 +85,10 @@ function parseLocalPins(data: unknown, path: string, catalog: readonly ToolDefin
       throw new Error(`${path}: ${id} needs a nonempty versionArgs string array`)
     if (!Array.isArray(prefixArgs) || !prefixArgs.every((arg: unknown) => typeof arg === 'string'))
       throw new Error(`${path}: ${id} needs a prefixArgs string array`)
-    pins[id] = { command, prefixArgs, versionArgs }
+    const temporaryDirectory = value && typeof value === 'object' && 'temporaryDirectory' in value ? value.temporaryDirectory : undefined
+    if (temporaryDirectory !== undefined && (typeof temporaryDirectory !== 'string' || !isAbsolute(temporaryDirectory)))
+      throw new Error(`${path}: ${id} needs an absolute temporaryDirectory`)
+    pins[id] = { command, prefixArgs, versionArgs, ...(temporaryDirectory === undefined ? {} : { temporaryDirectory }) }
   }
   return pins
 }

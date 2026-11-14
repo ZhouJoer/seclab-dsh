@@ -38,6 +38,8 @@ it('preserves advanced guides on demand without replacing the default semantic i
     guide: 'Advanced analysis workflow', adapter: { toolName: 'security_radare2' } })
   expect(modelToolDefinition(definition, true)).toHaveProperty('invocation', 'adapter')
   expect(modelToolDefinition(definition, true)).toHaveProperty('guide', expect.stringContaining('native: true'))
+  expect(modelToolDefinition(definition, true)).toHaveProperty('guide', expect.stringContaining('Report adapter failures or coverage limits'))
+  expect(modelToolDefinition(definition, true)).toHaveProperty('guide', expect.stringContaining('preserve the selected executable and environment'))
 })
 
 it('preserves the measured Kali launcher and Docker context, and exposes advanced local launchers on demand', () => {

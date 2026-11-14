@@ -12,26 +12,26 @@
   en: 06ae1b0d15e1ccc2
   zh: b524c17be8454ca7
 /deepseek-ai-dsh-experimental-security-analysis/table-of-contents:
-  en: e7b172dd47cbe6cc
-  zh: e7044216691d11fd
+  en: 04b6afbf7b2bcbdb
+  zh: 3f3cf53134da6d9e
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package:
-  en: 7eb43c6f91b453ea
-  zh: e59310be795e0d53
+  en: 5bc7c104d7596c53
+  zh: b68874dc42730438
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/configure-analysis-providers:
-  en: 3380214b8030fbcb
-  zh: ff097579cd59148a
+  en: fee02174f4d23aeb
+  zh: 82ae5f800ce2dbe4
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/tool-inventory-and-acceptance:
-  en: 058bc3d1e799e223
-  zh: 31991c3ebfef5d62
+  en: 9e1cd834ba4cdec4
+  zh: d1ae31b8f63bf84a
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/roles-tasks-and-tool-management:
-  en: 491d29cd42fc81da
-  zh: 18b1a94d9156dfb1
+  en: b96d9007856b930b
+  zh: 9c1488e3e6ca3130
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/unseal-direct-execution:
   en: 2c1ed63c88287683
   zh: e9c4877246881225
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/evidence-and-recovery:
-  en: 24ef0342fdc63d3d
-  zh: aeeb6e08f8b04b66
+  en: 51948c9b4e51758f
+  zh: 7b0c223c5a272705
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/source-snapshots-and-offline-checks:
   en: 4b034d78fb712245
   zh: 112834686d333c71
@@ -39,8 +39,8 @@
   en: 97d3db7114978bed
   zh: 615a28110cc354e2
 /deepseek-ai-dsh-experimental-security-analysis/understand-the-implementation/provider-design:
-  en: 1ff4d68c829bb6bc
-  zh: 1dd24786db1567a1
+  en: e51c1a3a3b865083
+  zh: 2126e3be388656ca
 /deepseek-ai-dsh-experimental-security-analysis/further-exploration:
   en: 306ee4a96e79a204
   zh: a63053e5c0f77dfd
@@ -66,8 +66,8 @@
   en: c14aa54f17e89496
   zh: da03364252d5de81
 /deepseek-ai-dsh-experimental-security-analysis/known-limitations-and-deferred-work:
-  en: 35d420807c9aa408
-  zh: 660cd35d20134ab4
+  en: f5807195a8d6101f
+  zh: 3d3672403db3f5ff
 /deepseek-ai-dsh-experimental-security-analysis/known-limitations-and-deferred-work/dev-note:
   en: 47f83e1859b04e11
   zh: 5ff63007bdc1a3c4

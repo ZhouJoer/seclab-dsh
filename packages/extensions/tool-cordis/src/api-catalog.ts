@@ -2169,6 +2169,91 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'securityToolInstallations',
+    summary: 'Installs only immutable confirmed plans; a failed selection commit never erases installed output.',
+    description: 'Installs only immutable confirmed plans; a failed selection commit never erases installed output.',
+    methods: [
+      {
+        signature: '@Remote recipes(): ToolInstallationRecipeSummary[]',
+        description: 'List implemented installation recipes without probing or changing the Host.',
+        parameters: [],
+        returns: 'explicit platform and environment choices for the operator picker.',
+      },
+      {
+        signature: '@Remote async root(): Promise<ToolInstallationRoot>',
+        description: 'Read the shared installation root and this Host\'s writer availability.',
+        parameters: [],
+        returns: 'persisted root selection and manager availability.',
+      },
+      {
+        signature: '@Remote setRoot(directory: string, expectedRevision: number): Promise<ToolInstallationRoot>',
+        description: 'Select the root for future installations; existing receipts and directories remain unchanged.',
+        parameters: [{ name: 'directory', description: 'explicitly selected absolute Host directory.' }, { name: 'expectedRevision', description: 'root revision last displayed to the operator.' }],
+        returns: 'committed canonical root selection.',
+      },
+      {
+        signature: '@Remote async preview(request: ToolInstallationRequest): Promise<ToolInstallationPlan>',
+        description: 'Resolve a recipe preview without changing selected tools; metadata resolution may use disposable containers and downloads.',
+        parameters: [{ name: 'request', description: 'registered recipe, environment, action and recipe options.' }],
+        returns: 'exact immutable commands, sources, destinations and required confirmations.',
+      },
+      {
+        signature: '@Remote apply(planId: ToolInstallationPlanId, expectedDigest: string, requestId: string, confirmations: string[]): Promise<ToolInstallationOperation>',
+        description: 'Start one confirmed stored plan; replaying the same request returns the same operation.',
+        parameters: [{ name: 'planId', description: 'stored preview identity.' }, { name: 'expectedDigest', description: 'digest of the complete preview displayed for confirmation.' }, { name: 'requestId', description: 'caller-generated idempotency identity, retained across connection retries.' }, { name: 'confirmations', description: 'every explicit exception accepted by the operator.' }],
+        returns: 'durable operation; follow observes asynchronous progress.',
+      },
+      {
+        signature: '@Remote async get(operationId: ToolInstallationOperationId): Promise<ToolInstallationOperation>',
+        description: 'Read one durable operation, including its retained output and uncertain-outcome diagnosis.',
+        parameters: [{ name: 'operationId', description: 'operation identity.' }],
+        returns: 'current durable operation.',
+      },
+      {
+        signature: '@Remote async list(): Promise<{ operations: ToolInstallationOperation[]; installations: ManagedToolInstallation[] }>',
+        description: 'List shared installations and durable attempts across projects.',
+        parameters: [],
+        returns: 'newest operations first, plus retained installation receipts.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *follow(operationId: ToolInstallationOperationId, afterCursor: number, signal: AbortSignal): AsyncIterable<ToolInstallationFrame>',
+        description: 'Follow committed progress; a disconnected observer never cancels installation.',
+        parameters: [{ name: 'operationId', description: 'operation identity.' }, { name: 'afterCursor', description: 'last observed durable cursor, or zero for retained history.' }, { name: 'signal', description: 'observer connection lifetime.' }],
+        returns: 'snapshots containing retained chunks newer than the requested cursor.',
+      },
+      {
+        signature: '@Remote async cancel(operationId: ToolInstallationOperationId): Promise<ToolInstallationOperation>',
+        description: 'Cancel owned execution and wait until its environment lease has been released.',
+        parameters: [{ name: 'operationId', description: 'active operation identity.' }],
+        returns: 'settled operation; an atomic selection commit is allowed to finish.',
+      },
+      {
+        signature: '@Remote reconcile(operationId: ToolInstallationOperationId): Promise<ToolInstallationOperation>',
+        description: 'Inspect an uncertain or unbound attempt without rerunning installation commands.',
+        parameters: [{ name: 'operationId', description: 'operation requiring reconciliation.' }],
+        returns: 'durable operation; follow observes the read-only verification and optional CAS commit.',
+      },
+      {
+        signature: '@Remote async previewRemoval(installationId: ManagedToolInstallationId): Promise<ToolInstallationPlan>',
+        description: 'Preview deletion of one whole DSH-owned generation after checking every recorded project reference.',
+        parameters: [{ name: 'installationId', description: 'receipt identity for the generation to remove.' }],
+        returns: 'a confirmed-plan preview covering all receipts sharing that generation.',
+      },
+      {
+        signature: 'withExistingSelection<T>(pin: Pick<SecurityToolPin, \'command\' | \'prefixArgs\'>, publish: () => Promise<T>): Promise<T>',
+        description: 'Register a project\'s use of an existing managed tool before publishing its selection.',
+        parameters: [{ name: 'pin', description: 'selected executable and any launcher dependency paths.' }, { name: 'publish', description: 'atomic project configuration commit.' }],
+        returns: 'the committed selection; pending removals reject adoption before publication.',
+      },
+      {
+        signature: 'close(): Promise<void>',
+        description: 'Drain admitted requests, cancel execution and release writer ownership after all consumers settle.',
+        parameters: [],
+        returns: 'completion after the shared ledger is closed.',
+      },
+    ],
+  },
+  {
     key: 'securityWorkbench',
     summary: 'Optional security profile service; default application compositions remain independent.',
     description: 'Optional security profile service; default application compositions remain independent.',
@@ -2304,6 +2389,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'script parameters, dependencies and installed resource paths.',
       },
       {
+        signature: '@Remote(\'toolboxEnvironment\') async toolboxEnvironment(environmentId: string, action: \'start\' | \'stop\'): Promise<ToolboxDirectory>',
+        description: 'Change only a DSH-owned analysis container after an explicit operator action.',
+        parameters: [{ name: 'environmentId', description: 'selected managed Docker environment.' }, { name: 'action', description: 'start or stop the owned container.' }],
+        returns: 'inventory after the settled lifecycle action.',
+      },
+      {
+        signature: '@Remote(\'ghidraCaches\') async ghidraCaches(environmentId: string, key?: string): Promise<GhidraHeadlessCache[]>',
+        description: 'Inspect or remove a DSH-owned Ghidra cache after analysis releases it.',
+        parameters: [{ name: 'environmentId', description: 'selected local or managed Docker environment.' }, { name: 'key', description: 'optional cache identity to remove; omission only lists entries.' }],
+        returns: 'current cache entries and their lease states.',
+      },
+      {
         signature: '@Remote(\'previewToolPack\') previewToolPack(input: string): ToolPackPreview',
         description: 'Validate an operator-selected pack without executing its commands.',
         parameters: [{ name: 'input', description: 'JSON tool pack.' }],
@@ -2329,7 +2426,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'toolPreferences\') async toolPreferences(agent: Agent, input?: string): Promise<ToolPreferences>',
-        description: 'Read or check and update adapter preferences for the authenticated active session only.',
+        description: 'Read or check and update preferred adapters for the authenticated active session without changing execution permissions.',
         parameters: [{ name: 'agent', description: 'carrier-resolved session; caller cannot nominate another agent.' }, { name: 'input', description: 'optional JSON selection; empty arrays restore automatic discovery.' }],
         returns: 'the current selection after checking selected adapters and their installations; failures retain the previous selection.',
       },
@@ -2341,7 +2438,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'toolboxInventory\') async toolboxInventory(environmentId?: string, toolIds?: string[]): Promise<ToolboxDirectory>',
-        description: 'Inspect installed tools, starting managed Docker from an existing image when necessary.',
+        description: 'Inspect installed tools without starting environments or saving installation choices.',
         parameters: [{ name: 'environmentId', description: 'configured environment; omission selects the first local environment.' }, { name: 'toolIds', description: 'selected definitions and their dependencies; omitted checks all.' }],
         returns: 'environment choices and current optional-tool observations.',
       },
@@ -5279,7 +5376,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AnalysisProvider',
-    declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    inputEvidenceIds?(request: AnalysisOperation): readonly string[];\n    activityTools?(request: AnalysisOperation): string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
+    declaration: 'export interface AnalysisProvider {\n    id: string;\n    operations: readonly string[];\n    closeEnvironment?(environmentId: string): Promise<void>;\n    closeProject?(projectId: string): Promise<void>;\n    inputEvidenceIds?(request: AnalysisOperation): readonly string[];\n    activityTools?(request: AnalysisOperation): string[];\n    inputGuide?: string;\n    resourceKey?(request: AnalysisOperation, asset: Asset): string | null;\n    resolve(request: AnalysisOperation, context: AnalysisContext): AnalysisOperation;\n    prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>;\n    run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult>;\n}',
   },
   {
     name: 'AnalysisResult',
@@ -6190,6 +6287,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: RequestMessage[];\n    system?: string;\n    tools?: ToolSchema[];\n    toolHistory?: ToolHistory;\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
   },
   {
+    name: 'GhidraHeadlessCache',
+    declaration: 'export interface GhidraHeadlessCache {\n    key: string;\n    complete: boolean;\n    inUse: boolean;\n}',
+  },
+  {
     name: 'GoalActivation',
     declaration: 'export type GoalActivation = \'armed\' | \'disarmed\';',
   },
@@ -6696,6 +6797,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LspRange',
     declaration: 'export interface LspRange {\n    readonly start: LspPosition;\n    readonly end: LspPosition;\n}',
+  },
+  {
+    name: 'ManagedToolInstallation',
+    declaration: 'export interface ManagedToolInstallation extends ToolInstallationReceipt {\n    id: ManagedToolInstallationId;\n    operationId: ToolInstallationOperationId;\n    root: string;\n    recipeId: string;\n    installedAt: number;\n}',
+  },
+  {
+    name: 'ManagedToolInstallationId',
+    declaration: 'export type ManagedToolInstallationId = Branded<\'ManagedToolInstallationId\'>;',
   },
   {
     name: 'ManagementError',
@@ -7732,6 +7841,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SecuritySkillUsagePage',
     declaration: 'export interface SecuritySkillUsagePage {\n    items: SecuritySkillUsage[];\n    unavailableSessions: string[];\n    unattributedReads: number;\n}',
+  },
+  {
+    name: 'SecurityToolPin',
+    declaration: 'export interface SecurityToolPin {\n    command: string;\n    prefixArgs: string[];\n    versionArgs: string[];\n    temporaryDirectory?: string | undefined;\n}',
   },
   {
     name: 'SecurityToolUsage',
@@ -8962,6 +9075,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolboxAdapter {\n    id: string;\n    toolName: string;\n    operations: string[];\n    installationId?: string;\n    provider?: string;\n    bindingId?: string;\n    environmentIds?: string[];\n    prerequisite?: \'device\' | \'provider\';\n    dependencies: string[];\n    environmentId?: string;\n    bindingSource: \'operator\' | \'deployment\' | \'none\';\n    status: \'unconfigured\' | \'unchecked\' | \'unavailable\' | \'ready\';\n}',
   },
   {
+    name: 'ToolboxCheck',
+    declaration: 'export interface ToolboxCheck {\n    kind: \'installation\' | \'compatibility\' | \'connection\' | \'target\';\n    status: \'passed\' | \'failed\' | \'unknown\' | \'not-required\';\n    code: string;\n    detail: string;\n}',
+  },
+  {
     name: 'ToolboxConfiguration',
     declaration: 'export interface ToolboxConfiguration {\n    editable: boolean;\n    revision: string;\n    tools: ToolboxInstallation[];\n    environmentKind?: ToolboxInventory[\'kind\'];\n    environments?: {\n        id: string;\n        label: string;\n        kind: ToolboxInventory[\'kind\'];\n    }[];\n    bindings?: Record<string, string>;\n    adapters?: ToolboxAdapter[];\n}',
   },
@@ -8971,7 +9088,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxDirectory',
-    declaration: 'export interface ToolboxDirectory {\n    environments: {\n        id: string;\n        label: string;\n        kind: ToolboxInventory[\'kind\'];\n    }[];\n    inventory: ToolboxInventory;\n}',
+    declaration: 'export interface ToolboxDirectory {\n    environments: ToolboxEnvironment[];\n    inventory: ToolboxInventory;\n}',
+  },
+  {
+    name: 'ToolboxEnvironment',
+    declaration: 'export interface ToolboxEnvironment {\n    id: string;\n    label: string;\n    kind: ToolboxInventory[\'kind\'];\n    management?: \'local\' | \'managed-container\' | \'external-container\' | \'device\';\n    actions?: (\'inspect\' | \'start\' | \'stop\' | \'install\')[];\n}',
   },
   {
     name: 'ToolboxFiles',
@@ -8979,7 +9100,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxInstallation',
-    declaration: 'export interface ToolboxInstallation {\n    id: string;\n    command: string;\n    prefixArgs: string[];\n    versionArgs: string[];\n    saved: boolean;\n}',
+    declaration: 'export interface ToolboxInstallation {\n    temporaryDirectory?: string;\n    id: string;\n    command: string;\n    prefixArgs: string[];\n    versionArgs: string[];\n    saved: boolean;\n}',
   },
   {
     name: 'ToolboxInventory',
@@ -8987,7 +9108,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolboxTool',
-    declaration: 'export interface ToolboxTool {\n    id: string;\n    category: \'runtime\' | \'reverse\' | \'device\' | \'web\' | \'utility\' | \'custom\';\n    status: \'available\' | \'missing\' | \'error\' | \'not-checked\';\n    command: string;\n    prefixArgs?: string[];\n    installation?: {\n        command: string;\n        prefixArgs: string[];\n    };\n    version: string;\n    location: string;\n    python?: {\n        prefix: string;\n        basePrefix: string;\n        virtualEnvironment: boolean;\n        pipAvailable: boolean;\n    };\n    candidates?: string[];\n    source: string;\n    dependency?: string;\n    detail: string;\n    installUrl: string;\n    invocation: \'shell\' | \'plugin\' | \'python\' | \'provider\';\n    provider?: string;\n}',
+    declaration: 'export interface ToolboxTool {\n    id: string;\n    category: \'runtime\' | \'reverse\' | \'device\' | \'web\' | \'utility\' | \'custom\';\n    status: \'available\' | \'missing\' | \'error\' | \'not-checked\';\n    command: string;\n    prefixArgs?: string[];\n    installation?: {\n        command: string;\n        prefixArgs: string[];\n    };\n    version: string;\n    location: string;\n    python?: {\n        prefix: string;\n        basePrefix: string;\n        virtualEnvironment: boolean;\n        pipAvailable: boolean;\n    };\n    candidates?: string[];\n    source: string;\n    dependency?: string;\n    detail: string;\n    installUrl: string;\n    invocation: \'shell\' | \'plugin\' | \'python\' | \'provider\';\n    provider?: string;\n    reason?: \'unchecked\' | \'runtime-unavailable\' | \'unsupported-platform\' | \'dependency-unavailable\' | \'configuration-required\' | \'multiple-installations\' | \'missing\' | \'probe-failed\' | \'incompatible-version\';\n    checks?: ToolboxCheck[];\n    configured?: boolean;\n}',
   },
   {
     name: 'ToolCallBlock',
@@ -9063,7 +9184,75 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ToolInstallation',
-    declaration: 'export interface ToolInstallation {\n    id: string;\n    command: string;\n    prefixArgs?: string[];\n    versionArgs: string[];\n    source: string;\n}',
+    declaration: 'export interface ToolInstallation {\n    temporaryDirectory?: string | undefined;\n    id: string;\n    command: string;\n    prefixArgs?: string[];\n    versionArgs: string[];\n    source: string;\n}',
+  },
+  {
+    name: 'ToolInstallationCheck',
+    declaration: 'export interface ToolInstallationCheck {\n    id: string;\n    status: \'passed\' | \'failed\' | \'unknown\';\n    detail: string;\n}',
+  },
+  {
+    name: 'ToolInstallationExecutionResult',
+    declaration: 'export interface ToolInstallationExecutionResult {\n    installations: ToolInstallationReceipt[];\n    pins: Record<string, SecurityToolPin>;\n    environment?: SecurityEnvironment;\n    checks: ToolInstallationCheck[];\n}',
+  },
+  {
+    name: 'ToolInstallationFailure',
+    declaration: 'export interface ToolInstallationFailure {\n    code: \'unconfigured-root\' | \'stale-plan\' | \'busy\' | \'invalid-request\' | \'confirmation-required\' | \'unsupported\' | \'execution-failed\' | \'cancelled\' | \'configuration-conflict\' | \'outcome-unknown\' | \'storage-failed\';\n    detail: string;\n}',
+  },
+  {
+    name: 'ToolInstallationFrame',
+    declaration: 'export interface ToolInstallationFrame {\n    operation: ToolInstallationOperation;\n    nextCursor: number;\n    retainedFromCursor: number;\n    gap: boolean;\n}',
+  },
+  {
+    name: 'ToolInstallationLog',
+    declaration: 'export interface ToolInstallationLog {\n    cursor: number;\n    at: number;\n    channel: \'stdout\' | \'stderr\' | \'manager\';\n    text: string;\n}',
+  },
+  {
+    name: 'ToolInstallationOperation',
+    declaration: 'export interface ToolInstallationOperation {\n    id: ToolInstallationOperationId;\n    requestId: ToolInstallationRequestId;\n    planId: ToolInstallationPlanId;\n    planDigest: string;\n    environmentId: string;\n    recipeId: string;\n    toolRoot: string;\n    phase: ToolInstallationPhase;\n    createdAt: number;\n    updatedAt: number;\n    cursor: number;\n    logs: ToolInstallationLog[];\n    logsTruncated: boolean;\n    result?: ToolInstallationExecutionResult;\n    failure?: ToolInstallationFailure;\n}',
+  },
+  {
+    name: 'ToolInstallationOperationId',
+    declaration: 'export type ToolInstallationOperationId = Branded<\'ToolInstallationOperationId\'>;',
+  },
+  {
+    name: 'ToolInstallationPhase',
+    declaration: 'export type ToolInstallationPhase = \'planned\' | \'preparing\' | \'installing\' | \'verifying\' | \'committing\' | \'cancelling\' | \'completed\' | \'cancelled\' | \'failed\' | \'interrupted\' | \'needs-reconciliation\' | \'installed-unbound\';',
+  },
+  {
+    name: 'ToolInstallationPlan',
+    declaration: 'export interface ToolInstallationPlan extends ToolInstallationRecipePlan {\n    id: ToolInstallationPlanId;\n    digest: string;\n    createdAt: number;\n    toolRoot: string;\n    rootRevision: number;\n    configurationRevision: string;\n    environment: SecurityEnvironment;\n    request: ToolInstallationRequest;\n}',
+  },
+  {
+    name: 'ToolInstallationPlanId',
+    declaration: 'export type ToolInstallationPlanId = Branded<\'ToolInstallationPlanId\'>;',
+  },
+  {
+    name: 'ToolInstallationReceipt',
+    declaration: 'export interface ToolInstallationReceipt {\n    toolId: string;\n    version: string;\n    location: string;\n    ownership: \'managed\' | \'system\' | \'external\';\n    metadata?: Record<string, string>;\n}',
+  },
+  {
+    name: 'ToolInstallationRecipePlan',
+    declaration: 'export interface ToolInstallationRecipePlan {\n    recipeId: string;\n    recipeVersion: string;\n    toolIds: string[];\n    mode: \'private\' | \'managed-container\' | \'external-container\' | \'system-component\' | \'manual\';\n    version: string;\n    destination: string;\n    steps: ToolInstallationStep[];\n    confirmations: {\n        id: string;\n        description: string;\n    }[];\n    warnings: string[];\n    data: Record<string, JsonValue>;\n}',
+  },
+  {
+    name: 'ToolInstallationRecipeSummary',
+    declaration: 'export interface ToolInstallationRecipeSummary {\n    id: string;\n    toolIds: string[];\n    environments: (\'local\' | \'docker\')[];\n    platform: \'win32-x64\' | \'linux-container\';\n    version: string;\n}',
+  },
+  {
+    name: 'ToolInstallationRequest',
+    declaration: 'export type ToolInstallationRequest = z.infer<typeof toolInstallationRequestSchema>;',
+  },
+  {
+    name: 'ToolInstallationRequestId',
+    declaration: 'export type ToolInstallationRequestId = Branded<\'ToolInstallationRequestId\'>;',
+  },
+  {
+    name: 'ToolInstallationRoot',
+    declaration: 'export interface ToolInstallationRoot {\n    toolRoot: string | null;\n    revision: number;\n    writable: boolean;\n    detail: string;\n}',
+  },
+  {
+    name: 'ToolInstallationStep',
+    declaration: 'export interface ToolInstallationStep {\n    id: string;\n    kind: \'download\' | \'extract\' | \'process\' | \'verify\' | \'publish\' | \'manual\';\n    description: string;\n    command?: string;\n    args?: string[];\n    cwd?: string;\n    url?: string;\n    sha256?: string;\n    destination?: string;\n}',
   },
   {
     name: 'ToolMessageSource',

@@ -86,6 +86,8 @@ export async function runProcess(
   input?: string,
 ): Promise<ProcessResult> {
   const tool = installation(environment, toolId)
+  if (tool.temporaryDirectory && (environment.kind !== 'local' || !isAbsolute(tool.temporaryDirectory)))
+    throw new Error('A private temporary directory requires an absolute path in a local environment')
   const deadline = new AbortController()
   const timer = setTimeout(() => {
     deadline.abort(new Error('Tool deadline exceeded'))
@@ -105,7 +107,8 @@ export async function runProcess(
     handle = ctx.subprocess.spawn({
       argv,
       cwd: environment.cwd,
-      env: container || toolId === 'docker' ? { PATH: dirname(command) + delimiter + (process.env.PATH ?? '') } : {},
+      env: { ...(container || toolId === 'docker' ? { PATH: dirname(command) + delimiter + (process.env.PATH ?? '') } : {}),
+        ...(tool.temporaryDirectory ? { TMP: tool.temporaryDirectory, TEMP: tool.temporaryDirectory } : {}) },
       signal,
       graceMs: limits.graceMs,
       stdio: {

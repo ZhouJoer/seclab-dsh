@@ -1,5 +1,22 @@
 /** Browser-safe tool inventory observations. @module */
 
+/** One measured prerequisite; an unchecked connection or target is not readiness. */
+export interface ToolboxCheck {
+  kind: 'installation' | 'compatibility' | 'connection' | 'target'
+  status: 'passed' | 'failed' | 'unknown' | 'not-required'
+  code: string
+  detail: string
+}
+
+/** Operator actions supported by an environment's ownership and transport. */
+export interface ToolboxEnvironment {
+  id: string
+  label: string
+  kind: ToolboxInventory['kind']
+  management?: 'local' | 'managed-container' | 'external-container' | 'device'
+  actions?: ('inspect' | 'start' | 'stop' | 'install')[]
+}
+
 /** A measured installation, independent of project execution authority. */
 export interface ToolboxTool {
   id: string
@@ -23,6 +40,13 @@ export interface ToolboxTool {
   invocation: 'shell' | 'plugin' | 'python' | 'provider'
   /** Dedicated provider integration; readiness and plan authority are checked separately. */
   provider?: string
+  /** Machine-readable cause of an unavailable or unchecked installation. */
+  reason?: 'unchecked' | 'runtime-unavailable' | 'unsupported-platform' | 'dependency-unavailable'
+    | 'configuration-required' | 'multiple-installations' | 'missing' | 'probe-failed' | 'incompatible-version'
+  /** Distinct installation, compatibility, connection and target observations. */
+  checks?: ToolboxCheck[]
+  /** Whether this environment has an operator or deployment installation selection. */
+  configured?: boolean
 }
 
 /** Current runtime health and separately measured optional installations. */
@@ -39,12 +63,13 @@ export interface ToolboxInventory {
 
 /** Operator directory available without a conversation or project selection. */
 export interface ToolboxDirectory {
-  environments: { id: string; label: string; kind: ToolboxInventory['kind'] }[]
+  environments: ToolboxEnvironment[]
   inventory: ToolboxInventory
 }
 
 /** Editable local installation values; saved distinguishes overrides from deployment defaults. */
 export interface ToolboxInstallation {
+  temporaryDirectory?: string
   id: string
   command: string
   prefixArgs: string[]

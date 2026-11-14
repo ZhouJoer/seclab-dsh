@@ -14,6 +14,9 @@ export function toolCandidates(tool: ToolDefinition, directories: readonly strin
       const directory = root.replace(/^"|"$/g, '')
       if (existsSync(resolve(directory, 'git.exe'))) roots.push(resolve(directory, '../usr/bin'), resolve(directory, '../bin'))
     }
+    if (tool.id === 'chromium') for (const root of [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA]) {
+      if (root) for (const vendor of ['Google/Chrome', 'Microsoft/Edge', 'Chromium']) roots.push(resolve(root, vendor, 'Application'))
+    }
   }
   const suffixes = process.platform === 'win32' ? ['', ...(process.env.PATHEXT ?? '.EXE;.COM').toLowerCase().split(';')] : ['']
   const names = tool.commands.flatMap(command => suffixes.map(suffix => command + suffix))

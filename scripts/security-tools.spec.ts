@@ -269,7 +269,7 @@ it('rejects saving observations after another operator changes the environment c
     const inspected = readSecurityEnvironments(file)
     const replacement = JSON.stringify({ environments: [] })
     await writeFile(file, replacement)
-    expect(() => { writeSecurityEnvironments(file, inspected, saved) }).toThrow('Security environments changed')
+    await expect(writeSecurityEnvironments(file, inspected, saved)).rejects.toThrow('Security environments changed')
     expect(await readFile(file, 'utf8')).toBe(replacement)
   } finally {
     await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })

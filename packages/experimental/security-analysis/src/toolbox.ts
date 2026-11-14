@@ -10,6 +10,7 @@ import { orderTools, type ToolDefinition } from './tool-definitions.ts'
 import { resolveCatalog } from './tool-catalog.ts'
 import { toolCandidates } from './tool-candidates.ts'
 import { probeArguments, probeIdentity } from './tool-probes.ts'
+import { toolHealth } from './tool-health.ts'
 export { pythonModuleProbe } from './tool-probes.ts'
 /** Built-in definitions; runtime consumers resolve the operator catalog for each request. */
 export const toolboxCatalog = builtinToolPack.tools
@@ -70,26 +71,38 @@ export async function inspectToolbox(ctx: Context, environment: SecurityEnvironm
     const configured = environment.tools.find(tool => tool.id === entry.id)
     const row: ToolboxTool = { id: entry.id, category: entry.category, status: 'not-checked',
       command: configured?.command ?? '', location: '', version: '', source: configured?.source ?? 'PATH',
-      detail: '', installUrl: entry.url, invocation: entry.invocation,
+      detail: '', reason: 'unchecked', configured: configured !== undefined, installUrl: entry.url, invocation: entry.invocation,
       ...(configured?.prefixArgs?.length ? { prefixArgs: configured.prefixArgs } : {}),
       ...(entry.provider ? { provider: entry.provider } : {}),
       ...(entry.dependency ? { dependency: entry.dependency } : {}) }
     inventory.tools.push(row)
-    if (inventory.runtime !== 'ready') continue
+    if (inventory.runtime !== 'ready') { row.reason = 'runtime-unavailable'; continue }
     if (entry.platforms.length && !entry.platforms.includes(environment.kind === 'docker' ? 'linux' : process.platform as 'win32' | 'linux' | 'darwin')) {
-      row.detail = 'unsupported-platform'; continue
+      row.reason = 'unsupported-platform'; row.detail = 'unsupported-platform'; continue
     }
     if (entry.dependencies.some(id => inventory.tools.find(tool => tool.id === id)?.status !== 'available')) {
-      row.detail = 'dependency-unavailable'; continue
+      row.reason = 'dependency-unavailable'; row.detail = 'dependency-unavailable'; continue
     }
     let executableSelected = false
     try {
+      if (entry.id === 'ghidra-headless') {
+        if (!configured) { row.reason = 'configuration-required'; row.detail = 'configuration-required'; continue }
+        executableSelected = true
+        const { inspectGhidraHeadlessInstallation } = await import('./ghidra-headless.ts')
+        const measured = await inspectGhidraHeadlessInstallation(ctx, environment, configured, limits, signal)
+        row.version = measured.version + '\nJava ' + measured.javaVersion
+        row.location = measured.location
+        row.status = 'available'
+        delete row.reason
+        continue
+      }
       if (entry.dependency) {
         const dependency = inventory.tools.find(tool => tool.id === entry.dependency)
-        if (dependency?.status !== 'available') { row.detail = 'dependency-unavailable'; continue }
+        if (dependency?.status !== 'available') { row.reason = 'dependency-unavailable'; row.detail = 'dependency-unavailable'; continue }
         const selectedCommand = environment.tools.find(tool => tool.id === entry.dependency)?.command
         if (configured && configured.command !== dependency.command && configured.command !== selectedCommand) {
           row.status = 'error'
+          row.reason = 'configuration-required'
           row.detail = 'Conflicting executable override; configure the selected ' + entry.dependency + ' installation instead.'
           continue
         }
@@ -100,13 +113,14 @@ export async function inspectToolbox(ctx: Context, environment: SecurityEnvironm
         const prefixArgs = dependency.prefixArgs ?? []
         const tool = { id: entry.id, command: dependency.command, prefixArgs, versionArgs: [], source: row.source }
         const identity = probeIdentity(entry, await run(tool, probeArguments(entry)))
-        if (!identity) { row.status = 'missing'; continue }
+        if (!identity) { row.status = 'missing'; row.reason = 'missing'; continue }
         row.version = identity.version; row.location = identity.location ?? ''
         row.status = 'available'
+        delete row.reason
         continue
       }
       const candidates = configured ? [configured.command] : [...entry.commands, ...(environment.kind === 'docker' ? [] : toolCandidates(entry, searchDirectories))]
-      if (!candidates.length) { row.detail = 'configuration-required'; continue }
+      if (!candidates.length) { row.reason = 'configuration-required'; row.detail = 'configuration-required'; continue }
       let lastError: unknown
       const verified = new Map<string, ToolboxTool>()
       const seen = new Set<string>()
@@ -123,11 +137,19 @@ export async function inspectToolbox(ctx: Context, environment: SecurityEnvironm
             throw new Error('Select the interpreter executable and supply its launcher arguments')
           row.location = row.command
           const tool = { id: entry.id, command: row.command, versionArgs: configured?.versionArgs ?? entry.args, source: row.source }
+          if (entry.id === 'chromium' && environment.kind === 'local' && process.platform === 'win32') {
+            row.status = 'available'
+            delete row.reason
+            verified.set(key, { ...row })
+            if (configured) break
+            continue
+          }
           const identity = probeIdentity(entry, await run(tool, probeArguments(entry, tool.versionArgs)))
           if (!identity) { lastError = new Error('Installation identity probe returned no version: ' + row.command); continue }
           row.version = identity.version; row.location = identity.location ?? row.command
           if (identity.python) row.python = identity.python
           row.status = 'available'
+          delete row.reason
           verified.set(key, { ...row })
           if (configured || environment.kind === 'docker') break
         } catch (error) {
@@ -140,6 +162,7 @@ export async function inspectToolbox(ctx: Context, environment: SecurityEnvironm
       if (verified.size === 1) Object.assign(row, [...verified.values()][0])
       else if (verified.size > 1) {
         row.status = 'not-checked'; row.command = ''; row.location = ''; row.version = ''
+        row.reason = 'multiple-installations'
         row.candidates = [...verified.values()].map(item => item.command)
         row.detail = 'Multiple verified installations; choose one in Toolbox: ' + row.candidates.join(', ')
       } else {
@@ -151,9 +174,16 @@ export async function inspectToolbox(ctx: Context, environment: SecurityEnvironm
       const missing = !executableSelected && error instanceof SubprocessExecutableNotFoundError || error instanceof MissingContainerTool
         || !!entry.dependency && /ModuleNotFoundError|PackageNotFoundError/.test(row.detail)
       row.status = !configured && missing ? 'missing' : 'error'
+      row.reason = missing ? 'missing' : 'probe-failed'
       if (entry.dependency && missing) row.detail = 'Module unavailable in selected ' + entry.dependency + ' (' + row.command + '): ' + row.detail
+    } finally {
+      Object.assign(row, toolHealth(row, entry))
     }
   }
+  inventory.tools = inventory.tools.map((row) => {
+    const definition = resolved.tools.find(tool => tool.id === row.id)
+    return definition && !row.checks ? toolHealth(row, definition) : row
+  })
   if (environment.kind === 'docker' && inventory.runtime === 'ready') {
     const docker = installation(environment, 'docker')
     const command = await ctx.subprocess.resolveExecutable(docker.command, {}, signal)

@@ -23,7 +23,7 @@ kind: "package-reference"
 
 任务通过可选 `moduleSelection` 保存 `mode`、`modules` 和 `reason`。缺省为自动模式，先提供公共调查能力。协调者通过带修订检查的 `modules` 动作选择 `reverse.android`、`reverse.native`、`web`、`iot` 或 `pentest`；手动选择只由操作者修改。`web` 与 `pentest` 都会启用 `security-kali` 渗透测试方法；逆向模块不新增任何 Kali 关联。活动专用技能按 Agent 注册，正文按需读取。模块选择同时约束专用工具和通用 provider 观察，不授予角色或执行审批。未知文件先使用公共身份检查，再选择模块。 使用 `security_scope` 的 `asset` 类型读取已导入材料，使用 `engagement` 读取任务；未知类型会报错，不会返回空页。
 
-`security_apk inventory` 返回有界 APK 成员清单；`security_jadx manifest` 解析 JADX 解码后的普通 XML。`security_analysis` 对同一资产已保存的适配器证据执行固定的 Android 指纹、API、Kotlin 名称及原生分诊分析，接收证据 ID，不接收可执行文件路径。健康适配器直接调用；缺少依赖时在原环境中配置后回到适配器。未覆盖操作可按工具偏好使用既有脚本或 Shell。Kotlin 候选不会重命名样本，部分反编译保留失败和不完整状态。上游固定版本及排除项见[适配审查](resources/skills/sources.md)。
+`security_apk inventory` 返回有界 APK 成员清单；`security_jadx manifest` 解析 JADX 解码后的普通 XML。`security_analysis` 对同一资产已保存的适配器证据执行固定的 Android 指纹、API、Kotlin 名称及原生分诊分析，接收证据 ID，不接收可执行文件路径。健康适配器直接调用；缺少依赖时在原环境中配置后回到适配器。未覆盖操作可在既有角色、模块、任务、沙箱和审批规则下使用既有脚本或 Shell。Kotlin 候选不会重命名样本，部分反编译保留失败和不完整状态。上游固定版本及排除项见[适配审查](resources/skills/sources.md)。
 
 `security_jadx callgraph` 使用 JADX 的 `--call-graph json` 和 JSON 方法输出，保留完整方法签名与源码位置；上游调用图排除未解析的外部调用，也不提供调用点偏移。`security_analysis android-callchain` 与 `native-xref-paths` 接受已保存的证据 ID、完整方法签名或十六进制起点、`direction`（`callers`／`callees`）和正整数 `maxDepth`。原生路径消费 radare2 函数范围及引用，区分调用、跳转和数据引用。结果保留每条边的证据、循环、待补证据与采集限制；每个节点只返回一条发现路径，不代表所有路径或运行时可达性。图分析不执行目标，也不接受命令。
 
@@ -52,7 +52,7 @@ kind: "package-reference"
 
 在专用 `dsh` profile 中使用 [security-profile](../security-profile/README.zh.md)，添加 [security-web-profile](../security-web-profile/README.zh.md) 即可打开会话内工作台。默认通用 profile 不加载这些组合。
 
-分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好选择经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse`、`iot` 与 `pentest` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
+分析支持逆向、Web 与 IoT。Agent 根据目标、已观察的材料内容和可用环境自主选择并组合方法，会话工具偏好优先使用经过检查的适配器。`security_scope` 资产摘要投影已保存的 `assetKind`、文件 `format` 或 Web 的 `origin`、`pathPrefix` 和 `environmentId`。未知文件可使用内置 `binary.identity`；`header.packetCapture` 仅观察 PCAP/PCAPNG 魔数，不确认报文有效性。源码目录先列举再按需读取，可用工具无法检查的二进制成员需要单独导入为文件。`security_capabilities` 的工具摘要包含技能引用，并在已有集合之外提供可交叉使用的 `reverse`、`iot` 与 `pentest` 集合。只检测当前问题所需的外部工具。在 `checkpoint.reason` 保存简短的材料与方法选择依据，`summary` 保存观察，`next` 保存后续工作；实际执行以调用记录和证据为准。这些投影与观察使用已有记录和已记录的工具结果。
 
 通过常规 `skill` 工具加载 `security-investigation`，再按材料与问题组合 `security-web`、`security-firmware`、`security-android`、`security-iot-offline`、`security-kali` 和 `security-cve-mining`。这些 [skill（技能）方法](src/methods.ts) 指导根据证据提出假设、设计可区分假设的检查、选择工具和限定委派范围。要求完整枚举鉴权机制时，使用现有 checks 记录样本和入口范围、证据及未决问题。报告区分已检查、未检查和无法检查的范围，不把正常鉴权机制当作漏洞发现。Web 调查追踪身份、输入和处理入口；固件调查连接提取组件与可达的使用方；Android 调查区分 APK/DEX/JAR 检查与明确选择的 adb 设备观察。无法访问设备时，设备行为保持未验证，不妨碍有价值的静态工作。`security-kali` 面向经操作者管理的 Kali 环境编排授权渗透测试：[入口正文](resources/skills/kali.md) 从 [resources/skills/kali/](resources/skills/kali/) 选择场景 playbook 与工具选型指南，坚持范围优先的风险门，并把二进制问题路由回逆向模块。技能可通过既有 Shell 和权限流程按需补齐依赖；加载技能本身不会安装工具或授予权限：现有角色检查、项目范围和执行审批仍决定执行权限。
 
@@ -74,7 +74,7 @@ kind: "package-reference"
 
 用户也可通过 `/security` 查看状态，或通过 `/security <JSON command>` 提交相同的修订检查命令。`security_help` 可通过可选 `action` 仅返回该动作的命令 schema；省略时返回完整 schema。静态采集回执包含可用于后续命令的当前修订号；发生并发修改时仍需刷新。模型不能批准计划或共享经验。普通命令必须携带稳定的操作 ID 和已观察修订号；停止与撤销只减少执行权限，因此接受较旧修订号。
 
-专用只读工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色、项目范围、租约和证据。模型不提供可执行文件或环境 ID。security_r2ghidra 跟随 radare2。Ghidra 查询、ADB 设备与包查询、Wi-Fi/BLE 离线分析使用各自既有 provider。配置与环境支持见 [Provider 设计](#provider-design)；Shell 和 security_static 继续可用。
+专用只读工具接收已导入文件的 assetId 和语义参数；[适配器目录](src/tool-adapter-catalog.ts)定义操作。调用通过 AnalysisProvider 进入 controller.observe，保留角色、项目范围、租约和证据。模型不提供可执行文件或环境 ID。security_r2ghidra 跟随 radare2。Ghidra headless 查询使用所选安装；ADB 设备与包查询、Wi-Fi/BLE 离线分析使用各自既有 provider。配置与环境支持见 [Provider 设计](#provider-design)；Shell 和 security_static 继续可用。
 
 调用 `security_r2ghidra` 时传入函数入口地址。适配器在独立 radare2 进程内分析该入口，将反编译器报告的错误保留为不完整证据。若标注使响应超限，而伪代码本身能完整放入结果页，模型会直接收到完整伪代码。反编译最多可采集制品字节上限允许的输出。重复保留标注会超限时优先保留伪代码，丢弃原始输出会标记证据不完整。函数超过采集上限时需分段反汇编。
 
@@ -111,15 +111,23 @@ GDB 保持对 fork 子进程的调试控制并调度全部被调试进程，使�
 
 [Kali 调试镜像配方](resources/kali-debug.Dockerfile) 固定官方 amd64 基础镜像及直接依赖版本。显式构建后保留完整包清单，并把测得的不可变镜像 ID 配置为单独的托管环境。传递依赖由镜像和清单标识；滚动仓库后续重建不保证完全相同。现有外部容器不受影响。为任务启用调试前，先在管理器的网络、文件系统和能力限制下验证无害样本；能力可用不代表分析质量已经提升。
 
-包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./ghidra`、`./frida`、`./android`、`./mining` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
+包分别导出 `./native`、`./offline`、`./web`、`./external-web`、`./laboratory`、`./environment`、`./frida`、`./android`、`./mining` 和 `./commands` 插件。[配置源码](src/index.ts) 定义制品、输出、时长、审批有效期和委派限制。仅允许已配置的本地、Docker 和 Android 环境；Docker 控制留在 Host。
 
 Docker 环境通过 `externalContainer: { name, workdir }` 使用已有容器，不能同时设置 `image`。`workdir` 是容器内的绝对目录。Docker 安装项的 `prefixArgs` 选择本机或远程 context。外部容器支持清单检测、原生 Shell 调用和 `external-web` 请求；需要传输 Host 制品的 provider 会拒绝它们。生命周期与网络设置仍由操作者管理；DSH 不挂载宿主文件，也不在取消或释放时停止容器。取消仅等待宿主 Docker 客户端退出，远程进程是否完成仍未确认。清单返回宿主可执行文件及完整启动参数，同时单独保留容器安装信息。项目注册了回环 HTTP 靶机时，就绪的 docker 清单附带 `targetChecks`：每个靶机一条实测观察，当某个运行时推导的候选地址（原 origin、host 网关名、容器实测默认网关，均从容器内探测）有响应时记录可用的 `reachableAs` origin，否则如实标注 `unreachable` 或 `unknown`，绝不猜测地址。local 环境可声明 `discovery: { searchDirs }` 指定绝对宿主目录，清单检测时未显式声明的目录工具也会在这些目录中查找。[部署指南](../../../docs/user/guide/security-analysis.zh.md#external-docker-containers)说明配置与命令行管理方式。
-
-[GhidraMCP 1.4](https://github.com/LaurieWired/GhidraMCP/tree/1.4) 需要应用[受管理补丁](resources/ghidra/patch_upstream.py)。对固定上游 Java 文件应用补丁，使用对应 Ghidra 发行版构建扩展，然后在 GUI 打开导入的程序。启动前设置 `DSH_GHIDRA_TOKEN`、`DSH_GHIDRA_SHA256` 、`DSH_GHIDRA_PROGRAM` 和 `DSH_GHIDRA_PORT`；端口 0 选择空闲端口。可选 `DSH_GHIDRA_READY` 指定保存实际端口的新文件。在 Ghidra provider 的 `programs` 中配置相同 token、实测哈希和 domain-file 路径。补丁绑定稳定程序，只监听本地地址，认证每个请求，并拒绝已关闭或身份不符的程序。切换 GUI 当前程序不会改变查询目标。查询、改名、注释及原型操作走专用适配器；数据库写入需要计划。
 
 Frida 通过 Harness subprocess 使用官方 Python bindings，需要配置已安装 Frida 的 Python。attach 请求明确 PID、名称和启动身份；helper 还核对可执行文件哈希或 Android 包身份。自定义脚本与 spawn 必须属于验证阶段。helper 卸载脚本并 detach，只终止自己启动的进程。配置带哈希的 Java bridge bundle 后，可用 `javaBridge: true` 在批准前拼入脚本；应先用 `frida-compile` 和 `frida-java-bridge` 打包[入口源码](resources/java_bridge_entry.js)，再配置路径、哈希及版本。批准的制品保存最终脚本字节。
 
 JADX 接受 APK/DEX，并明确标记不完整反编译。adb 只操作指定设备，暴露固定的包和设备查询。Android 验证会先核对已安装的 base APK。root、Frida server/Gadget、USB 授权及版本兼容仍由用户准备。可登记 `fastboot`、`john` 的版本参数以检查安装情况；其设备写入或审计操作没有执行 provider。
+
+`security_ghidra_headless` 无需 GUI 或 GhidraMCP 即可提供[固定只读操作](src/tool-adapter-catalog.ts)。其 `ghidra-headless` 安装项选择绝对 Java 可执行路径和固定 Ghidra 启动前缀。检测读取发行版的真实版本，并按其要求检查所选 JDK；Java 版本单独报告。分析使用内置 Java 代码和字面参数，导入不可变样本，并在保存观察前检查 SHA-256 和 Ghidra 版本。
+
+`toolAdapters.ghidraHeadless` 控制 `cacheDirectory`、`maxHeapMb`、`maxCpu`、`analysisTimeoutSeconds`、`decompileTimeoutSeconds`、`sessionIdleTimeoutMs`、`maxSessions` 和 `protocolPollIntervalMs`。相对缓存目录位于环境工作区内；托管 Docker 使用绝对 Host 目录时必须已有对应挂载。Ghidra 项目路径不能包含名称以点开头的目录。常驻会话按样本、环境、所选发行版与 JDK、内置脚本及分析设置隔离。同一会话中的查询串行执行，并复用 Program 和反编译器。空闲到期、容量淘汰、安装变更和 provider 关闭都会关闭所拥有的会话并等待进程退出。取消正在执行的查询会关闭对应会话；取消排队查询不会中断其他查询。
+
+独占项目租约持续到进程清理结束。只有分析成功且进程正常退出后才发布可复用的磁盘缓存；尚未保存的活动项目仍显示占用。缓存删除拒绝操作已有租约的项目。完整项目重新打开时不重复自动分析。中断的导入会清除，不完整分析在已保存证据中明确标记。已停止 Host 遗留的租约需要操作者核对后才能复用。
+
+可选 `analysis` 参数选择导入和预处理设置；后续调用应重复传入相同设置以复用该分析。`analysis.import.format` 支持 `auto`、`raw`、`dos-com` 和 `gamecube-dol`。自动导入允许指定 Ghidra `languageId` 及配套的 `compilerSpecId`；裸二进制必须同时指定这两项，以及十六进制 `baseAddress` 和 `entryAddress`。COM 使用 16 位实模式布局；DOL 先校验节范围，再建立 PowerPC 映射。`disabledAnalyzers` 指定已安装的自动分析器名称，`seeds` 提供已知函数、代码或标签地址。未知分析器、冲突设置和无效映射会明确失败。[配置校验器](src/ghidra-analysis-profile.ts) 定义可接受的输入。
+
+`analysis.corrections` 显式启用 `noReturn`、MIPS O32 的 `mipsSoftFloat` 或 RV32 的 `riscvAbi: "ilp32"`；默认全部关闭。修正仅影响 DSH 所有的分析数据库，结果记录在身份查询证据中，不修改可执行文件字节或外部 Ghidra 项目。架构修正会拒绝不兼容的程序。原始观察保留会话标识、复用状态、生效配置和进程诊断。MIPS 与 RISC-V 辅助代码附带上游 REA 许可证和来源说明。
 
 <a id="tool-inventory-and-acceptance"></a>
 ### 工具清单与验收
@@ -133,7 +141,7 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 | 工具 | 操作及影响 | 执行与清理 | 已验证组合 |
 |---|---|---|---|
 | 内置二进制检查 | 实测身份、有界十六进制和 ASCII/UTF-16LE 字符串 | 读取不可变制品；限制输出，不执行目标 | PE/ELF 头与字节分页 fixture |
-| GhidraMCP 1.4 | 绑定程序查询；数据库写操作需要计划 | 认证回环 HTTP、有界响应；不重放数据库修改 | 已针对 Ghidra 11.3.2 构建扩展并完成独立 ARM ELF 导入；GUI 关闭后的 DSH 查询被阻塞 |
+| Ghidra headless 12.2 / Temurin 25.0.5 | 九项只读查询、显式导入配置和分析修正 | 所选 Java、常驻会话、独占项目缓存和有界证据 | Windows：同一会话的九项 PE 查询、关闭重开及清理；raw/COM/DOL 导入；no-return、MIPS O32 和 RV32 ilp32 修正在重开后保留；已拒绝不兼容 JDK；Docker 未验证 |
 | Frida 17.24.3 | 进程、模块、导出枚举，trace，经批准的自定义脚本及 spawn | Python helper；配置时限及输出限额；卸载、detach、停止本任务创建的进程 | Windows 自有 Python：正常结束、取消、含 NUL 的定长内存与 UTF-8 runner 路径 |
 | CDB / GDB | 单次断点、寄存器与定长内存 | 已批准的导入样本、有界子进程与自有目标终止 | Windows CDB x86 与托管 Kali GDB 18.1：无害样本、断点及超时；Windows x64 未验证 |
 | radare2 / r2ghidra / TShark | 固定静态查询与离线抓包 | 有界子进程输出及已保存的语义证据 | Windows 本机微型 ELF 的身份/反汇编/反编译及空 PCAP；容器组合未验证 |
@@ -146,7 +154,7 @@ Host 与 CLI 的工具检查共用可执行文件发现、依赖排序和探测�
 <a id="roles-tasks-and-tool-management"></a>
 ### 角色、任务和工具管理
 
-工具箱将可共享定义、环境安装配置和实测结果分开管理。`toolCatalogPath` 指定保存 version-1 工具包数组的绝对 JSON 路径；源码启动器使用 `.dsh/security-tool-packs.json`。工具包支持 CLI 命令、导入名与发行包名分开的 Python 模块、JSON 插件查询、既有 provider 引用、自由标签、工具集合、依赖、用法说明与技能引用。导入预览校验引用、循环依赖和名称冲突，不执行命令；显式确认覆盖并检查修订版本后才原子写入。后续查询重新读取定义，进行中的检测保留已捕获的定义。`toolConfiguration` 指定旧本机配置所属的 `environmentId` 和带版本安装 JSON 的 `path`；现有 `.dsh/security-tools.json` 与 `environments[].tools`（包括自定义 ID）继续有效。页面保存安装配置要求有界检测成功，显式配置失败不会静默回退 PATH。软件仍由用户安装。
+工具箱将可共享定义、环境安装配置和实测结果分开管理。`toolCatalogPath` 指定保存 version-1 工具包数组的绝对 JSON 路径；源码启动器使用 `.dsh/security-tool-packs.json`。工具包支持 CLI 命令、导入名与发行包名分开的 Python 模块、JSON 插件查询、既有 provider 引用、自由标签、工具集合、依赖、用法说明与技能引用。导入预览校验引用、循环依赖和名称冲突，不执行命令；显式确认覆盖并检查修订版本后才原子写入。后续查询重新读取定义，进行中的检测保留已捕获的定义。`toolConfiguration` 指定旧本机配置所属的 `environmentId` 和带版本安装 JSON 的 `path`；现有 `.dsh/security-tools.json` 与 `environments[].tools`（包括自定义 ID）继续有效。页面保存安装配置要求有界检测成功，显式配置失败不会静默回退 PATH。操作者可通过共享安装管理器安装支持的工具包。
 
 | 角色 | 任务 | 可用分析能力 |
 |---|---|---|
@@ -168,6 +176,12 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 尚无发现记录时，reviewer 可以检查已有证据，并返回包含证据引用和不确定性的结构化报告。该报告既不创建发现，也不记录对发现的正式裁决。需要正式裁决时，协调者先保存带证据的疑似发现，再由 reviewer 使用真实发现 ID 和当前哈希调用 `security_review`。
 
 内置 `binary` provider 不需要外部安装。调用 `security_static`，设置 `provider: "binary"`、指定资产/环境及 `operation: "identity"`、`"hex"` 或 `"strings"`。身份查询接受 parameters "{}"，返回实测 SHA-256 和部分 PE/ELF 头字段。通过 assetId 选择已导入的单文件；源码快照和 parameters.path 在采集前被拒绝。协调者使用 security_help(action: "import") 和 action.kind 为 "import" 的 security_command 导入授权范围内的绝对文件路径；子分析者需向协调者请求导入。十六进制与字符串参数接受字节 `offset` 和 `length`；字符串还接受 `minLength` 与 `encoding`（`ascii` 或 `utf16le`，仅提取可打印 ASCII 字符）。省略长度时取输出预算的八分之一。分页结果保留偏移和不完整标记；跨页字符串需重叠查询。这些观察不能证明文件完全有效、入口可达或存在漏洞。
+
+工具检测不保存安装选择，也不启动容器。结构化检查区分安装、兼容性、连接与目标就绪情况。操作者专用的 `SecurityToolInstallations` 服务将共享账本保存于 `DSH_HOME/security/tool-installations`，独立于项目存储。请求预览前需要选择并保存安装根目录。修改根目录只影响后续计划，已有安装保留原位。
+
+受管 Kali 预览可能下载固定基础镜像，并使用自有临时容器解析软件包版本和哈希；随后移除该临时容器，不升级选中的运行环境。安装预览固定来源、哈希、命令、目标目录及所需确认；应用时接受已保存的计划和摘要。验证通过后，以版本检查发布项目工具选择。安装成功但发布失败时，`installed-unbound` 保留已测量的安装供核对处理。重新连接后仍可读取有界进度与日志；同一时间只有一个 Host 写入账本。
+
+Windows 私有配方将工具本体及私有运行时放在所选根目录下。必要系统组件及已有外部 Kali 容器中的写入分别需要明确确认。托管 Docker 配方基于固定 Kali 镜像构建，并保存实测镜像身份。Kali 计划在执行前固定软件包版本与哈希；修复重装已核对的软件包，执行时不会解析滚动仓库中的更新版本。移除项目选择不会卸载软件。清理自有安装要求安装记录位于其记录的根目录下，并检查所有已记录项目引用；外部和系统安装不会被当作自有目录删除。支持的自动与手动选择见[配方实现](src/tool-installation-recipes.ts)。
 
 ### 解除封印与直接执行
 
@@ -199,7 +213,7 @@ Job 负责取消并等待子任务清理。成功取得 job ID 只代表已派�
 
 Metasploit 详情包含 JSON 任务文件模板，区分可复用的模块设置、本次环境与目标绑定，以及实测运行结果。指南要求 agent 在 `scripts/` 保留 rc 模板，在 `outputs/` 保留实际执行的 rc 和带哈希的输出，并将调用捕获为证据。复用采用所选环境的实测启动参数，明确宿主与容器路径，通过相同 Docker context 复制文件。模块覆盖值保留适用条件，未执行的负对照保持未验证。获准的 `import-source` 可归档 `importRoots` 内的文件；checkpoint 引用文件和证据。这些是现有原生 Shell 工具的使用指引，不是自动配方执行器，也不代表 Metasploit 集成已验收。
 
-经过身份验证的 toolPreferences Remote 在保存活跃会话选择前检查适配器、执行路由和已安装依赖。检查失败保留原选择；没有可检查适配器的工具会被拒绝。选择生效期间禁用 bash、pwsh 和原生工作流发现。下一次模型请求通过 runtime-context 快照记录适配器名称及操作。检查不授予执行权限，也不证明样本或设备已就绪。委派子会话继承选择；会话释放或 Host 重启时清除选择。恢复自动选择后可使用原生 Shell 工作流。
+经过身份验证的 toolPreferences Remote 在保存活跃会话选择前检查适配器、执行路由和已安装依赖。检查失败保留原选择；没有可检查适配器的工具会被拒绝。下一次模型请求通过 runtime-context 快照记录优先适配器及操作。模型在受支持操作中优先使用它们；辅助 Shell 工作仍受角色、模块、任务、沙箱和审批规则约束。使用其他方法前必须报告失败或覆盖范围缺口，不得静默更换所选可执行文件或环境。检查不授予执行权限，也不证明样本或设备已就绪。已保存偏好在 Host 重启后恢复，并传给委派子会话；恢复自动选择会清除偏好。
 
 provider 原始输出先保存，再提交证据引用。证据记录保留样本、工具版本、参数、来源 Session/call、完整性和批准计划。`security_evidence` 按字节分页，或按行号选取已保存的源码读取结果；分页读取原始字节。检索根据项目记录及原始证据重建 SQLite FTS，支持中文分词和标识符。共享经验必须经过用户审核，始终是参考材料，不是本项目证据。
 
@@ -279,11 +293,11 @@ flowchart LR
   X --> R
 ```
 
-与原生 Grep 一样，模型提供问题和查询范围，实现选择后端并组织参数。例如，`security_ghidra` 接收 `assetId`、`operation: functions` 和 `limit`；Ghidra provider 解析与样本哈希绑定的程序并提供认证。`security_adb` 接收包查询，由环境选择设备。`security_packet_capture` 接收已导入抓包及 Wi-Fi/BLE 参数，由配置选择 Python 和 TShark。服务凭据、可执行文件路径、启动前缀和容器设置不是模型参数。
+与原生 Grep 一样，模型提供问题和查询范围，实现选择后端并组织参数。例如，`security_ghidra_headless` 接收 `assetId`、`operation: functions` 和 `limit`；其 provider 使用所选 Java 可执行文件和 Ghidra 发行版分析导入的样本。`security_adb` 接收包查询，由环境选择设备。`security_packet_capture` 接收已导入抓包及 Wi-Fi/BLE 参数，由配置选择 Python 和 TShark。服务凭据、可执行文件路径、启动前缀和容器设置不是模型参数。
 
 适配器负责发现与配置解析。Provider 负责参数校验、分析语义和证据内容。环境 provider 负责执行位置及既有生命周期规则；控制器负责项目范围、角色、租约和审批。只读适配器使用 `observe`。数据库修改、插桩及其他计划操作继续经过既有计划准备、审批和 `security_execute`；只读工具不接受这些操作。已批准计划保留解析后的身份，执行时不重新选择默认值。
 
-安装按环境配置一次。显式适配绑定优先；未绑定时，请求继承任务唯一的兼容环境。存在多个兼容环境时要求显式绑定。解析不会因为依赖缺失而选择其他环境，首次请求一次列出全部缺失的安装配置。修改绑定不编辑安装、不探测软件、不启动容器。Ghidra 使用 provider 程序绑定，无需虚构可执行文件安装；ADB 要求环境设备 ID；离线抓包分析同时依赖 Python 和 TShark。依赖分别检测，缺少可选插件不会禁用其运行时的其他操作。
+安装按环境配置一次。显式适配绑定优先；未绑定时，请求继承任务唯一的兼容环境。存在多个兼容环境时要求显式绑定。解析不会因为依赖缺失而选择其他环境，首次请求一次列出全部缺失的安装配置。修改绑定不编辑安装、不探测软件、不启动容器。Ghidra headless 要求所选 Java 可执行文件与发行版；ADB 要求环境设备 ID；离线抓包分析同时依赖 Python 和 TShark。依赖分别检测，缺少可选插件不会禁用其运行时的其他操作。
 
 目录导入保留源树快照，并自动将其中二进制成员注册为文件资产，保留父资产身份。旧任务可调用 `security_command` 的 `import-member` 操作，指定源树资产 ID 和精确清单路径。这直接读取校验后的已保存字节，无需复制文件或扩大 `importRoots`；被排除成员和其他项目仍不可访问。返回的文件资产可用于 binary 和专用 provider。源代码文本继续支持按行读取和搜索。模型不得重复重试配置未变的失败，也不能将身份检测成功视为分析完成。
 
@@ -291,14 +305,14 @@ flowchart LR
 
 | 环境 | 语义接口 | 准备与诊断 |
 |---|---|---|
-| 本机 | 静态适配器、Ghidra 查询、ADB 查询、Wi-Fi/BLE 离线分析 | 配置 CLI 安装；按需绑定 Ghidra 程序或 Android 设备。 |
+| 本机 | 静态适配器、Ghidra headless、ADB 查询、Wi-Fi/BLE 离线分析 | 配置 CLI 安装，按需配置 Android 设备。 |
 | 托管 Docker | 静态适配器 | 容器可执行文件属于配置镜像；Host Docker 启动程序单独配置。 |
 | 外部 Kali | 原生工具与脚本流程 | 保留 Docker context、容器名、工作目录、网络和安装；检测成功不会自动开放语义执行。 |
 | Android | 通过选定 Host 环境执行 ADB 设备与包查询 | 配置 `deviceId` 和 ADB；调用时检查设备连接。 |
 
-失败区分配置、依赖、目标和执行阶段。采集保留可用原始输出与不完整状态；证据读取和幂等恢复不重复分析。Ghidra 与 ADB 保留原始文本，抓包分析保留 JSON，既有静态适配器保留结构化条目。即使 HTTP 状态为 200，Ghidra 适配器也将 `No function found` 响应判为失败。版本探测不增加分析调用次数。服务或设备访问未经观测时保持未检测状态；安装检测通过不授予权限。
+失败区分配置、依赖、目标和执行阶段。采集保留可用原始输出与不完整状态；证据读取和幂等恢复不重复分析。ADB 保留原始文本；抓包分析保留 JSON，包括 Ghidra headless 在内的静态适配器保留结构化观察与明确的失败信息。版本探测不增加分析调用次数。服务或设备访问未经观测时保持未检测状态；安装检测通过不授予权限。
 
-集中配置减少重复拼装命令及误选设备或容器。复用 provider 执行让模型工具和操作员 API 保持相同的取消、租约及证据归属。固定接口仍仅覆盖声明操作，并依赖真实软件和目标。未启用已检查偏好时，高级脚本或不支持环境可先用指定 `toolIds`、`details`、`native: true` 的 `security_capabilities`，再用 `native: true` 的 `security_environment` 加载指引。Shell 继续遵循既有权限。适配失败不会静默转为 Shell 调用，迁移不会拉取、重建、替换或停止外部容器。取消外部客户端不能证明远端已完成；不确定的完成状态保持未知。
+集中配置减少重复拼装命令及误选设备或容器。复用 provider 执行让模型工具和操作员 API 保持相同的取消、租约及证据归属。固定接口仍仅覆盖声明操作，并依赖真实软件和目标。高级脚本或不支持环境可先用指定 `toolIds`、`details`、`native: true` 的 `security_capabilities`，再用 `native: true` 的 `security_environment` 加载指引。Shell 继续遵循既有权限。适配失败不会静默转为 Shell 调用，迁移不会拉取、重建、替换或停止外部容器。取消外部客户端不能证明远端已完成；不确定的完成状态保持未知。
 
 [路线图](../../../docs/roadmaps/security-analysis.zh.md#provider-adaptation)分别记录交付和真实环境验收。Loader 测试使用模拟服务与子进程夹具，不能证明真实 Ghidra 安装、Android 设备或外部 Kali 执行已验证。
 
@@ -368,10 +382,10 @@ skill 摘要占用目录上下文，方法正文在加载时增加上下文。�
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Ghidra 安装、扩展编译、GUI 启动和样本导入需要操作者准备。DSH 函数、反编译和交叉引用验收仍待完成；导入成功或操作者探查不能证明 DSH 查询能力。
+- Ghidra headless 要求所选发行版及兼容 JDK，不提供 GUI 控制、任意脚本或外部项目编辑。MIPS O32 修正覆盖已有的 float/double 签名；RISC-V 修正仅支持 RV32 ilp32。Docker 执行仍未验证。
 - 已在本任务创建的 Windows 进程上实际验证 Frida 17.18.0 观察与清理。目前没有 Android 设备；现有 Kali 镜像缺少 Frida、JADX 和 Ghidra，镜像存在不等于分析环境受支持。
 - 真实 DeepSeek 教程分析已跑通静态证据和子 agent 报告回收，但出现错误的 ELF 解读。结构化格式解析尚未完成；新版简报仍需真实模型运行与 GUI GIF 验证。keyless 测试与外部响应模拟分别作为证据。
-- 不可变源码和二进制读取可独立运行。Provider 标识共享外部实例并使用独占租约；Ghidra 按实际回环地址租约。自动 GUI 部署、丰富的组件/JNI 关联、远程实验室、语义搜索、设备专属 IoT 验证、fastboot 写入和 John 密码审计仍不可用。
+- 不可变源码和二进制读取可独立运行。Provider 标识共享外部实例并使用独占租约；Ghidra headless 租约覆盖其自有项目缓存。GUI 集成、丰富的组件/JNI 关联、远程实验室、语义搜索、设备专属 IoT 验证、fastboot 写入和 John 密码审计仍不可用。
 - Android split APK 验证会被拒绝，因为单个导入的 base APK 不能证明完整安装包身份。本机 attach 会拒绝无法提供启动身份或可执行文件身份的平台。
 - 整理处理项目的完整知识集合；超过 `knowledgeInputBytes` 时直接失败，不截断内容。自动任务需要 Host 持续运行且已配置模型。语义等价由模型判断，共享结果仍需用户审核。
 

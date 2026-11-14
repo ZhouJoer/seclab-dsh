@@ -72,11 +72,12 @@ async function unwrap<T>(pending: Promise<RemoteResult<T>>): Promise<T> {
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   ctx.effect(() => ctx.slots.registerFactory({ name: 'security.resource.actions', scope: 'root', children: { 'security.resource.actions.item': { kind: 'list', scope: 'root' } } }, ResourceActions))
   const disposeRemote = await ctx.remote.$mount(securityRemote)
-  const ui = ctx.inject(['remote.securityWorkbench', 'slots', 'locale'], (scoped) => {
+  const ui = ctx.inject(['remote.securityWorkbench', 'remote.securityToolInstallations', 'remote.directoryPicker', 'slots', 'locale'], (scoped) => {
     scoped.effect(() => scoped.locale.register(NS, { zh, en }))
     for (const key of securityToolNames) scoped.slots.inject('tool.call.toolview', () =>
       scoped.slots.register({ name: 'tool.call.toolview', key, locale: NS }, SecurityToolRow))
     const remote = scoped.remote.securityWorkbench
+    const installations = scoped.remote.securityToolInstallations
     scoped.effect(() => scoped.resources.register<'security-material'>({ protocol: 'security-material',
       async *open(address, { signal }) {
         const url = new URL(address)
@@ -90,6 +91,31 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.slots.inject('shell.overlay', () => scoped.slots.register({ name: 'shell.overlay', id: 'security-improvements-toast',
       inject: () => ({ notifications }) }, ImprovementToast))
     const projectActions: ProjectActions = {
+      installationActions: {
+        subscribeReset: listener => scoped.on('connection/reset', listener),
+        root: () => unwrap(installations.root()),
+        setRoot: (path, revision) => unwrap(installations.setRoot(path, revision)),
+        recipes: () => unwrap(installations.recipes()),
+        preview: request => unwrap(installations.preview(request)),
+        apply: (id, digest, requestId, confirmations) => unwrap(installations.apply(id, digest, requestId, confirmations)),
+        get: id => unwrap(installations.get(id)),
+        list: () => unwrap(installations.list()),
+        follow: (id, cursor, signal) => installations.follow(id, cursor, signal),
+        cancel: id => unwrap(installations.cancel(id)),
+        reconcile: id => unwrap(installations.reconcile(id)),
+        previewRemoval: id => unwrap(installations.previewRemoval(id)),
+        pickInstallationDirectory: async () => {
+          const result = await scoped.remote.directoryPicker.pick()
+          if (result.ok) return { path: result.value, browse: false }
+          if (result.error.code === 'directory-picker/unavailable') return { path: null, browse: true }
+          throw result.error
+        },
+        listInstallationDirectory: async (path) => {
+          const listing = await unwrap(scoped.remote.directoryPicker.list(path))
+          const parent = listing.crumbs.at(-2)?.path
+          return { path: listing.path, ...(parent ? { parent } : {}), entries: listing.entries }
+        },
+      },
       deviceDirectory: id => unwrap(remote.deviceDirectory(id)),
       deviceInventory: id => unwrap(remote.deviceInventory(id)),
       toolboxConfiguration: id => unwrap(remote.toolboxConfiguration(id)),
@@ -97,6 +123,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       toolboxFiles: (id, directory) => unwrap(remote.toolboxFiles(id, directory)),
       toolboxInventory: (id, tools) => unwrap(remote.toolboxInventory(id, tools)),
       toolboxDirectory: id => unwrap(remote.toolboxDirectory(id)),
+      toolboxEnvironment: (id, action) => unwrap(remote.toolboxEnvironment(id, action)),
+      ghidraCaches: (id, key) => unwrap(remote.ghidraCaches(id, key)),
       toolCatalog: () => unwrap(remote.toolCatalog()),
       scriptCatalog: () => unwrap(remote.scriptCatalog()),
       previewToolPack: input => unwrap(remote.previewToolPack(input)),

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.5/ghidra-headless/guide.md
+/:
+  en: e42d84aa248b058b
+  zh: e819dda69d5f9ac3
+/use-ghidra-headless-for-binary-analysis:
+  en: 9a510749e68826dd
+  zh: 4cb34d80a6ff132d
+/use-ghidra-headless-for-binary-analysis/change:
+  en: d6fd974b659d1b61
+  zh: 893719947cb5919d
+/use-ghidra-headless-for-binary-analysis/migration:
+  en: b16dc852078c6083
+  zh: 713963779ec0c96c

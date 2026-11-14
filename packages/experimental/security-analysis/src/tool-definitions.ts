@@ -17,7 +17,19 @@ const definition = z.object({
     z.object({ kind: z.literal('json-plugin'), name: z.string().min(1) }).strict(),
   ]).default({ kind: 'command' }),
   guide: z.string().max(16384).default(''), skills: strings.default([]),
+  management: z.object({
+    installation: z.enum(['managed', 'manual', 'dependency', 'builtin']),
+    support: z.enum(['adapter', 'native', 'manual']),
+    recipe: id.optional(),
+  }).strict().optional(),
+  compatibility: z.object({
+    minimumMajor: z.number().int().nonnegative().optional(),
+    maximumMajor: z.number().int().nonnegative().optional(),
+  }).strict().optional(),
 }).strict().superRefine((tool, ctx) => {
+  if (tool.compatibility?.minimumMajor !== undefined && tool.compatibility.maximumMajor !== undefined
+    && tool.compatibility.minimumMajor > tool.compatibility.maximumMajor)
+    ctx.addIssue({ code: 'custom', message: 'Minimum compatible version must not exceed maximum version' })
   if (['python-module', 'json-plugin'].includes(tool.probe.kind) && !tool.dependency)
     ctx.addIssue({ code: 'custom', message: 'Module/plugin probes require a runtime dependency' })
   if (tool.invocation === 'provider' && !tool.provider)

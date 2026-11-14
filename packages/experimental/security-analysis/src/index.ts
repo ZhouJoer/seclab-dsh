@@ -73,6 +73,14 @@ import { registerToolAdapters } from './tool-adapter-tools.ts'
 import { adapterResultPage } from './tool-adapter-results.ts'
 import { analysisFailure } from './analysis-failure.ts'
 import { standaloneTool } from './local-tools.ts'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import { SecurityToolInstallations } from './tool-installations.ts'
+import { createToolInstallationExecutor } from './tool-installation-executor.ts'
+import { ToolInstallationSelections } from './tool-installation-settings.ts'
+import { listGhidraHeadlessCaches, removeGhidraHeadlessCache, type GhidraHeadlessCache } from './ghidra-headless.ts'
+import { toolInstallationConfig, type ToolInstallationConfig } from './tool-installation-config.ts'
+export { SecurityToolInstallations } from './tool-installations.ts'
+import { toolboxEnvironment, toolHealth } from './tool-health.ts'
 import { modelPage, recordDetail, commandReceipt, sourceEvidenceLines, type CommandReceipt } from './workbench/model-view.ts'
 import { SourceProvider } from './workbench/source.ts'
 import { BinaryProvider } from './workbench/binary.ts'
@@ -116,6 +124,8 @@ declare module '@deepseek-ai/dsh-llm' {
 
 /** Explicit host locations and operational limits. */
 export interface WorkbenchConfig {
+  /** Acquisition, process and retained log limits for operator installations. */
+  toolInstallations: ToolInstallationConfig
   /** Operator-selected routes and bounded static external-tool queries. */
   toolAdapters: ToolAdapterLimits & {
     /** Fixed environment IDs keyed by adapter binding identity. */
@@ -207,7 +217,7 @@ declare module '@deepseek-ai/dsh-jobs' {
   }
 }
 
-const GUIDANCE = `Resolve the user’s objective from the selected materials using native read, glob, grep and shell tools directly. Reverse engineering and decryption do not require vulnerability findings. Choose work that resolves an uncertainty; stages and tool counts are not evidence of progress. For substantial investigations, load security-investigation and relevant specialist methods on demand.
+const GUIDANCE = `Resolve the user’s objective from the selected materials. Prefer the operator-selected healthy analysis adapters for supported operations. Use native read, glob, grep and shell tools for auxiliary work or operations outside adapter coverage under existing permissions. Reverse engineering and decryption do not require vulnerability findings. Choose work that resolves an uncertainty; stages and tool counts are not evidence of progress. For substantial investigations, load security-investigation and relevant specialist methods on demand.
 
 Deliver the requested result with verification and limitations when it is available. A report or checkpoint is not a prerequisite for answering a question or returning a recovered value. When the analysis task objective is verified, use security_complete to save exact results, observed tool citations and limitations without generating a report. An ordinary answer can precede this submission; a local report file or checkpoint does not submit the task result. If saving fails, return verified results and identify what remains unsaved. Generate or retry a report only when the user explicitly requests it; the user can also use the Reports controls. Only complete a task whose objective is achieved; pausing or exhausting a budget is not completion.
 
@@ -229,7 +239,7 @@ For long work, use security_checkpoint at meaningful stopping or handoff points 
 
 /** Optional security profile service; default application compositions remain independent. */
 export default class SecurityWorkbench extends TypertRemoteService {
-  static inject = ['tools', 'agents', 'llm', 'systemPrompt', 'storageDomain', 'jobs', 'subagents', 'sessionProjections']
+  static inject = ['tools', 'agents', 'llm', 'systemPrompt', 'storageDomain', 'jobs', 'subagents', 'sessionProjections', 'subprocess']
   static Config: Schema<WorkbenchConfig> = Schema.object({
     evolution: evolutionConfig,
     toolCatalogPath: Schema.string(),
@@ -273,7 +283,18 @@ export default class SecurityWorkbench extends TypertRemoteService {
       maxInstructions: Schema.number().step(1).min(1).default(200),
       maxPackets: Schema.number().step(1).min(1).default(1000),
       graceMs: Schema.number().step(1).min(1).default(3000),
+      ghidraHeadless: Schema.object({
+        cacheDirectory: Schema.string().default('dsh-ghidra-cache'),
+        maxHeapMb: Schema.number().step(1).min(256).default(2048),
+        maxCpu: Schema.number().step(1).min(1).default(2),
+        analysisTimeoutSeconds: Schema.number().step(1).min(1).default(300),
+        decompileTimeoutSeconds: Schema.number().step(1).min(1).default(30),
+        sessionIdleTimeoutMs: Schema.number().step(1).min(1).max(2147483647).default(300000),
+        maxSessions: Schema.number().step(1).min(1).default(2),
+        protocolPollIntervalMs: Schema.number().step(1).min(1).max(1000).default(50),
+      }).default({}),
     }),
+    toolInstallations: toolInstallationConfig,
     toolConfiguration: Schema.union([Schema.const(undefined),
       Schema.object({ path: Schema.string().required(), environmentId: Schema.string().required() }).required()]),
     maxDerivedAssets: Schema.number().step(1).min(1).default(256),
@@ -315,6 +336,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     committed: boolean
     action: Extract<SecurityCommand['action'], { kind: 'create' }> }>()
   private readonly turnBriefs = new Map<SessionId, string>()
+  private toolAdapterProvider: ToolAdapterProvider | undefined
   private readonly analysisBudget: ReturnType<typeof installAnalysisBudget>
 
   constructor(
@@ -347,6 +369,25 @@ export default class SecurityWorkbench extends TypertRemoteService {
       config.environments, config.toolAdapters.bindings)
     validateTaskIntake(config.taskIntake, config.environments.map(environment => environment.id))
     this.ready = this.initialize()
+    const selections = new ToolInstallationSelections(this.toolConfiguration, config.environments,
+      config.environmentConfigurationPath, async (environment) => {
+        const controller = await this.ready
+        await controller.environments.get('local').manager.stop(environment, this.shutdown.signal)
+      })
+    const installationManager = new SecurityToolInstallations(ctx, {
+      directory: dshHomePath('security', 'tool-installations'),
+      selectionId: this.toolConfiguration.path ?? 'readonly:' + config.root,
+      executor: createToolInstallationExecutor(ctx, config.toolInstallations),
+      maxLogBytes: config.toolInstallations.maxLogBytes, maxLogChunks: config.toolInstallations.maxLogChunks,
+      snapshot: id => selections.snapshot(id),
+      withEnvironment: async (id, run) => (await this.ready).manageEnvironment(id, async (signal) => {
+        await this.toolAdapterProvider?.closeEnvironment(id)
+        return run(signal)
+      }),
+      commit: (plan, result) => selections.commit(plan, result),
+      isInstallationInUse: (location, paths) => selections.inUse(location, paths),
+      withUnusedInstallation: (location, paths, remove) => selections.withUnusedInstallation(location, paths, remove),
+    })
     this.manageWorkspaceProject = installWorkspaceArchive(ctx, this.ready, () => this.journal, this.pending)
     ctx.inject(['skills'], (skillCtx) => {
       installSecurityMethods(skillCtx)
@@ -479,12 +520,11 @@ export default class SecurityWorkbench extends TypertRemoteService {
             if (!page.length && offset < matches.length) throw new Error('Selected script details exceed the response budget')
             return json({ kind: 'scripts', catalog: page, total: matches.length,
               nextOffset: offset + page.length < matches.length ? offset + page.length : null,
-              nativePreferenceAllowed: !this.adapterPreferences(exec.agent.id),
+              nativePreferenceAllowed: true,
               guidance: 'Use selected script help and skill for parameters. Native execution still requires the existing role, task and environment permissions.' })
           }
           if (args.details && !args.toolIds?.length && !args.providerId) throw new Error('Select toolIds before loading details')
           if (args.native && (!args.details || !args.toolIds?.length)) throw new Error('Select toolIds and details for native workflows')
-          if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (args.providerId && !controller.providers.list().includes(args.providerId)) throw new Error('Unknown provider: ' + args.providerId)
           const matches = args.providerId && !args.toolIds?.length ? [] : discoverTools(catalog.tools, catalog.collections, args)
           const offset = z.number().int().nonnegative().parse(args.offset ?? 0)
@@ -494,7 +534,6 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const configurationEnvironment = config.environments.find(env => env.kind !== 'android' && !env.externalContainer
             && project?.kind === 'engagement' && project.value.environmentIds.includes(env.id))
           const adapters = configurationEnvironment ? this.toolboxConfiguration(configurationEnvironment.id).adapters : undefined
-          const adapterOnly = this.adapterPreferences(exec.agent.id)
           const response = {
             role: binding?.role ?? null,
             analysisDirectory: analysisDirectory(exec.agent.session.header.cwd, binding),
@@ -508,7 +547,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
               .map(({ id, kind }) => ({ id, kind })),
             catalogRevision: catalog.revision,
             total: matches.length, nextOffset: offset + page.length < matches.length ? offset + page.length : null,
-            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false, args.native ?? false, adapterOnly),
+            catalog: page.map(tool => ({ ...modelToolDefinition(tool, args.details ?? false, args.native ?? false),
               moduleEnabled: moduleAllowsDefinition(tool, selection),
               ...(!moduleAllowsDefinition(tool, selection) ? { prerequisite: 'Enable an associated analysis module before execution; manual selections require the operator.' } : {}),
               ...(adapters?.some(adapter => adapter.id === tool.id)
@@ -524,7 +563,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
                 observationAllowed: binding !== undefined && canObserve(binding.role, id, operation)
                   && moduleAllowsOperation(id, operation, selection) })),
             })),
-            readiness: this.adapterPreferences(exec.agent.id)
+            readiness: this.hasToolPreferences(exec.agent.id)
               ? 'Selected adapters were checked at preference save. Enable the required automatic modules before calling an adapter marked moduleEnabled: false; manual changes require the operator. Sample and device access are checked during the operation.'
               : 'Use security_environment when allowed, otherwise ask the coordinator for health results, and use the exact provider request; configured installations do not establish readiness. Binary inspection needs no external executable. Other providers require operator configuration.',
           }
@@ -551,7 +590,6 @@ export default class SecurityWorkbench extends TypertRemoteService {
           const controller = await this.ready
           const view = controller.view(exec.agent.id)
           const project = view.records.find(item => item.kind === 'engagement')
-          if (args.native && this.adapterPreferences(exec.agent.id)) throw new Error('Checked tool preferences require dedicated adapters; native workflows are disabled')
           if (project?.kind !== 'engagement' || project.value.stopped || !project.value.environmentIds.includes(args.environmentId))
             throw new Error('Environment is outside active project scope')
           const environment = config.environments.find(env => env.id === args.environmentId)
@@ -566,25 +604,21 @@ export default class SecurityWorkbench extends TypertRemoteService {
               inventory.tools = inventory.tools.filter(tool => selected.includes(tool.id))
             }
             const rendered = modelToolInventory(inventory, { native: args.native ?? false,
-              adapterOnly: this.adapterPreferences(exec.agent.id), externalContainer: environment.externalContainer !== undefined })
+              externalContainer: environment.externalContainer !== undefined })
             return json(Buffer.byteLength(JSON.stringify(rendered)) <= config.modelResultBytes ? rendered : compactToolInventory(inventory))
           }
           const manager = controller.environments.get('local').manager
           if (args.devices) return json(await controller.manageEnvironment(environment.id, signal => manager.devices(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal])), project.value.id))
-          const revision = environment.kind === 'local' && this.toolConfiguration.path !== undefined
-            ? this.toolConfiguration.read(environment.id).revision : undefined
           const inventory = await controller.manageEnvironment(environment.id, signal => manager.inventory(environment,
             AbortSignal.any([signal, exec.signal, this.shutdown.signal]),
             args.toolIds ?? (args.toolId === undefined ? undefined : [args.toolId])), project.value.id)
-          if (revision !== undefined) this.toolConfiguration.reconcile(inventory, revision)
           this.rememberTools(this.toolObservationKey(environment), inventory)
           if (args.toolId !== undefined && args.toolIds === undefined) {
             inventory.tools = inventory.tools.filter(tool => tool.id === args.toolId)
             if (!inventory.tools.length) throw new Error('Unknown tool identity')
           }
           const rendered = modelToolInventory(inventory, { native: args.native ?? false,
-            adapterOnly: this.adapterPreferences(exec.agent.id),
             externalContainer: environment.externalContainer !== undefined })
           const targetOrigins = new Set<string>()
           for (const item of view.records) if (item.kind === 'asset' && 'origin' in item.value) targetOrigins.add(item.value.origin)
@@ -748,9 +782,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
       defineTool({
         name: 'security_static',
         description:
-          'Collect read-only source, binary, Ghidra, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.',
+          'Collect read-only source, binary, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.',
         parameters: {
-          provider: { type: 'string', required: true, enum: ['binary', 'ghidra', 'android', 'source', 'packet-capture'] },
+          provider: { type: 'string', required: true, enum: ['binary', 'android', 'source', 'packet-capture'] },
           operation: { type: 'string', required: true },
           assetId: { type: 'string', required: true, description: 'Imported asset ID returned by security_command or security_scope, not a path or filename. For source files not yet imported, first use security_command action import-source.' },
           environmentId: { type: 'string', required: true },
@@ -924,8 +958,6 @@ export default class SecurityWorkbench extends TypertRemoteService {
           if (!this.controller?.analysisProject(exec.agent.id)) return 'Select an active security task before using the browser'
         } catch (error) { return error instanceof Error ? error.message : String(error) }
       }
-      if (this.adapterPreferences(exec.agent.id) && ['bash', 'pwsh'].includes(exec.name))
-        return 'Checked tool preferences require dedicated adapters. Shell execution is disabled; ask the operator to clear tool preferences for native workflows.'
       if (['bash', 'pwsh', 'write', 'edit', 'security_capture_analysis'].includes(exec.name)) {
         try { this.controller?.analysisProject(exec.agent.id) }
         catch (error) { return error instanceof Error ? error.message : String(error) }
@@ -1089,7 +1121,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           return adapter ? [{ id: tool.id, toolName: adapter.toolName, operations: adapter.operations,
             moduleEnabled: moduleAllowsTool(adapter.toolName, this.controller?.moduleSelection(agent.id)) }] : []
         })
-        return 'Operator-selected adapters were checked when preferences were saved. When moduleEnabled is false, the tool is not callable yet: read security_capabilities and security_help(action: "modules"); in automatic mode select the required modules with security_command before calling the adapter. Manual module changes require the operator. Call enabled interfaces directly; do not locate executables, probe installations again, or use native Shell workflows. Shell execution is disabled while this selection is active. If an adapter fails or lacks an operation, report the limitation to the operator. Checks do not grant execution authority or establish sample/device readiness: '
+        return 'Operator-selected adapters were checked when preferences were saved. Prefer these healthy adapters for their supported analysis operations. Shell remains available for auxiliary file inspection, calculations and operations outside adapter coverage under existing role, module, project, sandbox and approval rules. When moduleEnabled is false, the tool is not callable yet: read security_capabilities and security_help(action: "modules"); in automatic mode select the required modules with security_command before calling the adapter. Manual module changes require the operator. Call enabled interfaces directly without repeated installation probes. If an adapter fails or lacks an operation, report its failure or coverage limit before using another method; preserve the failed evidence and do not silently change the selected executable or environment. Checks and preferences grant no execution authority and do not establish sample/device readiness: '
           + JSON.stringify({ adapters, unavailableReferences: missing })
       },
     })
@@ -1120,6 +1152,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.unsealedPersonas.clear()
       this.shutdown.abort(new Error('Security service disposed'))
       try {
+        await installationManager.close()
         await this.evolution?.close()
         await (await this.ready).dispose()
         await closeActivity()
@@ -1440,8 +1473,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.ctx.effect(() => controller.providers.register(new BinaryProvider()))
       this.ctx.effect(() => controller.providers.register(new SourceProvider()))
       this.ctx.inject(['subprocess'], (ctx) => {
-        ctx.effect(() => controller.providers.register(
-          new ToolAdapterProvider(ctx, this.config.toolAdapters, this.config.maxDerivedAssets)))
+        ctx.effect(() => {
+          const provider = new ToolAdapterProvider(ctx, this.config.toolAdapters, this.config.maxDerivedAssets)
+          this.toolAdapterProvider = provider
+          const unregister = controller.providers.register(provider)
+          return async () => {
+            await provider.dispose()
+            unregister()
+            if (this.toolAdapterProvider === provider) this.toolAdapterProvider = undefined
+          }
+        })
       })
       this.index = new SecuritySearchIndex(join(this.config.root, 'search.sqlite'))
       if (this.config.knowledgeIntervalMs > 0 && this.config.knowledgeProvider) this.ctx.effect(() => {
@@ -1823,6 +1864,44 @@ export default class SecurityWorkbench extends TypertRemoteService {
   scriptCatalog(): AnalysisScript[] {
     return analysisScripts()
   }
+  /** Change only a DSH-owned analysis container after an explicit operator action.
+   * @param environmentId - selected managed Docker environment.
+   * @param action - start or stop the owned container.
+   * @returns inventory after the settled lifecycle action.
+   */
+  @Remote('toolboxEnvironment')
+  async toolboxEnvironment(environmentId: string, action: 'start' | 'stop'): Promise<ToolboxDirectory> {
+    z.enum(['start', 'stop']).parse(action)
+    const environment = this.config.environments.find(item => item.id === environmentId)
+    if (!environment || environment.kind !== 'docker' || environment.externalContainer)
+      throw new Error('Only a DSH-managed Docker environment can be started or stopped here')
+    const controller = await this.ready
+    await controller.manageEnvironment(environment.id, async (signal) => {
+      const manager = controller.environments.get('local').manager
+      if (action === 'start') await manager.start(environment, signal)
+      else {
+        await this.toolAdapterProvider?.closeEnvironment(environment.id)
+        await manager.stop(environment, signal)
+      }
+    })
+    this.toolObservations.delete(environment.id)
+    return this.toolboxDirectory(environment.id)
+  }
+  /** Inspect or remove a DSH-owned Ghidra cache after analysis releases it.
+   * @param environmentId - selected local or managed Docker environment.
+   * @param key - optional cache identity to remove; omission only lists entries.
+   * @returns current cache entries and their lease states.
+   */
+  @Remote('ghidraCaches')
+  async ghidraCaches(environmentId: string, key?: string): Promise<GhidraHeadlessCache[]> {
+    const environment = this.config.environments.find(item => item.id === environmentId)
+    const options = this.config.toolAdapters.ghidraHeadless
+    if (!environment || environment.kind === 'android' || environment.externalContainer || !options)
+      throw new Error('Ghidra project caches require a configured local or managed Docker environment')
+    if (key !== undefined) await (await this.ready).manageEnvironment(environmentId,
+      () => removeGhidraHeadlessCache(environment, options, key))
+    return listGhidraHeadlessCaches(environment, options)
+  }
   /** Validate an operator-selected pack without executing its commands.
    * @param input - JSON tool pack.
    * @returns import preview and identity conflicts.
@@ -1857,7 +1936,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     if (!pack) throw new Error('Unknown tool pack: ' + id)
     return JSON.stringify(pack, null, 2) + '\n'
   }
-  private adapterPreferences(id: SessionId): boolean {
+  private hasToolPreferences(id: SessionId): boolean {
     const preferences = this.preferences.get(id)
     return !!preferences && !!(preferences.toolIds.length + preferences.tags.length + preferences.collectionIds.length)
   }
@@ -1887,7 +1966,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return { tools, collections: catalog.collections.map(group => ({ ...group,
       toolIds: group.toolIds.filter(id => tools.some(tool => tool.id === id && !tool.unavailable)) })) }
   }
-  /** Read or check and update adapter preferences for the authenticated active session only.
+  /** Read or check and update preferred adapters for the authenticated active session without changing execution permissions.
    * @param agent - carrier-resolved session; caller cannot nominate another agent.
    * @param input - optional JSON selection; empty arrays restore automatic discovery.
    * @returns the current selection after checking selected adapters and their installations; failures retain the previous selection.
@@ -1954,15 +2033,16 @@ export default class SecurityWorkbench extends TypertRemoteService {
     if (!environment) throw new Error('Configure an analysis environment before inspecting tools')
     const measured = this.toolObservations.get(environment.id)
     const observed = measured?.key === this.toolObservationKey(environment) ? measured.inventory : undefined
-    return { environments: environments.map(({ id, label, kind }) => ({ id, label, kind })), inventory: {
+    return { environments: environments.map(toolboxEnvironment), inventory: {
       environmentId: environment.id, kind: environment.kind, runtime: 'unchecked', detail: '', checkedAt: 0,
       workdir: environment.cwd, ...observed, tools: catalog.tools.map((tool) => {
         const row = observed?.tools.find(item => item.id === tool.id)
         if (row) return row
         const pin = environment.tools.find(pin => pin.id === tool.id)
-        return { id: tool.id, category: tool.category, status: 'not-checked', command: pin?.command ?? '',
+        return toolHealth({ id: tool.id, category: tool.category, status: 'not-checked', command: pin?.command ?? '',
+          reason: 'unchecked', configured: pin !== undefined,
           prefixArgs: pin?.prefixArgs ?? [], version: '', location: '', source: pin?.source ?? 'PATH',
-          ...(tool.dependency ? { dependency: tool.dependency } : {}), detail: '', installUrl: tool.url, invocation: tool.invocation, ...(tool.provider ? { provider: tool.provider } : {}) }
+          ...(tool.dependency ? { dependency: tool.dependency } : {}), detail: '', installUrl: tool.url, invocation: tool.invocation, ...(tool.provider ? { provider: tool.provider } : {}) }, tool)
       }),
     } }
   }
@@ -1976,7 +2056,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     for (const tool of inventory.tools) tools.set(tool.id, tool)
     this.toolObservations.set(inventory.environmentId, { key, inventory: { ...inventory, tools: [...tools.values()] } })
   }
-  /** Inspect installed tools, starting managed Docker from an existing image when necessary.
+  /** Inspect installed tools without starting environments or saving installation choices.
    * @param environmentId - configured environment; omission selects the first local environment.
    * @param toolIds - selected definitions and their dependencies; omitted checks all.
    * @returns environment choices and current optional-tool observations.
@@ -1992,19 +2072,14 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const pending = controller.manageEnvironment(environment.id, async (signal) => {
       const manager = controller.environments.get('local').manager
       const combined = AbortSignal.any([signal, this.shutdown.signal])
-      if (environment.kind === 'docker' && !environment.externalContainer && !environment.containerId)
-        await manager.start(environment, combined)
-      const revision = environment.kind === 'local' && this.toolConfiguration.path !== undefined
-        ? this.toolConfiguration.read(environment.id).revision : undefined
       const inventory = await manager.inventory(environment, combined, toolIds)
-      if (revision !== undefined) this.toolConfiguration.reconcile(inventory, revision)
       return { key: this.toolObservationKey(environment), inventory }
     })
     this.pending.add(pending)
     try {
       const { key, inventory } = await pending
       this.rememberTools(key, inventory)
-      return { environments: environments.map(({ id, label, kind }) => ({ id, label, kind })), inventory }
+      return { environments: environments.map(toolboxEnvironment), inventory }
     } finally { this.pending.delete(pending) }
   }
   private readonly deviceObservations = new Map<string, DeviceInventory>()
@@ -2085,7 +2160,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     const selectedEnvironment = settings.editableEnvironment(environmentId)
     const update = toolConfigurationInput.parse(JSON.parse(input))
     if (update.action === 'bind' || update.action === 'reset-binding') {
-      settings.bind(update.id, update.action === 'bind' ? update.defaultEnvironmentId : undefined, update.revision, environmentId)
+      await settings.bind(update.id, update.action === 'bind' ? update.defaultEnvironmentId : undefined, update.revision, environmentId)
       return { saved: true, tool: null, configuration: this.toolboxConfiguration(environmentId) }
     }
     const catalog = standaloneTool(update.id, this.toolCatalog().tools)
@@ -2093,16 +2168,17 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return controller.manageEnvironment(environmentId, async (signal) => {
       const current = settings.read(environmentId)
       if (current.revision !== update.revision) throw new Error('Tool configuration changed; reload before saving')
+      if (update.id === 'ghidra-headless' && update.action !== 'probe')
+        await this.toolAdapterProvider?.closeEnvironment(environmentId)
       if (update.action === 'remove')
-        return { saved: true, tool: null, configuration: settings.commit(update.id, undefined, update.revision, environmentId) }
+        return { saved: true, tool: null, configuration: await settings.commit(update.id, undefined, update.revision, environmentId) }
       if (update.command && selectedEnvironment.kind === 'local' && !isAbsolute(update.command)) throw new Error('Choose an absolute executable path or leave it empty to detect on PATH')
       if (selectedEnvironment.kind === 'local' && process.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(update.command))
         throw new Error('Choose the interpreter executable and set its startup arguments under Advanced options')
       const pin = { command: update.command, prefixArgs: update.prefixArgs,
+        ...(update.temporaryDirectory ? { temporaryDirectory: update.temporaryDirectory } : {}),
         versionArgs: update.versionArgs.length ? update.versionArgs : catalog.args }
       const manager = controller.environments.get('local').manager
-      if (selectedEnvironment.kind === 'docker' && !selectedEnvironment.containerId)
-        await manager.start(selectedEnvironment, AbortSignal.any([signal, this.shutdown.signal]))
       const environment = { ...selectedEnvironment,
         tools: [...selectedEnvironment.tools.filter(tool => tool.id !== update.id),
           ...pin.command ? [{ id: update.id, ...pin, source: 'Local tool configuration' }] : []] }
@@ -2118,8 +2194,9 @@ export default class SecurityWorkbench extends TypertRemoteService {
       if (!tool) throw new Error('Choose a file for the custom tool before checking it')
       const saved = update.action === 'save' && tool.status === 'available'
       if (saved) {
-        settings.commit(update.id, { ...pin, ...(tool.installation ?? { command: tool.command }) },
-          update.revision, environmentId, update.defaultEnvironmentId)
+        const selected = { ...pin, ...(tool.installation ?? { command: tool.command }) }
+        await this.ctx.securityToolInstallations.withExistingSelection(selected, () => settings.commit(update.id, selected,
+          update.revision, environmentId, update.defaultEnvironmentId))
         this.rememberTools(this.toolObservationKey(selectedEnvironment), inventory)
       }
       return { saved, tool, configuration: this.toolboxConfiguration(environmentId) }
@@ -2519,6 +2596,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const signal = AbortSignal.any([leaseSignal, this.shutdown.signal])
       if (action === 'inspect') return JSON.stringify(await manager.inspect(environment, signal))
       if (action === 'start') return JSON.stringify({ container: await manager.start(environment, signal) })
+      await this.toolAdapterProvider?.closeEnvironment(environmentId)
       await manager.stop(environment, signal)
       return JSON.stringify({ stopped: true })
     }, binding?.engagementId)

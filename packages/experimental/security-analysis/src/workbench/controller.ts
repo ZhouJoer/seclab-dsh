@@ -248,6 +248,8 @@ export class SecurityController {
       const runs = [...this.active.values()].filter(run => environmentIds.includes(run.environment))
       for (const run of runs) run.controller.abort(new Error('Security environment provider disposed'))
       await Promise.allSettled(runs.map(run => run.done))
+      for (const id of environmentIds)
+        await Promise.all(this.providers.list().map(async (provider) => { await this.providers.get(provider).closeEnvironment?.(id) }))
       await release()
     } finally {
       for (const id of environmentIds) this.releasingEnvironments.delete(id)
@@ -771,6 +773,8 @@ export class SecurityController {
     for (const run of cancelled) run.controller.abort(new Error('Operator revoked execution'))
     await improvements
     await Promise.allSettled(cancelled.map(run => run.done))
+    if (plan === undefined)
+      await Promise.all(this.providers.list().map(async (provider) => { await this.providers.get(provider).closeProject?.(project) }))
     await this.activity?.flush()
   }
   /**
@@ -2011,7 +2015,7 @@ export class SecurityController {
       throw new Error('This role cannot collect the requested observation')
     if (!moduleAllowsOperation(operation.provider, operation.operation, this.moduleSelection(sessionId)))
       throw new Error('Analysis module is not enabled; select the module before collecting evidence')
-    if (operation.script || !['binary', 'ghidra', 'android', 'source', 'packet-capture', 'tool-adapter'].includes(operation.provider))
+    if (operation.script || !['binary', 'android', 'source', 'packet-capture', 'tool-adapter'].includes(operation.provider))
       throw new Error('Use an approved plan for dynamic or programmable operations')
     const previous = view.records.find(item => item.kind === 'evidence' &&
       item.value.source.sessionId === sessionId && item.value.source.callId === callId && !item.value.planId)
@@ -2055,7 +2059,12 @@ export class SecurityController {
           failure: bytes.toString('utf8'), toolVersion: 'unavailable after failure' }
       }
       if (combined.aborted && operation.provider === 'tool-adapter' && environment.kind === 'docker' && environment.containerId) {
-        try { await this.environments.get('local').manager.stop(environment, new AbortController().signal) }
+        try {
+          await Promise.all(this.providers.list().map(async (provider) => {
+            await this.providers.get(provider).closeEnvironment?.(environment.id)
+          }))
+          await this.environments.get('local').manager.stop(environment, new AbortController().signal)
+        }
         catch (error) { result = { ...result, incomplete: true, failure: result.failure ?? 'Container cleanup failed', cleanup: String(error) } }
       }
       const artifact = await this.artifacts.put(result.bytes, result.mediaType)

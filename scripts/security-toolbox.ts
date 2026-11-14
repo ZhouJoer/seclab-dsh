@@ -1,20 +1,32 @@
-/** Build the dsh-security-toolbox Docker image from the security-analysis toolbox recipe. @module */
-import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { resolve } from 'node:path'
+/** Preview an operator-selected Kali image installation through the shared lifecycle. @module */
+import { parseArgs } from 'node:util'
+import { manageSecurityTools } from './security-tools.ts'
 
-const toolboxDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)),
-  '..', 'packages', 'experimental', 'security-analysis', 'resources', 'toolbox')
-const args = process.argv.slice(2)
-const flag = (name: string): string | undefined => {
-  const index = args.indexOf('--' + name)
-  return index === -1 ? undefined : args[index + 1]
+/** Resolve the toolbox convenience command without building or selecting an image.
+ * @param args - configured Docker environment, package group and optional project files.
+ * @returns completion after printing the immutable reviewed installation plan.
+ */
+export async function previewSecurityToolbox(args: string[]): Promise<void> {
+  const { values } = parseArgs({ args, options: {
+    group: { type: 'string', default: 'kali-web' }, environment: { type: 'string' },
+    environments: { type: 'string' }, config: { type: 'string' }, base: { type: 'string' },
+    limits: { type: 'string' }, help: { type: 'boolean' },
+  } })
+  if (values.help) {
+    console.log('pnpm security:toolbox --environment ID [--group kali-web|kali-reverse|kali-firmware|kali-network] [--environments FILE] [--config FILE] [--base kalilinux/kali-last-release] [--limits FILE]\nPreview the selected Kali package group. Choose the shared root with security:tools install-root DIRECTORY, then apply the returned plan with security:tools install-apply PLAN --digest DIGEST --request-id ID [--confirm ID]. This command does not install packages or switch the selected image.')
+    return
+  }
+  if (!['kali-web', 'kali-reverse', 'kali-firmware', 'kali-network'].includes(values.group)) throw new Error('Select a registered Kali group with --group; use --help.')
+  if (!values.environment) throw new Error('Select a configured Docker environment with --environment ID; use --help.')
+  const forwarded = ['install-preview', values.group, '--environment', values.environment]
+  for (const name of ['environments', 'config', 'limits'] as const) if (values[name]) forwarded.push('--' + name, values[name])
+  if (values.base) forwarded.push('--option', 'base=' + values.base)
+  await manageSecurityTools(forwarded)
 }
-const baseImage = flag('base') ?? 'debian:12-slim'
-const tag = flag('tag') ?? 'dsh-security-toolbox:latest'
-const result = spawnSync('docker', ['build', '--build-arg', 'BASE_IMAGE=' + baseImage, '-t', tag, toolboxDirectory], {
-  stdio: 'inherit',
-})
-if (result.error !== undefined) throw result.error
-if (result.status !== 0) throw new Error('toolbox image build exited with ' + String(result.status))
-console.log('built ' + tag + ' from ' + baseImage)
+
+if (import.meta.main) {
+  try { await previewSecurityToolbox(process.argv.slice(2)) } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  }
+}

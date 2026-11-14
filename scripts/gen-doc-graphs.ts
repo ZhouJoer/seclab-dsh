@@ -813,6 +813,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns project scope, explicit Session roles, durable checks and immutable validation approval; dedicated analysis and environment providers register through its domain interfaces.',
   },
   {
+    key: 'securityToolInstallations',
+    pkg: 'experimental-security-analysis',
+    title: 'Shared security tool installations',
+    mode: 'core',
+    consumers: ['experimental-client-ui-security-analysis', 'experimental-security-analysis'],
+    note: 'Owns the shared installation root, reviewed plans, durable progress and selection publication; registered recipes acquire and verify tools within confirmed destinations.',
+  },
+  {
     key: 'speechToText',
     pkg: 'experimental-speech-to-text',
     title: 'Experimental speech recognition providers',

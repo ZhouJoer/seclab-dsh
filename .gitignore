@@ -56,6 +56,8 @@ native/system/test/bin/
 # Nested workspaces generate analysis files; their .dsh/skills/ stays trackable.
 **/.dsh/analysis/
 /dsh-home/
+/dsh-ghidra-cache/
+/ghidra-acceptance-temp/
 # Browser acceptance output and Python helper caches.
 /playwright-report/
 /test-results/

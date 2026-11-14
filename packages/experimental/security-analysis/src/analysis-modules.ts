@@ -29,7 +29,7 @@ export const analysisModules: readonly AnalysisModule[] = [
     scripts: ['analysis.android-fingerprint', 'analysis.android-api', 'analysis.kotlin-names', 'analysis.android-callchain'] },
   { id: 'reverse.native', description: 'PE, ELF, shared libraries and firmware: native code and bounded process observations.',
     skills: ['security-native', 'security-firmware', 'security-dynamic'],
-    tools: ['radare2', 'r2ghidra', 'ghidra', 'readelf', 'objdump', 'nm', 'analysis'],
+    tools: ['radare2', 'r2ghidra', 'ghidra-headless', 'readelf', 'objdump', 'nm', 'analysis'],
     scripts: ['analysis.native-triage', 'analysis.native-xref-paths', 'dynamic.module-watch', 'dynamic.function-trace'] },
   { id: 'web', description: 'Web source, HTTP APIs and authorized application behavior.',
     skills: ['security-web', 'security-kali'], tools: [], scripts: [] },
@@ -92,7 +92,7 @@ export function moduleAllowsOperation(provider: string, operation: string, selec
     return moduleAllowsTool('security_' + tool, selection)
   }
   if (provider === 'android') return enabled('reverse.android')
-  if (provider === 'ghidra' || provider === 'frida' || provider === 'debugger') return enabled('reverse.native')
+  if (provider === 'frida' || provider === 'debugger') return enabled('reverse.native')
   if (provider === 'web' || provider === 'external-web') return enabled('web')
   if (provider === 'packet-capture' || provider === 'offline') return enabled('iot')
   return true

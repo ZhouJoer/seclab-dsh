@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`requires plan consent and every exception before applying the displayed digest 1`] = `"核对安装计划python版本1目标目录/tools/python/1执行步骤Install selected Python"/tools/python-installer" "/quiet"额外授权 Approve required system runtime 我已核对工具、来源、目标目录和执行步骤确认并执行关闭预览"`;

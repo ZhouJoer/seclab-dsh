@@ -1,6 +1,7 @@
 /** Operator tool configuration files shared by the source utilities. @module */
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
+import { withFileLock } from '../packages/util/atomic-write/src/index.ts'
 import { parseSecurityEnvironments } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
 import type { SecurityEnvironmentsConfiguration } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
 export { readSecurityEnvironments, type SecurityEnvironmentsConfiguration } from '../packages/experimental/security-analysis/src/security-environment-config.ts'
@@ -25,19 +26,23 @@ export function resolveSecurityToolsFile(cwd: string, home: string, explicit?: s
  * @param configuration - validated deployment declarations to replace it.
  * @param expected - complete file text captured before probing or editing.
  */
-export function writeSecurityEnvironments(path: string, configuration: SecurityEnvironmentsConfiguration, expected: string): void {
-  const current = readFileSync(path, 'utf8')
-  if (current !== expected) throw new Error('Security environments changed; run the command again before saving')
-  parseSecurityEnvironments(configuration.environments)
-  const original: unknown = JSON.parse(current)
-  const declared = original && typeof original === 'object' && 'environments' in original && Array.isArray(original.environments)
-    ? original.environments : []
-  const environments = configuration.environments.map((environment) => {
-    const previous: unknown = declared.find((item: unknown) => item && typeof item === 'object' && 'id' in item && item.id === environment.id)
-    if (previous && typeof previous === 'object' && 'cwd' in previous && typeof previous.cwd === 'string' &&
+export async function writeSecurityEnvironments(path: string, configuration: SecurityEnvironmentsConfiguration,
+  expected: string): Promise<void> {
+  await withFileLock(path, () => {
+    const current = readFileSync(path, 'utf8')
+    if (current !== expected) throw new Error('Security environments changed; run the command again before saving')
+    parseSecurityEnvironments(configuration.environments)
+    const original: unknown = JSON.parse(current)
+    const declared = original && typeof original === 'object' && 'environments' in original && Array.isArray(original.environments)
+      ? original.environments : []
+    const environments = configuration.environments.map((environment) => {
+      const previous: unknown = declared.find((item: unknown) => item && typeof item === 'object' && 'id' in item && item.id === environment.id)
+      if (previous && typeof previous === 'object' && 'cwd' in previous && typeof previous.cwd === 'string' &&
       !isAbsolute(previous.cwd) && resolve(dirname(path), previous.cwd) === environment.cwd)
-      return { ...environment, cwd: previous.cwd }
-    return environment
+        return { ...environment, cwd: previous.cwd }
+      return environment
+    })
+    writeSecurityToolsFile(path, JSON.stringify({ ...configuration, environments }, null, 2) + '\n')
+    return Promise.resolve()
   })
-  writeSecurityToolsFile(path, JSON.stringify({ ...configuration, environments }, null, 2) + '\n')
 }

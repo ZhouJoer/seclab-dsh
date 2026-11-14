@@ -21,6 +21,33 @@ export const staticToolAdapters = [
           address: { type: 'string' }, count: { type: 'integer' }, offset: { type: 'integer' }, limit: { type: 'integer' }, filter: { type: 'string' } }, additionalProperties: false } } } },
   { id: 'r2ghidra', operations: ['decompile'], description: 'Decompile one function at a hexadecimal virtual address.',
     parameters: { address: { type: 'string', required: true } } },
+  { id: 'ghidra-headless', operations: ['identity', 'functions', 'imports', 'exports', 'strings', 'decompile', 'disassemble', 'xrefs-to', 'xrefs-from'],
+    description: 'Analyze an imported binary in an isolated resident Ghidra session without a GUI. Read bounded metadata, functions, pseudocode, instructions and references. Repeat the same analysis parameters to reuse its session; changed parameters select a separate project. Corrections affect only the private analysis database.',
+    parameters: { address: { type: 'string', description: 'Exact Ghidra address, such as 0x401000 or EXTERNAL:1. Preserve any address-space prefix.' },
+      offset: { type: 'integer', description: 'First matching observation; defaults to zero.' },
+      limit: { type: 'integer', description: 'Maximum observations to collect.' },
+      filter: { type: 'string', description: 'Literal substring of a structured observation.' },
+      count: { type: 'integer', description: 'Maximum instructions for disassembly.' },
+      analysis: { type: 'object', description: 'Optional import and analysis settings. Omit for ordinary executable auto-detection. Reuse identical settings for subsequent queries of this analysis.', additionalProperties: false,
+        properties: {
+          import: { type: 'object', description: 'Loader selection. Raw requires explicit languageId, compilerSpecId, baseAddress and entryAddress; COM and DOL use their fixed layouts.', additionalProperties: false,
+            properties: { format: { type: 'string', required: true, enum: ['auto', 'raw', 'dos-com', 'gamecube-dol'] },
+              languageId: { type: 'string', description: 'Installed Ghidra language ID; for example x86:LE:64:default.' },
+              compilerSpecId: { type: 'string', description: 'Compiler specification ID; requires languageId.' },
+              baseAddress: { type: 'string', description: 'Raw file load address in hexadecimal.' },
+              entryAddress: { type: 'string', description: 'Raw code entry address in hexadecimal within the loaded bytes.' } } },
+          disabledAnalyzers: { type: 'array', items: { type: 'string' }, description: 'Exact auto-analyzer names to disable before analysis; unknown names fail.' },
+          seeds: { type: 'array', description: 'Known code, function entries or labels applied before analysis.',
+            items: { type: 'object', additionalProperties: false, properties: {
+              kind: { type: 'string', required: true, enum: ['function', 'code', 'label'] },
+              address: { type: 'string', required: true, description: 'Exact 0x-prefixed hexadecimal address.' },
+              name: { type: 'string', description: 'Required for labels, optional for functions, absent for code.' } } } },
+          corrections: { type: 'object', additionalProperties: false, description: 'Explicit analysis repairs; omitted switches are disabled.',
+            properties: { noReturn: { type: 'boolean', description: 'Repair contradicted no-return flags and affected callers.' },
+              mipsSoftFloat: { type: 'boolean', description: 'Apply the MIPS O32 soft-float calling convention to an eligible ELF.' },
+              riscvAbi: { type: 'string', enum: ['ilp32'], description: 'Apply the RV32 ILP32 calling convention to an eligible ELF.' } } },
+        } },
+    } },
   { id: 'tshark', operations: ['summary', 'packets'], description: 'Query an imported PCAP/PCAPNG file. Never opens a live capture interface.',
     parameters: { filter: { type: 'string', description: 'Wireshark display filter.' },
       fields: { type: 'array', items: { type: 'string' }, description: 'Packet fields, such as frame.number, ip.src and tcp.port.' },
@@ -40,7 +67,7 @@ export const staticToolAdapters = [
 export interface ToolAdapterDefinition {
   id: string
   toolName: string
-  provider: 'tool-adapter' | 'ghidra' | 'android' | 'packet-capture'
+  provider: 'tool-adapter' | 'android' | 'packet-capture'
   operations: readonly string[]
   description: string
   parameters: Readonly<Record<string, unknown>>
@@ -53,17 +80,11 @@ export interface ToolAdapterDefinition {
 
 /** Existing providers retain their own output formats, role checks and execution lifetime. */
 export const toolAdapters = [
-  ...staticToolAdapters.map(adapter => ({ ...adapter, toolName: 'security_' + adapter.id, provider: 'tool-adapter' as const,
+  ...staticToolAdapters.map(adapter => ({ ...adapter, toolName: 'security_' + adapter.id.replaceAll('-', '_'), provider: 'tool-adapter' as const,
     bindingId: adapter.id === 'r2ghidra' ? 'radare2' : adapter.id === 'analysis' ? 'python' : adapter.id,
     installationIds: adapter.id === 'apk' ? [] : [adapter.id === 'r2ghidra' ? 'radare2' : adapter.id === 'analysis' ? 'python' : adapter.id],
     probeIds: adapter.id === 'apk' ? [] : adapter.id === 'analysis' ? ['python'] : adapter.id === 'r2ghidra' ? ['radare2', 'r2ghidra'] : [adapter.id],
     environmentKinds: ['local', 'docker'] as const, requiresDevice: false })),
-  { id: 'ghidra', toolName: 'security_ghidra', provider: 'ghidra', bindingId: 'ghidra',
-    operations: ['identity', 'functions', 'imports', 'exports', 'strings', 'decompile', 'disassemble', 'xrefs-to', 'xrefs-from'],
-    description: 'Query the managed Ghidra program bound to an imported sample. Database writes still require a validation plan.',
-    parameters: { address: { type: 'string', description: 'Function or reference hexadecimal address.' },
-      offset: { type: 'integer' }, limit: { type: 'integer' }, filter: { type: 'string' } },
-    installationIds: [], probeIds: [], environmentKinds: ['local'], requiresDevice: false },
   { id: 'adb', toolName: 'security_adb', provider: 'android', bindingId: 'adb',
     operations: ['device', 'packages', 'package-info'],
     description: 'Inspect the operator-selected Android device and installed packages. Does not accept shell commands or change the device.',
@@ -99,10 +120,9 @@ export function adapterInstallation(id: string): string {
  * @param tool - Operator catalog definition.
  * @param details - Whether to include the invocation guide.
  * @param native - Include the existing advanced workflow instead of the dedicated interface.
- * @param adapterOnly - Omit native fallback instructions for checked operator selections.
  * @returns model-facing definition, retaining legacy workflows for tools without an adapter.
  */
-export function modelToolDefinition(tool: ToolDefinition, details: boolean, native = false, adapterOnly = false): object {
+export function modelToolDefinition(tool: ToolDefinition, details: boolean, native = false): object {
   const adapter = toolAdapters.find(item => item.id === tool.id)
   const brief = { id: tool.id, label: tool.label, description: adapter?.description ?? tool.description,
     tags: tool.tags, dependency: tool.dependency, provider: tool.provider, skills: tool.skills }
@@ -113,8 +133,7 @@ export function modelToolDefinition(tool: ToolDefinition, details: boolean, nati
     supportedEnvironments: [...adapter.environmentKinds], externalContainer: false,
     ...(details ? { guide: adapter.description + ' Call ' + adapter.toolName
       + ' with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments.'
-      + (adapterOnly ? ' Report unsupported operations to the operator; checked preferences disable native workflows.'
-        : ' For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.') } : {}) }
+      + ' For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.' } : {}) }
 }
 
 /** Remove launch configuration from model inventory rows backed by dedicated adapters.
@@ -123,7 +142,7 @@ export function modelToolDefinition(tool: ToolDefinition, details: boolean, nati
  * @returns task-facing health without launch arguments for adapted tools.
  */
 export function modelToolInventory(inventory: ToolboxInventory,
-  options: { native?: boolean; externalContainer?: boolean; adapterOnly?: boolean } = {}): object {
+  options: { native?: boolean; externalContainer?: boolean } = {}): object {
   return { ...inventory, tools: inventory.tools.map((tool) => {
     const adapter = toolAdapters.find(adapter => adapter.id === tool.id
       && adapter.environmentKinds.some(kind => kind === inventory.kind))
@@ -132,8 +151,7 @@ export function modelToolInventory(inventory: ToolboxInventory,
         toolName: adapter.toolName,
         detail: tool.status === 'available'
           ? 'Available through ' + adapter.toolName + '; this does not establish a Shell command on PATH.'
-            + (options.adapterOnly ? ' Use the adapter directly and report unsupported operations to the operator.'
-              : ' For operations outside the adapter, request security_environment with native: true and use its exact command and prefixArgs. Do not search for another executable.')
+            + ' For operations outside the adapter, request security_environment with native: true and use its exact command and prefixArgs. Do not search for another executable.'
           : [tool.detail, 'Check this tool and its dependencies in operator tool settings.'].filter(Boolean).join('\n') }
       : tool
   }) }

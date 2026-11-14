@@ -8,9 +8,9 @@ description: "启动支持逆向、Web 与 IoT 分析的安全工作台。"
 
 使用独立安全 profile 分析已授权的材料与目标。本文要求已有完成构建的源码目录、Node 和 pnpm，以及由操作者安装的所需外部分析工具。agent 工作需要 DeepSeek 模型密钥；配置模型前也可以设置项目和查看证据。完整的外部工具验收矩阵见[安全插件](../../../packages/experimental/security-analysis/README.zh.md#known-limitations-and-deferred-work)。
 
-添加程序、网站源码、固件或抓包，也可以登记 Web 目标，然后描述要研究的问题。助手根据内容与可用环境选择并组合逆向、Web 和 IoT 方法。打开**分析工具箱**可按领域浏览工具，浏览筛选不限制任务。可在**本次会话工具偏好**指定优先工具，按需应用偏好；未保存的修改不阻止开始分析。应用前检查适配器及依赖；应用后通过专用适配器调用工具。分析进展中的**选择依据**展示已保存的方法选择理由，实际执行情况以调用记录为准。
+添加程序、网站源码、固件或抓包，也可以登记 Web 目标，然后描述要研究的问题。助手根据内容与可用环境选择并组合逆向、Web 和 IoT 方法。打开**分析工具箱**可按领域浏览工具，浏览筛选不限制任务。可在**本次会话工具偏好**指定优先工具，按需应用偏好；未保存的修改不阻止开始分析。应用前检查适配器及依赖，随后在受支持的分析操作中优先使用这些接口。分析进展中的**选择依据**展示已保存的方法选择理由，实际执行情况以调用记录为准。
 
-在任务详情的**任务设置 → 分析模块**中可选择自动识别，也可手动勾选 Android/JVM、原生二进制、Web、IoT 和渗透测试。自动模式允许助手根据任务和导入材料组合模块；手动模式禁止模型修改该集合。任务详情显示已保存的选择、依据和资源目录。Android 分析支持 APK、DEX 和 JAR，原生分析覆盖 PE、ELF 和共享库。渗透测试模块（Web 亦会启用）加载 `security-kali` 方法，面向经操作者管理的 Kali 环境执行授权测试，其 playbook 与工具选型指南随技能资源发布。模块选择不会禁用 Shell 或批准目标执行；独立设置的仅适配器工具偏好仍保留既有限制。
+在任务详情的**任务设置 → 分析模块**中可选择自动识别，也可手动勾选 Android/JVM、原生二进制、Web、IoT 和渗透测试。自动模式允许助手根据任务和导入材料组合模块；手动模式禁止模型修改该集合。任务详情显示已保存的选择、依据和资源目录。Android 分析支持 APK、DEX 和 JAR，原生分析覆盖 PE、ELF 和共享库。渗透测试模块（Web 亦会启用）加载 `security-kali` 方法，面向经操作者管理的 Kali 环境执行授权测试，其 playbook 与工具选型指南随技能资源发布。模块与工具选择不批准目标执行；Shell 仍受既有角色、任务、沙箱和审批规则约束。
 
 ## 1. 准备 profile
 
@@ -29,19 +29,25 @@ pnpm security:doctor python unicorn radare2 tshark jadx --save
 
 工具箱打开时先显示目录，不自动扫描全部工具。按用途搜索或按标签、工具包筛选后，点击单个工具的 **检测** 或 **检测筛选结果**。**工具定义与导入** 支持鼠标编辑 CLI/Python 模块定义、选择 JSON 文件导入以及导出工具包；高级 JSON 可编辑集合、依赖、平台、技能引用与 provider 引用。导入先预览校验并列出冲突，覆盖需要勾选确认；保存只注册定义，不安装软件、不运行命令。定义保存在独立的 `.dsh/security-tool-packs.json`，安装路径仍在原配置文件中。
 
-安装长期保留的独立 64 位 Python 3.12–3.14，然后在仓库运行 `pnpm security:python --python "ABSOLUTE_PYTHON_PATH"`。Windows 启动器可使用 `--python py --python-arg=-3.14`。初始化在选定工具配置旁创建新环境，安装[固定版本的运行依赖](../../../scripts/security-python-requirements.txt)，检查 pip 一致性和原生模块，全部成功后才保存 Python 选择。它不安装系统 Python、不修改已有环境，也不从应用缓存推断基础解释器。基础安装必须持续可用。移动仓库或替换基础解释器后重新运行；确认没有任务使用旧环境后，可显式清理保留的环境。失败尝试保留诊断文件，不主动改变选定解释器；安装期间配置被修改时拒绝提交。每个子进程默认限时十分钟，可通过 `--timeout-ms` 调整。刷新工具箱并运行 `pnpm security:doctor python unicorn capstone pefile r2pipe frida` 验证选择。
+自动安装时，打开**安装与维护工具**，选择并保存**统一安装目录**，再选择工具包并点击**预览安装计划**。核对版本、下载校验、目标目录和步骤后，点击**确认并执行**。受管 Kali 预览可能下载固定基础镜像，并短暂运行自有临时容器以解析软件包版本；不会升级选中的环境。Windows 配方将工具文件安装到该目录；必要系统组件需要单独授权。更改目录只影响后续安装，不会移动已有工具。共享安装记录跨项目和页面刷新保留；可回到**安装记录 → 日志与诊断**查看进度、取消操作，或对结果不确定的操作执行**重新检查结果**。安装成功但选择未保存时，工具保留以供诊断和显式采用。清理预览会拒绝仍被项目引用的安装。
+
+**检测**只报告安装健康情况，不保存路径，也不启动容器。需要保存发现的候选项时，点击**采用此安装**。对于受管 Docker，先点击**启动环境**再检测工具；外部容器必须已在运行。手动**检测并保存**、CLI `--save` 和安装确认都是显式修改。共享账本与项目选择分开保存；详见[安装所有权与恢复](../../../packages/experimental/security-analysis/README.zh.md#roles-tasks-and-tool-management)。
+
+CLI 使用相同计划和安装记录。运行 `pnpm security:tools install-recipes` 查看工具包，运行 `pnpm security:tools install-root "ABSOLUTE_DIRECTORY"` 选择安装目录。`pnpm security:tools install-preview ghidra-headless` 返回计划 ID 和摘要。核对后使用 `pnpm security:tools install-apply PLAN_ID --digest DIGEST --request-id UNIQUE_ID` 执行，并按预览要求添加各项 `--confirm ID`。`install-status` 列出操作，`install-status OPERATION_ID --follow` 跟踪单个操作。使用 `install-cancel OPERATION_ID`、`install-reconcile OPERATION_ID` 和 `install-remove-preview INSTALLATION_ID` 管理生命周期。运行中的工作台占有共享写入权限时，请通过该工作台操作。添加 `--environment ID` 选择已配置环境；`--config FILE` 和 `--environments FILE` 指定项目文件。
+
+安装 Python 分析模块时，先选择统一目录，再使用长期保留的独立 64 位 Python 3.12–3.14 运行 `pnpm security:python --python "ABSOLUTE_PYTHON_PATH"`。Windows 启动器可使用 `--python py --python-arg=-3.14`。此命令只打印待核对计划；通过 `install-apply` 将[固定版本的运行依赖](../../../packages/experimental/security-analysis/resources/security-python-requirements.txt)安装到统一目录下的新环境。管理器检查 pip 一致性和原生模块后才保存 Python 选择。基础解释器必须持续可用；系统不会自动选择应用缓存。刷新工具箱并运行 `pnpm security:doctor python unicorn capstone pefile r2pipe frida` 检查保存的选择。
 
 初始化和工具管理优先使用已有的仓库 `.dsh/security-tools.json`，其次使用已有的 `$DSH_HOME/security/tools.json`，否则创建仓库配置文件。安装配置回退到 Harness home 时，工具定义与环境声明仍位于仓库 `.dsh` 目录。显式 `--config FILE` 优先，并默认从该文件旁读取定义；覆盖时应将 profile 的 `toolConfiguration.path` 配成同一个绝对路径。这些文件包含本机路径，不应复制到另一台电脑；请在另一台电脑单独初始化。
 
 工具包使用 `{"version":1,"id":"my-tools","label":"My tools","tools":[{"id":"my-cli","label":"My CLI","commands":["my-cli"],"tags":["firmware"],"guide":"Use bounded output."}],"collections":[]}` 格式。Python 模块使用 `dependency:"python"`、`invocation:"python"` 和 `probe:{kind:"python-module",module:"import_name",distribution:"package-name"}`。依赖可以引用其它已注册工具，导入时拒绝缺失引用和循环依赖。CLI 也支持 `pnpm security:tools import pack.json`（冲突时显式加 `--replace`）、`export PACK_ID output.json`、`doctor --tag firmware`、`doctor --collection web`，以及 `--catalog FILE` 指定定义文件。
 
-应用**本次会话工具偏好**时，会先检查所选适配器、环境绑定及已安装依赖；检查失败时自动恢复自动选择并显示原因，可直接开始分析。未保存的修改不影响已应用设置。选择生效期间模型使用专用适配器，通用 Shell 执行被禁用。需要原生工作流或没有可检查适配器的工具时，请选择**恢复自动选择**。偏好影响活跃会话及其委派子会话，在会话释放或 Host 重启时清除。
+应用**本次会话工具偏好**时，会先检查所选适配器、环境绑定及已安装依赖。检查失败会显示原因并保留原选择；未保存的修改也不影响已生效设置。助手在受支持的分析操作中优先使用所选适配器，也可按既有角色、模块、任务、沙箱和审批规则使用 Shell 辅助检查、计算或处理未覆盖操作。使用其他方法前必须报告适配器失败或覆盖范围缺口。**恢复自动选择**会清除偏好。已保存偏好在 Host 重启后恢复，并传给委派子会话。
 
 自定义工具默认用 `--version` 查询版本；在 `set` 时重复传入 `--version-arg=参数` 可覆盖。解释器可通过重复的 `--arg=参数` 为每次调用添加固定启动参数；`set` 不带 `--arg` 时清除原有启动参数。例如，将 JADX 配置为 Java 可执行文件，并传入 `--arg=-cp --arg="路径/jadx.jar" --arg=jadx.cli.JadxCLI`。Windows 的 `.cmd`、`.bat` 和 `.ps1` 启动脚本需要改为配置解释器可执行文件。这些选项用于已有安装；登记名称不会安装软件或创建专用 provider。
 
 可执行文件路径和参数保存在当前目录下被 Git 忽略的 `.dsh/security-tools.json`。请在仓库根目录运行这些命令。`pnpm security` 与页面共用该文件，工具检查和后续模型请求会重新读取它。已保存路径失效会报错，不会回退到其他安装。脚本配置已安装软件，不修改系统 PATH。专用的 `security_radare2`、`security_r2ghidra`、`security_tshark`、`security_jadx`、`security_file`、`security_strings`、`security_readelf`、`security_objdump` 和 `security_nm` 接受已导入资产 ID 和语义参数。保存的证据支持条目分页，无需重新执行工具。已确认计数直接确定工具身份，与执行是否成功无关；从 Shell 推测的计数仍标为未验证。设备、容器及其他环境仍在[示例 overlay](../../../apps/cli/config/examples/security-analysis/cordis.yml) 中配置。`--config FILE` 用于管理其他 JSON 文件；启动器只读取默认文件。
 
-安装设置使用以下带版本的结构；旧本机映射仍可读取，并在保存时转换。`bindings` 选择已配置的环境，`r2ghidra` 跟随 `radare2`。保存拒绝过期 revision。托管 Docker 按需启动已有镜像，不拉取镜像。
+安装设置使用以下带版本的结构；旧本机映射仍可读取，并在保存时转换。`bindings` 选择已配置的环境，`r2ghidra` 跟随 `radare2`。保存拒绝过期 revision。分析可按需启动已有的受管 Docker 镜像；只读检测不会启动容器。获取 Kali 镜像需要显式安装计划。
 
 ```json
 {
@@ -62,7 +68,7 @@ pnpm security:doctor python unicorn radare2 tshark jadx --save
 
 登记外部 Web 目标时，将运行环境选择为 `kali`。显式登记会把 Kali 加入已有任务范围，获批的 HTTP 序列通过该容器内的 Python 运行。目标 origin 与允许的 IP/CIDR 范围必须能从容器访问。凭据与响应脱敏仍由 Host 管理。Docker、容器或 Python 不可用时，计划准备会失败，不会回退到 Host 网络。
 
-在所选容器内通过 Kali 软件包管理器安装 Metasploit。现有 `metasploit` 定义通过容器的 PATH 发现 `msfconsole`，无需绝对安装路径或单独的 DSH 插件。在仓库根目录验证已配置的环境：
+要在所选的运行中外部容器内安装 Kali 工具组，先运行 `pnpm security:tools install-preview kali-web --environment kali` 预览。核对确切 daemon 和容器后，执行计划并添加要求的 `--confirm external-container`。软件包修改保留在该容器内；DSH 不接管生命周期。也可自行通过 Kali 软件包管理器安装 Metasploit。`metasploit` 定义通过容器的 PATH 发现 `msfconsole`。在仓库根目录验证已配置的环境：
 
 ```sh
 pnpm security:tools doctor metasploit --environment kali
@@ -163,7 +169,7 @@ pnpm security
 
 主聊天页在输入框上方显示小型**工具**计数徽标，点击后在右侧栏打开**工具与进展**。工具卡片分别显示次数和状态徽标，时间线展示各研究方向的结论与下一步；逐次调用和证据默认折叠。进展面板只展示信息，直接在现有输入框补充或纠正分析方向，并使用原生停止按钮。另一个**安全工作台**入口打开可操作的任务侧栏，包含任务设置、解除封印和证据浏览。任务详情的**更多功能 → 工具与进展**展示同一执行时间线。未关联任务的聊天会显示提示，直到首次创建安全分析任务。
 
-在打开任务前，可从侧栏进入**安全分析**并打开**工具箱**。选择宿主或已配置的容器，再刷新。通过链接中的说明手动安装缺失工具；刷新不会安装软件或启动 Docker。配置可执行文件路径可固定某个安装版本。r2ghidra 跟随选定的 radare2，Unicorn、r2pipe 和 Frida 跟随选定的 Python。停止的容器显示工具尚未检查；缺少可选工具不会令宿主不可用。
+打开任务前，在侧栏选择**安全分析**并打开**工具箱**。选择本机或已配置的容器，然后检测需要的工具。支持的工具包可通过**安装与维护工具**安装，也可配置已有可执行文件。检测不安装软件、不保存选择，也不启动 Docker。r2ghidra 跟随选定的 radare2，Unicorn、r2pipe 和 Frida 跟随选定的 Python。停止的容器显示工具未检测；缺少可选工具不代表本机不可用。
 
 可要求协调者或分析子 agent 编写、编辑并执行分析脚本。生成的分析文件统一存放在所选工作区的 `.dsh/analysis/<task-session-key>/` 下：`scripts/` 放脚本，`outputs/` 放结果和日志，`tmp/` 放中间文件。每个任务和会话各有独立目录，可让 agent 告知具体路径。agent 从该目录运行脚本，用绝对路径读取原始材料。原生工具在 Windows 使用 PowerShell，在 Linux/macOS 使用 Bash；通过对应 Shell 调用 Python。使用 `job_output` 收集后台输出，再通过 `security_capture_analysis(assetId, callIds)` 保存已提交的调用标识。所得脚本分析日志可供发现、子报告和独立复核引用。它保留不完整输出，属于辅助证据，不会自动确认结论。原生脚本遵循 DSH 工作区权限、沙箱和审批；专用验证接口仍使用下述计划流程。
 
@@ -201,11 +207,11 @@ Read security_scope and security_capabilities. For the imported static-demo.txt 
 
 在**高级详情** → **知识**中搜索 `DEMO_PARSER_ENTRY`，应能找到采集的项目证据并查看原始制品。验证委派时，让协调者把同一资产的清点交给 `reconnaissance`，任务为 `inventory`，收取 `job_output` 后，再交给 `reviewer` 以 `review` 任务复核证据。结果应包含子 Session 链接、证据引用和不确定性；子 agent 不能执行或批准验证计划。
 
-Ghidra GUI 分析、JADX 和 Frida 需要配置对应外部工具。仅配置 Python 可执行文件不能证明 Frida bindings 或设备已经就绪。上述步骤不需要 Android 设备，通过它们也不代表外部工具验收矩阵已完成。
+Ghidra headless 通过 `security_ghidra_headless` 对导入的原生二进制提供身份、函数、导入、导出、字符串、反编译、反汇编和引用查询。安装包括选定的兼容 JDK，无需 GUI 桥接。相同样本和分析设置的连续查询复用常驻会话。可选 `analysis` 参数指定语言、编译器、Raw/COM/DOL 导入、分析种子和显式修正，详见 [Ghidra 分析设置](../../../packages/experimental/security-analysis/README.zh.md#configure-analysis-providers)。打开 Ghidra 工具的缓存控制可列出项目，并在其常驻会话关闭后删除；已保存样本和证据保留。JADX 和 Frida 也需要已配置的外部工具。仅配置 Python 可执行文件不代表 Frida bindings 或设备已就绪。上述步骤不需要 Android 设备；通过这些步骤不代表外部工具验收矩阵通过。
 
 ## 当前验收限制
 
-Windows Frida 的正常结束和取消，以及 Docker 生命周期已有本地真实集成测试。目前没有 Android 设备可供验收。Ghidra GUI 集成、源码／二进制／Web 的全面分析及真实模型 Web 录制仍需外部环境。包 README 记录剩余实现限制；当前实验版本不表示完整计划已通过发布验收。
+Windows Frida 的正常结束和取消，以及 Docker 生命周期已有本地真实集成测试。目前没有 Android 设备可供验收。源码／二进制／Web 的全面分析及真实模型 Web 录制仍需外部环境。包 README 记录剩余实现限制；当前实验版本不表示完整计划已通过发布验收。
 
 <a id="local-web-laboratory"></a>
 ## 本地 Web 靶场
@@ -224,7 +230,7 @@ Nuclei 与 Metasploit 专用 provider 执行、审核模块目录、Vulhub 编�
 <a id="cve-blind-rediscovery"></a>
 ## CVE 盲测复现基准
 
-挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。先用 `pnpm security:toolbox` 构建 toolbox 镜像（可传 `--base <image>` / `--tag <tag>`）；镜像安装 git、cmake、make、gcc、clang、pkg-config、autoconf/automake/libtool、POSIX shell 以及固件提取工具（binwalk、squashfs-tools、ubi_reader），并内置 `/opt/dsh-toolbox/diffcheck.py`（在两个构建根下各跑一次同一复现程序，记录有界差分观察）。在 `environments[].tools` 下注册工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。该基准需要可导入的源码树和修复引用（或两个版本）；没有源码的固件镜像不是基准案例——按普通调查任务运行，它会加载 `security-firmware` 方法，也可使用同一 toolbox 镜像中的提取工具。
+挖掘环境在受管 Docker 容器内用 sanitizer 重编译导入的 C/C++ 源码并运行复现程序。单独准备的镜像需要[开发 Dockerfile](../../../packages/experimental/security-analysis/resources/toolbox/Dockerfile)所列的构建工具和 `/opt/dsh-toolbox/diffcheck.py`。在 `environments[].tools` 下注册工具，并上调 `maxDurationMs` 使完整 sanitizer 构建能放入一次审批计划。`pnpm security:toolbox --environment ID --group kali-firmware` 只预览共享管理器的 Kali 软件包安装，不准备基准镜像，也不安装差分辅助脚本。该基准需要可导入的源码树以及修复引用或两个版本。没有源码的固件镜像应通过 `security-firmware` 方法按普通调查任务分析。
 
 该能力为实验性且仅限手动：对话不会自动启动挖掘，工具箱只在折叠卡片中展示。`pnpm security:cve-bench prepare [--force]` 将每个种子案例固定的漏洞与修复 commit 克隆到 `.dsh/cve-bench/`，写出 `patch.diff` 作为唯一线索，并生成盲测任务与 overlay。`pnpm security:cve-bench run [--launch]` 打印无头启动命令，或以 `--launch` 直接执行；无头会话把工作台存储钉在案例工作区内，对该一次性工作区开启 `approval.sessionSelfApprove`（会话自建任务并自批 mining 计划；其他所有场景仍默认逐条 operator 审批），并对 `webAccess: off` 的案例禁用 web 搜索/抓取工具，使盲态约束落在机制而非提示词上。`pnpm security:cve-bench verify --case <id>` 在 toolbox 镜像内重执行每对已记录的 mining 运行，结构化解析 AddressSanitizer 报告并写出 `verify.json`；`pnpm security:cve-bench grade --case <id>` 读取案例 journal（或 `--report <report.json>` 导出）评分，机械差分结果优先于文本匹配。无头结果按设计不出现在操作员的 Web 工作台里。`pnpm security:cve-bench web --case <id>` 在准备好的案例工作区上打开常规 Web 工作台，供操作员驱动运行：在对话 Workbench 概览页的“挖掘任务”表单提交目标（源码路径、二进制上传或网页目标，以及再发现线索），在计划审批中逐条批准 mining 计划，结束后对同一份 journal 执行 `verify` 与 `grade`。`pnpm security:cve-bench review --case <id>` 则把同一工作台打开在已完成运行的 journal 上，可在现有侧栏浏览任务、计划、证据与 finding；两个入口都不改动任何网页功能。任务全程看不到 CVE 编号或公告文字；复现标准是同一 PoC 在漏洞构建上触发 sanitizer 崩溃而修复构建正常结束。案例分 tier：`patch-guided` 把修复 diff 作为唯一线索交给会话，`version-diff` 只准备两个版本、不提供补丁文件，定位版本间的安全相关改动本身就是任务的一部分。把包含固定 commit 与评分字段的 JSON 放入 `resources/cve-cases/` 即可新增案例；`cve: "PENDING"` 表示修复尚无公告编号。
 

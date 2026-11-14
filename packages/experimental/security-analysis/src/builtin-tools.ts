@@ -1,11 +1,13 @@
 /** Built-in tool pack; operator imports use the same validated data format. @module */
 import { parseToolPack } from './tool-definitions.ts'
+import { additionalToolDefinitions, managedToolDefinition } from './builtin-tool-management.ts'
 /** Default definitions without installation paths or measured status. */
 export const builtinToolPack = parseToolPack({
   'version': 1,
   'id': 'builtin',
   'label': 'Built-in tools',
   'tools': [
+    ...additionalToolDefinitions,
     { id: 'apk', label: 'APK inventory', category: 'reverse', tags: ['android', 'reverse'], invocation: 'provider',
       provider: 'tool-adapter', skills: ['security-android'], guide: 'Use security_apk inventory with an imported APK asset.' },
     { id: 'analysis', label: 'Reverse analysis scripts', category: 'reverse', tags: ['android', 'reverse'], invocation: 'provider',
@@ -221,22 +223,6 @@ export const builtinToolPack = parseToolPack({
       'guide': 'Python bindings for Frida; module availability does not prove target access. Load the dedicated provider input guide for approved instrumentation and preserve role and execution permissions. Reuse provider identity, messages, incomplete and cleanup fields and existing event payloads. Preserve module/function addresses, event order and observation window; empty or limited events do not establish that a function is never called.',
       'skills': [
         'security-dynamic',
-        'security-firmware',
-      ],
-    },
-    {
-      'id': 'ghidra',
-      'label': 'ghidra',
-      'description': 'ghidra',
-      'category': 'reverse',
-      'tags': [
-        'reverse',
-      ],
-      'url': 'https://ghidra-sre.org/',
-      'invocation': 'provider',
-      'provider': 'ghidra',
-      'guide': 'Use the configured Ghidra provider and load its input guide. The server, loaded program and provider readiness are checked separately.',
-      'skills': [
         'security-firmware',
       ],
     },
@@ -954,12 +940,12 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
       'guide': 'Resolve dependency compile and link flags inside mining build steps. A missing package is an environment limitation to record; do not silently drop the flags.',
       'skills': ['security-cve-mining'],
     },
-  ],
+  ].map(managedToolDefinition),
   'collections': [
     {
       'id': 'reverse',
       'label': 'Reverse engineering / 逆向分析',
-      'toolIds': ['radare2', 'r2ghidra', 'r2pipe', 'capstone', 'pefile', 'ghidra', 'unicorn', 'frida', 'jadx', 'readelf', 'objdump', 'nm', 'strings'],
+      'toolIds': ['radare2', 'r2ghidra', 'r2pipe', 'capstone', 'pefile', 'ghidra-headless', 'gdb', 'rizin', 'unicorn', 'frida', 'jadx', 'readelf', 'objdump', 'nm', 'strings'],
     },
     {
       'id': 'mining',

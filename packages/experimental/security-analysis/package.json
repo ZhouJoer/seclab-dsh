@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-security-analysis",
-  "description": "Scoped reverse engineering with GhidraMCP, Frida, evidence records, and reconnaissance delegation",
+  "description": "Scoped reverse engineering with Ghidra headless, Frida, evidence records, and reconnaissance delegation",
   "version": "0.2.1-rc.1",
   "publishConfig": {
     "access": "public"
@@ -39,10 +39,6 @@
     "./environment": {
       "types": "./lib/types/environment-local.d.ts",
       "default": "./lib/environment.js"
-    },
-    "./ghidra": {
-      "types": "./lib/types/ghidra-provider.d.ts",
-      "default": "./lib/ghidra.js"
     },
     "./frida": {
       "types": "./lib/types/frida-provider.d.ts",
@@ -93,7 +89,7 @@
     "lib/index.js",
     "lib/workbench.js",
     "lib/environment.js",
-    "lib/ghidra.js",
+    "lib/ghidra-headless-*.js",
     "lib/frida.js",
     "lib/debugger.js",
     "lib/android.js",
@@ -110,6 +106,7 @@
     "lib/model-*.js",
     "lib/process-*.js",
     "lib/toolbox-*.js",
+    "lib/tool-adapter-*.js",
     "lib/types-*.js",
     "lib/source-*.js",
     "lib/assessment-*.js",
@@ -128,7 +125,10 @@
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts"
+    "lib/typert.remote-client.d.ts",
+    "resources/**/*.java",
+    "resources/ghidra/REA-LICENSE.txt",
+    "resources/security-python-requirements.txt"
   ],
   "license": "MIT",
   "dependencies": {
@@ -143,7 +143,9 @@
     "tough-cookie": "^6.0.1",
     "undici": "^8.10.0",
     "yauzl": "^3.4.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@deepseek-ai/dsh-atomic-write": "workspace:*",
+    "@deepseek-ai/dsh-home-paths": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

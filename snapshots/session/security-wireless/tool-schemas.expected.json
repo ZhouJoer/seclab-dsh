@@ -774,7 +774,7 @@
     },
     {
       "name": "security_static",
-      "description": "Collect read-only source, binary, Ghidra, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
+      "description": "Collect read-only source, binary, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -782,7 +782,6 @@
             "type": "string",
             "enum": [
               "binary",
-              "ghidra",
               "android",
               "source",
               "packet-capture"
@@ -1853,7 +1852,7 @@
       },
       {
         "name": "security_static",
-        "description": "Collect read-only source, binary, Ghidra, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
+        "description": "Collect read-only source, binary, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1861,7 +1860,6 @@
               "type": "string",
               "enum": [
                 "binary",
-                "ghidra",
                 "android",
                 "source",
                 "packet-capture"

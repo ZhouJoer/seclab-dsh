@@ -6,6 +6,8 @@ import type { HttpSummary } from '../http-model.ts'
 
 /** Operator-configured tool location. */
 export interface ToolInstallation {
+  /** Private Host temporary directory for this executable; never changes global environment variables. */
+  temporaryDirectory?: string | undefined
   /** Provider-facing tool identity within one environment. */
   id: string
   /** Host executable or executable path inside the selected container. */
@@ -120,6 +122,16 @@ export interface AnalysisContext {
 export interface AnalysisProvider {
   id: string
   operations: readonly string[]
+  /** Release resident programs after operations in an environment have settled; absent providers own no resident programs.
+   * @param environmentId - environment being stopped or released.
+   * @returns completion after owned processes release their leases.
+   */
+  closeEnvironment?(environmentId: string): Promise<void>
+  /** Release resident programs after a project has stopped; absent providers own no resident programs.
+   * @param projectId - stopped project whose admitted operations have settled.
+   * @returns completion after owned processes release their leases.
+   */
+  closeProject?(projectId: string): Promise<void>
   /** Declare retained inputs before execution; the controller validates visibility and asset identity.
    * @param request - proposed semantic operation.
    * @returns evidence identities required by this operation.
@@ -154,7 +166,8 @@ export interface AnalysisProvider {
    */
   prepare?(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisOperation>
   /**
-   * Execute one admitted request and await resource cleanup.
+   * Execute one admitted request and settle its operation resources.
+   * Resident programs remain owned until the provider's close hooks or disposal.
    * @param request - resolved request.
    * @param context - owning execution resources.
    * @returns raw provider observations and completeness metadata.

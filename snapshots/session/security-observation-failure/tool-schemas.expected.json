@@ -803,7 +803,7 @@
     },
     {
       "name": "security_static",
-      "description": "Collect read-only source, binary, Ghidra, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
+      "description": "Collect read-only source, binary, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -811,7 +811,6 @@
             "type": "string",
             "enum": [
               "binary",
-              "ghidra",
               "android",
               "source",
               "packet-capture"
@@ -1886,8 +1885,8 @@
         }
       },
       {
-        "name": "security_ghidra",
-        "description": "Query the managed Ghidra program bound to an imported sample. Database writes still require a validation plan. Uses operator configuration and saves evidence. Returns a bounded receipt; read original retained output with security_evidence offset/length.",
+        "name": "security_ghidra_headless",
+        "description": "Analyze an imported binary in an isolated resident Ghidra session without a GUI. Read bounded metadata, functions, pseudocode, instructions and references. Repeat the same analysis parameters to reuse its session; changed parameters select a separate project. Corrections affect only the private analysis database. Uses operator configuration and saves evidence. Returns a bounded item page; read further items with security_evidence itemOffset/itemLimit.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1915,16 +1914,124 @@
             },
             "address": {
               "type": "string",
-              "description": "Function or reference hexadecimal address."
+              "description": "Exact Ghidra address, such as 0x401000 or EXTERNAL:1. Preserve any address-space prefix."
             },
             "offset": {
-              "type": "integer"
+              "type": "integer",
+              "description": "First matching observation; defaults to zero."
             },
             "limit": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Maximum observations to collect."
             },
             "filter": {
-              "type": "string"
+              "type": "string",
+              "description": "Literal substring of a structured observation."
+            },
+            "count": {
+              "type": "integer",
+              "description": "Maximum instructions for disassembly."
+            },
+            "analysis": {
+              "type": "object",
+              "description": "Optional import and analysis settings. Omit for ordinary executable auto-detection. Reuse identical settings for subsequent queries of this analysis.",
+              "additionalProperties": false,
+              "properties": {
+                "import": {
+                  "type": "object",
+                  "description": "Loader selection. Raw requires explicit languageId, compilerSpecId, baseAddress and entryAddress; COM and DOL use their fixed layouts.",
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "auto",
+                        "raw",
+                        "dos-com",
+                        "gamecube-dol"
+                      ]
+                    },
+                    "languageId": {
+                      "type": "string",
+                      "description": "Installed Ghidra language ID; for example x86:LE:64:default."
+                    },
+                    "compilerSpecId": {
+                      "type": "string",
+                      "description": "Compiler specification ID; requires languageId."
+                    },
+                    "baseAddress": {
+                      "type": "string",
+                      "description": "Raw file load address in hexadecimal."
+                    },
+                    "entryAddress": {
+                      "type": "string",
+                      "description": "Raw code entry address in hexadecimal within the loaded bytes."
+                    }
+                  },
+                  "required": [
+                    "format"
+                  ]
+                },
+                "disabledAnalyzers": {
+                  "type": "array",
+                  "description": "Exact auto-analyzer names to disable before analysis; unknown names fail.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "seeds": {
+                  "type": "array",
+                  "description": "Known code, function entries or labels applied before analysis.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "function",
+                          "code",
+                          "label"
+                        ]
+                      },
+                      "address": {
+                        "type": "string",
+                        "description": "Exact 0x-prefixed hexadecimal address."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Required for labels, optional for functions, absent for code."
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "address"
+                    ]
+                  }
+                },
+                "corrections": {
+                  "type": "object",
+                  "description": "Explicit analysis repairs; omitted switches are disabled.",
+                  "additionalProperties": false,
+                  "properties": {
+                    "noReturn": {
+                      "type": "boolean",
+                      "description": "Repair contradicted no-return flags and affected callers."
+                    },
+                    "mipsSoftFloat": {
+                      "type": "boolean",
+                      "description": "Apply the MIPS O32 soft-float calling convention to an eligible ELF."
+                    },
+                    "riscvAbi": {
+                      "type": "string",
+                      "description": "Apply the RV32 ILP32 calling convention to an eligible ELF.",
+                      "enum": [
+                        "ilp32"
+                      ]
+                    }
+                  }
+                }
+              }
             }
           },
           "required": [
@@ -2268,7 +2375,7 @@
       },
       {
         "name": "security_static",
-        "description": "Collect read-only source, binary, Ghidra, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
+        "description": "Collect read-only source, binary, Android or offline Wi-Fi/BLE packet-capture evidence for an imported asset. Packet capture accepts summary/packets with protocol wifi/ble and never opens live interfaces. Raw output is stored before a summary and current project revision are returned. Use that revision for a following command; concurrent changes can still cause a revision conflict.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2276,7 +2383,6 @@
               "type": "string",
               "enum": [
                 "binary",
-                "ghidra",
                 "android",
                 "source",
                 "packet-capture"

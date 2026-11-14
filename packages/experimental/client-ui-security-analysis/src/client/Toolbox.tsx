@@ -9,14 +9,19 @@ import type { ToolboxDirectory, ToolboxConfiguration, ToolCatalogSnapshot } from
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { ToolSettings, type ToolConfigurationActions } from './ToolSettings.tsx'
 import { ToolPacks, type ToolPackActions } from './ToolPacks.tsx'
+import { ToolInstallationManager, type ToolInstallationActions } from './ToolInstallationManager.tsx'
+import { ToolboxCache } from './ToolboxCache.tsx'
 import type { NS } from './locales.ts'
 import css from './Workbench.module.css'
 
 /** Inventory and configuration actions supplied by the authenticated Host. */
 export interface ToolboxActions extends ToolConfigurationActions, ToolPackActions, DeviceActions {
+  installationActions?: ToolInstallationActions
   scriptCatalog(this: void): Promise<AnalysisScript[]>
   toolboxDirectory(this: void, environmentId?: string): Promise<ToolboxDirectory>
   toolboxInventory(this: void, environmentId?: string, toolIds?: string[]): Promise<ToolboxDirectory>
+  toolboxEnvironment?(this: void, environmentId: string, action: 'start' | 'stop'): Promise<ToolboxDirectory>
+  ghidraCaches?: Parameters<typeof ToolboxCache>[0]['read']
 }
 
 /** Render measured tool availability and manual installation references.
@@ -54,6 +59,7 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
   const [catalog, setCatalog] = useState<ToolCatalogSnapshot>()
   const [tag, setTag] = useState(''), [pack, setPack] = useState(''), [query, setQuery] = useState('')
   const [domain, setDomain] = useState('all')
+  const [state, setState] = useState('all')
   const generation = useRef(0)
   useEffect(() => {
     let current = true
@@ -74,7 +80,11 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
       ? ['runtime', 'utility', 'custom'].includes(tool.category)
       : tool.category === domain || definition?.tags.includes(domain)
         || catalog?.collections.find(item => item.id === domain)?.toolIds.includes(tool.id))
-    return inDomain && (!tag || definition?.tags.includes(tag))
+    const inState = state === 'all' || state === 'configured' && tool.configured
+      || state === 'unchecked' && tool.status === 'not-checked'
+      || state === 'attention' && (tool.status === 'error' || tool.status === 'missing'
+        || !!tool.reason && tool.reason !== 'unchecked')
+    return inDomain && inState && (!tag || definition?.tags.includes(tag))
       && (!pack || catalog?.packs.find(item => item.id === pack)?.tools.some(item => item.id === tool.id))
       && (!query || [tool.id, definition?.label, definition?.description, ...definition?.tags ?? []]
         .join(' ').toLowerCase().includes(query.toLowerCase()))
@@ -102,14 +112,22 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
     unavailable: 'toolAdapterUnavailable', ready: 'toolAdapterReady' } as const
   return <section aria-label={t('toolbox')}>
     <p>{t('toolboxHelp')}</p>
-    <div className={css.segments} role="group" aria-label={t('toolDomain')}>
+    <div className={`${css.segments} ${css.toolDomains}`} role="group" aria-label={t('toolDomain')}>
       {([['all', 'toolAll'], ['reverse', 'toolDomainReverse'], ['web', 'toolWeb'],
         ['iot', 'toolDomainIot'], ['general', 'toolDomainGeneral']] as const)
         .map(([value, label]) => <button key={value} aria-pressed={domain === value}
           onClick={() => { setDomain(value) }}>{t(label)}</button>)}
     </div>
     {catalog && <ToolPacks {...props} catalog={catalog} changed={() => { setRevision(value => value + 1) }} />}
+    {props.installationActions && directory && <ToolInstallationManager actions={props.installationActions}
+      environmentId={directory.inventory.environmentId} environments={directory.environments} t={t}
+      onChanged={() => { setRevision(value => value + 1) }}
+      {...props.notifyImprovement ? { notify: props.notifyImprovement } : {}} />}
     <label className={css.field}>{t('toolPurposeSearch')}<input value={query} onChange={(event) => { setQuery(event.target.value) }} /></label>
+    <label className={css.field}>{t('toolStateFilter')}<select value={state} onChange={(event) => { setState(event.target.value) }}>
+      <option value="all">{t('toolAll')}</option><option value="configured">{t('toolConfigured')}</option>
+      <option value="unchecked">{t('toolUnchecked')}</option><option value="attention">{t('toolNeedsAttention')}</option>
+    </select></label>
     <label className={css.field}>{t('toolTagFilter')}<select value={tag} onChange={(event) => { setTag(event.target.value) }}><option value="">{t('toolAll')}</option>
       {[...new Set(catalog?.tools.flatMap(tool => tool.tags))].sort().map(tag => <option key={tag} value={tag}>{tag}</option>)}
     </select></label>
@@ -127,6 +145,7 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
     {configuration?.editable && <button disabled={busy || editing !== undefined} onClick={() => { setEditing('') }}>{t('toolAddInstallation')}</button>}
     {editing !== undefined && configuration && inventory && <ToolSettings key={inventory.environmentId + ':' + editing}
       environmentId={inventory.environmentId} configuration={configuration} selectedId={editing}
+      detected={inventory.tools.find(tool => tool.id === editing)}
       configureTool={configureTool} toolboxFiles={toolboxFiles} notify={props.notifyImprovement} t={t}
       onClose={() => { setEditing(undefined) }}
       onResult={(result) => {
@@ -146,6 +165,14 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
       {inventory.checkedAt > 0 && <p>{t('toolCheckedAt')} {new Date(inventory.checkedAt).toLocaleString()}</p>}
       <code>{inventory.containerId ?? inventory.workdir}</code>
       {inventory.detail && <p>{inventory.detail}</p>}
+      {inventory.kind === 'docker' && <p>{t('toolContainerPathsHint')}</p>}
+      {props.toolboxEnvironment && directory.environments.find(item => item.id === inventory.environmentId)?.actions
+        ?.filter(action => action === 'start' || action === 'stop').map(action => <button key={action} disabled={busy}
+          onClick={() => {
+            setBusy(true); setError('')
+            void props.toolboxEnvironment?.(inventory.environmentId, action).then((value) => { setDirectory(value) })
+              .catch((error: unknown) => { setError(String(error)) }).finally(() => { setBusy(false) })
+          }}>{t(action === 'start' ? 'toolStartEnvironment' : 'toolStopEnvironment')}</button>)}
       {!visible.length && <p>{t('toolNoMatches')}</p>}
       {Object.entries(categories).filter(([category]) => visible.some(tool => tool.category === category))
         .map(([category, label]) => <section key={category} aria-label={t(label)}>
@@ -153,35 +180,42 @@ function ToolInstallations(props: ToolboxActions & { notifyImprovement?: (text: 
           {visible.filter(tool => tool.category === category).map((tool) => {
             const adapter = configuration?.adapters?.find(item => item.id === tool.id)
             return <article key={tool.id} className={css.card}>
-              <strong>{tool.id} · {t(states[tool.status])}</strong>
-              {adapter && <section aria-label={t('toolAdapterConfiguration')}>
-                <p>{t('toolViaAdapter')}: <code>{adapter.toolName}</code> · {t(adapterStates[adapter.status])}</p>
-                <p>{t('toolAdapterOperations')}: {adapter.operations.join(', ')}</p>
-                <p>{t('toolDefaultEnvironment')}: {adapter.environmentId ?? t('toolInheritEnvironment')}</p>
-                {adapter.installationId && adapter.installationId !== adapter.id
-                  && <p>{t('toolAdapterSharedInstallation')} {adapter.installationId}</p>}
-                {!!adapter.dependencies.length && <p>{t('toolDependency')} {adapter.dependencies.join(', ')}</p>}
-                {adapter.prerequisite && <p>{t(adapter.prerequisite === 'device' ? 'toolAdapterNeedsDevice' : 'toolAdapterNeedsProvider')}</p>}
-                {!adapter.installationId && <p>{t('toolProviderSetupHint')}</p>}
-                {adapter.status === 'ready' && <p>{t('toolAdapterReadinessHint')}</p>}
-              </section>}
+              <strong>{catalog?.tools.find(item => item.id === tool.id)?.label ?? tool.id} · {t(states[tool.status])}</strong>
               <p>{catalog?.tools.find(item => item.id === tool.id)?.description}</p>
-              {!adapter && <p>{tool.provider ? t(invocations.provider) : t('toolNotAdapted')}</p>}
+              <p>{adapter ? t(adapterStates[adapter.status]) : tool.provider ? t(invocations.provider) : t('toolNotAdapted')}</p>
               <button disabled={busy} onClick={() => void check([tool.id])}>{t('toolCheckSelection')}</button>
-              {tool.provider && <p>{t('toolDedicatedInterface')} {tool.provider}</p>}
-              {tool.command && <p><code>{tool.command}</code></p>}
-              {tool.location && tool.location !== tool.command && <p><code>{tool.location}</code></p>}
-              {tool.version && <pre>{tool.version.split(/\r?\n/u)[0]}</pre>}
-              {tool.dependency && <p>{t('toolDependency')} {tool.dependency}</p>}
-              {tool.detail === 'dependency-unavailable' && <p>{t('toolDependencyMissing')}</p>}
-              {tool.detail === 'configuration-required' && <p>{t('toolConfigurationRequired')}</p>}
-              {(tool.version.includes('\n') || (tool.detail && !['dependency-unavailable', 'configuration-required'].includes(tool.detail))) &&
-            <details><summary>{t('toolDiagnostics')}</summary><pre>{tool.version}{'\n'}{tool.detail}</pre></details>}
               {configuration?.editable && (tool.invocation !== 'provider' || adapter) &&
-            <button disabled={busy || editing !== undefined} onClick={() => {
-              setEditing(adapter && adapter.bindingId === adapter.id ? tool.id : tool.dependency ?? tool.id)
-            }}>{t('toolConfigure')}{tool.dependency ? ' · ' + tool.dependency : ''}</button>}
-              {tool.installUrl && <a href={tool.installUrl} target="_blank" rel="noreferrer">{t('toolInstallGuide')}</a>}
+                <button disabled={busy || editing !== undefined} onClick={() => {
+                  setEditing(adapter && adapter.bindingId === adapter.id ? tool.id : tool.dependency ?? tool.id)
+                }}>{t(tool.status === 'available' && !tool.configured ? 'toolAdoptInstallation' : 'toolConfigure')}</button>}
+              <details><summary>{t('toolInstallationDetails')}</summary>
+                {adapter && <section aria-label={t('toolAdapterConfiguration')}>
+                  <p>{t('toolViaAdapter')}: <code>{adapter.toolName}</code> · {t(adapterStates[adapter.status])}</p>
+                  <p>{t('toolAdapterOperations')}: {adapter.operations.join(', ')}</p>
+                  <p>{t('toolDefaultEnvironment')}: {adapter.environmentId ?? t('toolInheritEnvironment')}</p>
+                  {adapter.installationId && adapter.installationId !== adapter.id
+                  && <p>{t('toolAdapterSharedInstallation')} {adapter.installationId}</p>}
+                  {!!adapter.dependencies.length && <p>{t('toolDependency')} {adapter.dependencies.join(', ')}</p>}
+                  {adapter.prerequisite && <p>{t(adapter.prerequisite === 'device' ? 'toolAdapterNeedsDevice' : 'toolAdapterNeedsProvider')}</p>}
+                  {!adapter.installationId && <p>{t('toolProviderSetupHint')}</p>}
+                  {adapter.status === 'ready' && <p>{t('toolAdapterReadinessHint')}</p>}
+                </section>}
+                {tool.provider && <p>{t('toolDedicatedInterface')} {tool.provider}</p>}
+                {tool.command && <p><code>{tool.command}</code></p>}
+                {tool.location && tool.location !== tool.command && <p><code>{tool.location}</code></p>}
+                {tool.version && <pre>{tool.version.split(/\r?\n/u)[0]}</pre>}
+                {tool.dependency && <p>{t('toolDependency')} {tool.dependency}</p>}
+                {tool.detail === 'dependency-unavailable' && <p>{t('toolDependencyMissing')}</p>}
+                {tool.detail === 'configuration-required' && <p>{t('toolConfigurationRequired')}</p>}
+                {(tool.version.includes('\n') || (tool.detail && !['dependency-unavailable', 'configuration-required'].includes(tool.detail))) &&
+            <details><summary>{t('toolDiagnostics')}</summary><pre>{tool.version}{'\n'}{tool.detail}</pre></details>}
+                {tool.checks?.map(check => <p key={check.kind}>{t(({ installation: 'toolCheckInstallation', compatibility: 'toolCheckCompatibility',
+                  connection: 'toolCheckConnection', target: 'toolCheckTarget' } as const)[check.kind])}: {t(({ passed: 'toolHealthPassed',
+                  failed: 'toolHealthFailed', unknown: 'toolCheckUnknown', 'not-required': 'toolCheckNotRequired' } as const)[check.status])}
+                {check.detail && <span> · {check.detail}</span>}</p>)}
+                {tool.installUrl && <a href={tool.installUrl} target="_blank" rel="noreferrer">{t('toolInstallGuide')}</a>}
+                {tool.id === 'ghidra-headless' && props.ghidraCaches && <ToolboxCache environmentId={inventory.environmentId} read={props.ghidraCaches} t={t} />}
+              </details>
             </article>})}
         </section>)}
     </>}

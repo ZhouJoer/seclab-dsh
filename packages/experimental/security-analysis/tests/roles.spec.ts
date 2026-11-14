@@ -8,14 +8,15 @@ describe('security role assignments', () => {
     for (const role of ['reconnaissance', 'reverse-analyst', 'web-analyst', 'researcher', 'reviewer'] as const)
       expect(toolsForRole(role)).not.toContain('advisor')
   })
-  it('directs binary collectors to installed reverse tools before custom parsing', () => {
+  it('directs binary collectors to supported adapters before custom parsing while allowing auxiliary native work', () => {
     for (const role of ['reconnaissance', 'reverse-analyst'] as const) {
       const prompt = delegationPrompt({ role, task: resolveTask(role), assetId: 'sample', question: 'Inspect ELF functions',
         criterion: 'Identify one function', durationMs: 3000, maxOutputBytes: 4096 })
       expect(prompt).toContain('query security_capabilities')
-      expect(prompt).toContain('call the returned toolName')
-      expect(prompt).toContain('security_environment')
-      expect(prompt).toContain('demonstrated gap')
+      expect(prompt).toContain('Use returned toolName, operations and environment IDs rather than guessing them')
+      expect(prompt).toContain('inspect native launch details only when needed')
+      expect(prompt).toContain('custom code fills an identified gap and needs an independent comparison')
+      expect(prompt).toContain('Native Shell and custom scripts remain available for auxiliary work')
     }
     const reviewer = delegationPrompt({ role: 'reviewer', task: 'review', assetId: 'sample', question: 'Review evidence',
       criterion: 'Assess evidence', durationMs: 3000, maxOutputBytes: 4096 })
@@ -42,13 +43,13 @@ describe('security role assignments', () => {
       expect(toolsForRole(role)).not.toContain('security_execute')
       expect(toolsForRole(role)).not.toContain('security_delegate')
     }
-    expect(canObserve('reconnaissance', 'ghidra', 'functions')).toBe(true)
-    expect(canObserve('reconnaissance', 'ghidra', 'decompile')).toBe(false)
-    expect(canObserve('reverse-analyst', 'ghidra', 'decompile')).toBe(true)
+    expect(canObserve('reconnaissance', 'tool-adapter', 'ghidra-headless.functions')).toBe(true)
+    expect(canObserve('reconnaissance', 'tool-adapter', 'ghidra-headless.decompile')).toBe(false)
+    expect(canObserve('reverse-analyst', 'tool-adapter', 'ghidra-headless.decompile')).toBe(true)
     expect(canObserve('reverse-analyst', 'android', 'decompile')).toBe(true)
     expect(canObserve('reconnaissance', 'android', 'device')).toBe(true)
     for (const role of ['coordinator', 'reconnaissance', 'reverse-analyst', 'researcher', 'reviewer'] as const) {
-      expect(canObserve(role, 'ghidra', 'rename')).toBe(false)
+      expect(canObserve(role, 'tool-adapter', 'ghidra-headless.rename')).toBe(false)
       expect(canObserve(role, 'frida', 'script')).toBe(false)
     }
     expect(canObserve('researcher', 'binary', 'identity')).toBe(false)

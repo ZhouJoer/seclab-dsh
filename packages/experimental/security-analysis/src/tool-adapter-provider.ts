@@ -8,6 +8,8 @@ import { runReverseAnalysis } from './reverse-analysis.ts'
 import { jadxCallgraphItems } from './android-callgraph.ts'
 import { manifestItems } from './android-manifest.ts'
 import { AndroidProvider } from './android-provider.ts'
+import { GhidraHeadlessSessions, type GhidraHeadlessOptions } from './ghidra-headless.ts'
+import { ghidraAnalysisSchema, resolveGhidraAnalysisProfile } from './ghidra-analysis-profile.ts'
 import { inspectToolbox } from './toolbox.ts'
 import { toolboxCatalog } from './toolbox.ts'
 import { adapterInstallation, staticToolAdapters } from './tool-adapter-catalog.ts'
@@ -29,8 +31,11 @@ export interface ToolAdapterLimits {
   maxPackets: number
   /** Time in milliseconds allowed for process cleanup. */
   graceMs: number
+  /** Headless analysis settings; absent configuration disables this adapter. */
+  ghidraHeadless?: GhidraHeadlessOptions
 }
 const address = z.string().regex(/^0x[0-9a-fA-F]{1,16}$/u)
+const ghidraAddress = z.string().regex(/^(?:0x[0-9a-fA-F]{1,16}|[a-zA-Z_][a-zA-Z0-9_.-]{0,127}:[0-9a-fA-F]{1,16})$/u)
 const count = z.number().int().positive()
 const batchQuery = z.object({
   operation: z.enum(['identity', 'functions', 'imports', 'exports', 'symbols', 'strings', 'xrefs-to', 'xrefs-from', 'disassemble']),
@@ -45,11 +50,13 @@ interface Radare2Batch {
 const argsSchema = z.object({ seed: z.string().min(1).max(1024).optional(), direction: z.enum(['callers', 'callees']).optional(), maxDepth: count.optional(), address: address.optional(), startAddress: address.optional(), endAddress: address.optional(),
   queries: z.array(batchQuery).min(1).optional(),
   count: count.optional(), filter: z.string().max(4096).optional(),
+  offset: z.number().int().nonnegative().optional(), limit: count.optional(),
   fields: z.array(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_.-]*$/u)).min(1).max(64).optional(),
   className: z.string().regex(/^[a-zA-Z0-9_.$]+$/u).optional(), minLength: count.max(1024).optional(),
   encoding: z.enum(['ascii', 'utf16le']).optional(),
   evidenceIds: z.array(z.string().min(1)).min(1).optional(),
 }).strict()
+const ghidraArgsSchema = argsSchema.extend({ address: ghidraAddress.optional(), analysis: ghidraAnalysisSchema.optional() })
 const operationParts = (operation: string) => {
   const adapter = staticToolAdapters.find(tool => tool.operations.some(action => tool.id + '.' + action === operation))
   if (!adapter) throw new Error('Unknown static tool adapter operation')
@@ -61,7 +68,7 @@ const operationParts = (operation: string) => {
  * @param parameters - Untrusted model or wire parameters.
  * @returns validated semantic inputs without deployment overrides.
  */
-export function parseAdapterParameters(operation: string, parameters: unknown): z.infer<typeof argsSchema> {
+export function parseAdapterParameters(operation: string, parameters: unknown): z.infer<typeof ghidraArgsSchema> {
   operationParts(operation)
   const fields: Record<string, readonly string[]> = {
     'radare2.batch': ['queries'],
@@ -74,8 +81,17 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
     'analysis.android-callchain': ['evidenceIds', 'seed', 'direction', 'maxDepth'],
     'jadx.decompile': ['className'], 'strings.strings': ['minLength', 'encoding'],
     'objdump.disassemble': ['startAddress', 'endAddress'],
+    'ghidra-headless.identity': [],
+    'ghidra-headless.functions': ['offset', 'limit', 'filter'],
+    'ghidra-headless.imports': ['offset', 'limit', 'filter'],
+    'ghidra-headless.exports': ['offset', 'limit', 'filter'],
+    'ghidra-headless.strings': ['offset', 'limit', 'filter'],
+    'ghidra-headless.decompile': ['address'],
+    'ghidra-headless.disassemble': ['address', 'count'],
+    'ghidra-headless.xrefs-to': ['address', 'offset', 'limit', 'filter'],
+    'ghidra-headless.xrefs-from': ['address', 'offset', 'limit', 'filter'],
   }
-  const args = argsSchema.parse(parameters)
+  const args = (operation.startsWith('ghidra-headless.') ? ghidraArgsSchema : argsSchema).parse(parameters)
   if (operation === 'radare2.batch') {
     if (!args.queries) throw new Error('Batch requires queries')
     for (const { operation: action, offset: _offset, limit: _limit, filter: _filter, ...inputs } of args.queries)
@@ -85,7 +101,9 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
   if (['analysis.native-xref-paths', 'analysis.android-callchain'].includes(operation) && (!args.seed || !args.direction || !args.maxDepth))
     throw new Error('Graph analysis requires seed, direction and maxDepth')
   if (operation === 'analysis.native-xref-paths') address.parse(args.seed)
-  for (const key of Object.keys(args)) if (!fields[operation]?.includes(key))
+  if (['ghidra-headless.decompile', 'ghidra-headless.disassemble', 'ghidra-headless.xrefs-to', 'ghidra-headless.xrefs-from'].includes(operation) && !args.address)
+    throw new Error('This Ghidra operation requires an address returned by Ghidra')
+  for (const key of Object.keys(args)) if (!fields[operation]?.includes(key) && !(key === 'analysis' && operation.startsWith('ghidra-headless.')))
     throw new Error('Unsupported parameter for ' + operation + ': ' + key)
   return args
 }
@@ -141,6 +159,7 @@ export function adapterArguments(operation: string, parameters: unknown, path: s
     case 'apk':
     case 'analysis': throw new Error('Bundled analysis does not accept external command arguments')
     case 'jadx': throw new Error('JADX execution belongs to the Android provider')
+    case 'ghidra-headless': throw new Error('Ghidra execution uses the fixed headless provider')
   }
 }
 
@@ -273,7 +292,17 @@ export class ToolAdapterProvider implements AnalysisProvider {
   readonly id = 'tool-adapter'
   readonly operations = staticToolAdapters.flatMap(tool => tool.operations.map(action => tool.id + '.' + action))
   readonly inputGuide = 'Use the dedicated security_<tool> tools with an imported asset and semantic parameters. Environment selection and installation belong to operator settings.'
-  constructor(private readonly ctx: Context, private readonly limits: ToolAdapterLimits, private readonly maxFiles: number) {}
+  private readonly ghidraSessions: GhidraHeadlessSessions | undefined
+  constructor(private readonly ctx: Context, private readonly limits: ToolAdapterLimits, private readonly maxFiles: number) {
+    if (limits.ghidraHeadless) this.ghidraSessions = new GhidraHeadlessSessions(ctx, limits.ghidraHeadless, limits.graceMs)
+  }
+  /** Close resident analysis before changing installations or stopping an environment.
+   * @param environmentId - environment whose owned Ghidra processes must settle.
+   */
+  async closeEnvironment(environmentId: string): Promise<void> { await this.ghidraSessions?.closeEnvironment(environmentId) }
+  async closeProject(projectId: string): Promise<void> { await this.ghidraSessions?.closeProject(projectId) }
+  /** Stop owned resident processes and wait for their project leases to be released. */
+  async dispose(): Promise<void> { await this.ghidraSessions?.dispose() }
   inputEvidenceIds(request: AnalysisOperation): readonly string[] {
     return parseAdapterParameters(request.operation, request.parameters).evidenceIds ?? []
   }
@@ -289,6 +318,15 @@ export class ToolAdapterProvider implements AnalysisProvider {
     if (adapter.id === 'analysis' && !(action.startsWith('native-') ? ['pe', 'elf'] : ['apk', 'dex', 'jar']).includes(asset.format))
       throw new Error('Asset format does not support this analysis operation')
     const parameters = parseAdapterParameters(request.operation, request.parameters)
+    if (adapter.id === 'ghidra-headless') {
+      if (!this.limits.ghidraHeadless) throw new Error('Configure toolAdapters.ghidraHeadless before using Ghidra headless')
+      parameters.analysis = resolveGhidraAnalysisProfile(parameters.analysis)
+      if (['functions', 'imports', 'exports', 'strings', 'xrefs-to', 'xrefs-from'].includes(action)) {
+        parameters.offset ??= 0
+        parameters.limit = Math.min(parameters.limit ?? this.limits.maxItems, this.limits.maxItems)
+      }
+      if (action === 'disassemble') parameters.count = Math.min(parameters.count ?? this.limits.maxInstructions, this.limits.maxInstructions)
+    }
     if (parameters.queries) {
       if (parameters.queries.length > this.limits.maxItems) throw new Error('Batch query count exceeds maxItems')
       const perQuery = Math.max(1, Math.floor(this.limits.maxItems / parameters.queries.length))
@@ -308,7 +346,7 @@ export class ToolAdapterProvider implements AnalysisProvider {
     if (adapter.id === 'objdump' && action === 'disassemble' && parameters.startAddress && parameters.endAddress
       && BigInt(parameters.endAddress) - BigInt(parameters.startAddress) > BigInt(context.maxOutputBytes))
       throw new Error('Disassembly range exceeds the configured byte budget')
-    if (!['jadx', 'analysis', 'apk'].includes(adapter.id)) adapterArguments(request.operation, parameters, 'input')
+    if (!['jadx', 'analysis', 'apk', 'ghidra-headless'].includes(adapter.id)) adapterArguments(request.operation, parameters, 'input')
     return { ...request, impact: 'observe', parameters: z.record(z.string(), z.json()).parse(parameters) }
   }
   async run(request: AnalysisOperation, context: AnalysisContext): Promise<AnalysisResult> {
@@ -323,6 +361,10 @@ export class ToolAdapterProvider implements AnalysisProvider {
         toolVersion: 'dsh-apk-inventory-v1', method: 'static', observationKind: 'inventory' }
     }
     if (adapter.id === 'analysis') return runReverseAnalysis(this.ctx, request, context, this.limits.maxItems, this.limits.graceMs)
+    if (adapter.id === 'ghidra-headless') {
+      if (!this.limits.ghidraHeadless || !this.ghidraSessions) throw new Error('Configure toolAdapters.ghidraHeadless before using Ghidra headless')
+      return this.ghidraSessions.run(request, context, this.limits.maxItems)
+    }
     if (!context.environment.tools.some(tool => tool.id === adapterInstallation(adapter.id)))
       throw new Error('Configure an installation for ' + adapterInstallation(adapter.id) + ' in tool settings')
     const asset = fileAsset(context.asset)

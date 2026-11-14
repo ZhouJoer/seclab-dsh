@@ -208,7 +208,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-experimental-research-security` | no | research security |
 | `@deepseek-ai/dsh-experimental-research-workbench` | yes | research workbench |
 | `@deepseek-ai/dsh-experimental-research-workbench-bundle` | no | research workbench bundle |
-| `@deepseek-ai/dsh-experimental-security-analysis` | yes | Scoped reverse engineering with GhidraMCP, Frida, evidence records, and reconnaissance delegation |
+| `@deepseek-ai/dsh-experimental-security-analysis` | yes | Scoped reverse engineering with Ghidra headless, Frida, evidence records, and reconnaissance delegation |
 | `@deepseek-ai/dsh-experimental-security-profile` | no | Opt-in security workbench Host composition |
 | `@deepseek-ai/dsh-experimental-session-inspector` | no | Experimental virtualized Session log and live Chat group/node inspectors |
 | `@deepseek-ai/dsh-experimental-speech-to-text` | yes | Experimental speech recognition with independently selectable providers |

@@ -16,7 +16,7 @@ exports[`returns the measured PE image interval to the model before querying an 
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > adb 1`] = `
 [
   {
-    "guide": "Inspect the operator-selected Android device and installed packages. Does not accept shell commands or change the device. Call security_adb with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Inspect the operator-selected Android device and installed packages. Does not accept shell commands or change the device. Call security_adb with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "adb",
   },
 ]
@@ -43,7 +43,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > file 1`] = `
 [
   {
-    "guide": "Identify an imported file using its contents. Call security_file with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Identify an imported file using its contents. Call security_file with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "file",
   },
 ]
@@ -61,7 +61,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > jadx 1`] = `
 [
   {
-    "guide": "Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. callgraph exports resolved application method relations and JSON method details (requires JADX --call-graph support); external and dynamic calls are not complete. Call security_jadx with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Inspect an imported APK, DEX or JAR; manifest decodes APK resources only. callgraph exports resolved application method relations and JSON method details (requires JADX --call-graph support); external and dynamic calls are not complete. Call security_jadx with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "jadx",
   },
 ]
@@ -124,7 +124,7 @@ On reuse, verify saved file hashes, reread the recipe's applicability, bind the 
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > nm 1`] = `
 [
   {
-    "guide": "List object symbols and their addresses. Call security_nm with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "List object symbols and their addresses. Call security_nm with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "nm",
   },
 ]
@@ -151,7 +151,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > objdump 1`] = `
 [
   {
-    "guide": "Inspect object headers or disassemble a bounded address range. Call security_objdump with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Inspect object headers or disassemble a bounded address range. Call security_objdump with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "objdump",
   },
 ]
@@ -169,7 +169,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > r2ghidra 1`] = `
 [
   {
-    "guide": "Decompile one function at a hexadecimal virtual address. Call security_r2ghidra with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Decompile one function at a hexadecimal virtual address. Call security_r2ghidra with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "r2ghidra",
   },
 ]
@@ -187,7 +187,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > radare2 1`] = `
 [
   {
-    "guide": "Inspect binary metadata, functions, references and bounded disassembly. Call security_radare2 with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Inspect binary metadata, functions, references and bounded disassembly. Call security_radare2 with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "radare2",
   },
 ]
@@ -196,7 +196,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > readelf 1`] = `
 [
   {
-    "guide": "Inspect ELF headers and named tables. Call security_readelf with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Inspect ELF headers and named tables. Call security_readelf with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "readelf",
   },
 ]
@@ -205,7 +205,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > strings 1`] = `
 [
   {
-    "guide": "Read printable strings with byte offsets. Call security_strings with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Read printable strings with byte offsets. Call security_strings with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "strings",
   },
 ]
@@ -214,7 +214,7 @@ exports[`security workbench Loader composition > loads task-specific definitions
 exports[`security workbench Loader composition > loads task-specific definitions on demand without injecting paths or unrelated guides > tshark 1`] = `
 [
   {
-    "guide": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Call security_tshark with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available.",
+    "guide": "Query an imported PCAP/PCAPNG file. Never opens a live capture interface. Call security_tshark with an imported asset and semantic parameters. Installation and execution environment are managed by the operator. Use this interface for the listed operations in supported environments. For other operations or an external container, request security_capabilities details with native: true and security_environment with native: true; existing native workflows remain available. Report adapter failures or coverage limits before choosing another method; retain failed evidence and preserve the selected executable and environment.",
     "id": "tshark",
   },
 ]

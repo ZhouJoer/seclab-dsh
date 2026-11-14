@@ -130,10 +130,6 @@
                 source: Toolbox image
     - id: security-environments
       name: '@deepseek-ai/dsh-experimental-security-analysis/environment'
-    - id: security-ghidra
-      name: '@deepseek-ai/dsh-experimental-security-analysis/ghidra'
-      config:
-        programs: []
     - id: security-native
       name: '@deepseek-ai/dsh-experimental-security-analysis/native'
     - id: security-offline

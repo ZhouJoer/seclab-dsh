@@ -248,6 +248,9 @@ describe('security workbench', () => {
     const cleanup = Promise.withResolvers<undefined>()
     let localSignal: AbortSignal | undefined
     let remoteSignal: AbortSignal | undefined
+    const closeEnvironment = vi.fn(async () => {})
+    const unregister = controller.providers.register({ id: 'resident-fixture', operations: [],
+      resolve: request => request, run: async () => { throw new Error('No query expected') }, closeEnvironment })
     const local = controller.manageEnvironment('local', async (signal) => {
       localSignal = signal
       await done.promise
@@ -257,6 +260,7 @@ describe('security workbench', () => {
       await done.promise
     })
     const release = controller.releaseEnvironments(['local'], async () => {
+      expect(closeEnvironment).toHaveBeenCalledExactlyOnceWith('local')
       released.resolve(undefined)
       await cleanup.promise
     })
@@ -270,7 +274,7 @@ describe('security workbench', () => {
       cleanup.resolve(undefined)
       await release
       await expect(controller.manageEnvironment('local', async () => 'available')).resolves.toBe('available')
-    } finally { done.resolve(undefined); cleanup.resolve(undefined); await Promise.all([local, remote, release]) }
+    } finally { done.resolve(undefined); cleanup.resolve(undefined); await Promise.all([local, remote, release]); unregister() }
   })
 
   it('retains operator tool preferences and restart destinations after reopening storage', async () => {
@@ -511,8 +515,8 @@ describe('security workbench', () => {
     const resolve = vi.fn((request: AnalysisOperation) => request)
     const run = vi.fn(async () => ({ bytes: Buffer.from('wrong environment'), mediaType: 'text/plain',
       summary: 'Unverified file', incomplete: false, toolVersion: 'fixture' }))
-    controller.providers.register({ id: 'ghidra', operations: ['functions'], resolve, run })
-    const operation = { provider: 'ghidra', operation: 'functions', assetId, environmentId: 'local',
+    controller.providers.register({ id: 'tool-adapter', operations: ['ghidra-headless.functions'], resolve, run })
+    const operation = { provider: 'tool-adapter', operation: 'ghidra-headless.functions', assetId, environmentId: 'local',
       parameters: {}, impact: 'observe' as const }
     await send({ kind: 'check', check: { assetId, title: 'Inspect functions', phase: 'validation',
       criterion: 'Verify file identity', dependencies: [], evidenceIds: [] } })
@@ -546,12 +550,17 @@ describe('security workbench', () => {
     const onStopped = vi.fn(() => {
       expect(controller.projects().find(item => item.id === project)?.stopped).toBe(true)
     })
+    const closeProject = vi.fn(async () => {})
+    const unregister = controller.providers.register({ id: 'resident-fixture', operations: [],
+      resolve: request => request, run: async () => { throw new Error('No query expected') }, closeProject })
     const stopping = controller.command('parent', { operationId: 'stop-order', expectedRevision: 0,
       action: { kind: 'stop' } }, true, new AbortController().signal, onStopped)
     try {
       await vi.waitFor(() => { expect(abort.signal.aborted).toBe(true) })
       expect(onStopped).toHaveBeenCalledExactlyOnceWith(project)
-    } finally { cleanup.resolve(undefined); release(); await stopping }
+      expect(closeProject).not.toHaveBeenCalled()
+    } finally { cleanup.resolve(undefined); release(); await stopping; unregister() }
+    expect(closeProject).toHaveBeenCalledExactlyOnceWith(project)
   })
   it('saves independent project checkpoints concurrently while rejecting stale project state and changed selections', async () => {
     const { controller, journal, send, ctx } = await harness()
@@ -1021,8 +1030,8 @@ describe('security workbench', () => {
   it('returns the committed evidence for exact static retries and rejects changed retries', async () => {
     const { controller, assetId } = await harness()
     const run = vi.fn(async () => ({ bytes: Buffer.from('result'), mediaType: 'text/plain', summary: 'result', incomplete: false, toolVersion: 'fixture' }))
-    controller.providers.register({ id: 'ghidra', operations: ['functions'], resolve: request => request, run })
-    const request = { provider: 'ghidra', operation: 'functions', assetId, environmentId: 'local', parameters: {}, impact: 'observe' as const }
+    controller.providers.register({ id: 'tool-adapter', operations: ['ghidra-headless.functions'], resolve: request => request, run })
+    const request = { provider: 'tool-adapter', operation: 'ghidra-headless.functions', assetId, environmentId: 'local', parameters: {}, impact: 'observe' as const }
     const signal = new AbortController().signal
     const first = await controller.observe('parent', request, 'retry', signal)
     expect(await controller.observe('parent', request, 'retry', signal)).toEqual(first)
@@ -1274,8 +1283,8 @@ describe('security workbench', () => {
       return { bytes, mediaType: 'text/plain', summary: 'Partial observations', incomplete: true,
         toolVersion: 'fixture', ...(outcome === 'failure' ? { failure: 'Provider failed after collection' } : {}) }
     })
-    controller.providers.register({ id: 'ghidra', operations: ['functions'], resolve: request => request, run })
-    const operation: AnalysisOperation = { provider: 'ghidra', operation: 'functions', environmentId: 'local',
+    controller.providers.register({ id: 'tool-adapter', operations: ['ghidra-headless.functions'], resolve: request => request, run })
+    const operation: AnalysisOperation = { provider: 'tool-adapter', operation: 'ghidra-headless.functions', environmentId: 'local',
       assetId, parameters: {}, impact: 'observe' }
     const collect = () => controller.observe('parent', operation, 'failed-static', abort.signal)
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -1391,8 +1400,8 @@ describe('security workbench', () => {
       cancelled = resolve
     })
     controller.providers.register({
-      id: 'ghidra',
-      operations: ['functions'],
+      id: 'tool-adapter',
+      operations: ['ghidra-headless.functions'],
       resolve: request => request,
       run: async (_request, context) => {
         entered()
@@ -1413,8 +1422,8 @@ describe('security workbench', () => {
     const observation = controller.observe(
       'parent',
       {
-        provider: 'ghidra',
-        operation: 'functions',
+        provider: 'tool-adapter',
+        operation: 'ghidra-headless.functions',
         environmentId: 'local',
         assetId,
         parameters: {},
@@ -1443,8 +1452,8 @@ describe('security workbench', () => {
       controller.observe(
         'parent',
         {
-          provider: 'ghidra',
-          operation: 'functions',
+          provider: 'tool-adapter',
+          operation: 'ghidra-headless.functions',
           environmentId: 'local',
           assetId,
           parameters: {},
