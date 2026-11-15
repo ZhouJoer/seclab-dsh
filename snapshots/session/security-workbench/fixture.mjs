@@ -8,7 +8,21 @@ import { join, sep } from 'node:path'
 export const name = 'security-workbench-snapshot-fixture'
 export const inject = ['tools', 'agents', 'systemPrompt', 'storageDomain', 'subagents', 'jobs', 'subprocess', 'sessionProjectionCache', 'fs']
 export async function apply(ctx) {
-  if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
+  ctx.inject(['skills'], (skillCtx) => {
+    const skills = skillCtx.skills
+    const original = skills.get
+    const resources = join(process.cwd(), '.dsh', 'security-resources')
+    let copied
+    skills.get = async function(...args) {
+      const skill = await original.apply(this, args)
+      if (skill?.provider !== 'security-analysis' || !['security-native', 'security-android', 'security-kali'].includes(skill.name)) return skill
+      copied ??= cp(new URL('../../../packages/experimental/security-analysis/resources/', import.meta.url), resources, { recursive: true })
+      await copied
+      return { ...skill, resourceBase: { kind: 'directory', path: join(resources, 'skills').split(sep).join('/') } }
+    }
+    skillCtx.effect(() => () => { skills.get = original })
+  })
+  if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1' || process.env.DSH_SECURITY_OBSERVATION_FAILURE === '1') {
     const fs = ctx.fs
     const processPath = fs.processPath
     fs.processPath = function(target) { return processPath.call(this, target).split(sep).join('/') }
@@ -139,6 +153,16 @@ export async function apply(ctx) {
     failure.apply(ctx)
   }
   ctx.inject(['securityWorkbench'], (securityCtx) => {
+    if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
+      securityCtx.on('agent/pre-step', async ({ agent }, next) => {
+        const controller = await securityCtx.securityWorkbench.ready
+        if (!controller.binding(agent.id)) await controller.createWorkspaceTask(agent.id, 'fixture-native-workspace',
+          process.cwd().split(sep).join('/'), { title: '原生源码引用', environmentIds: ['fixture-remote'] }, async () => ({
+            maxAttempts: 1, moduleSelection: { mode: 'manual', modules: ['web'], reason: 'Inspect the supplied request handler' },
+          }))
+        return next()
+      })
+    }
     const pack = JSON.stringify({ version: 1, id: 'fixture-pack', label: 'Fixture tools', tools: [
       { id: 'fixture-console', label: 'Fixture Console', commands: ['fixture-console'], platforms: ['linux'],
         tags: ['security'], description: 'A separately registered container console.', args: ['--version'] },
@@ -156,9 +180,6 @@ export async function apply(ctx) {
       if (process.env.DSH_SECURITY_NATIVE_CITATIONS === '1') {
         const service = securityCtx.securityWorkbench
         if (exec.callId === 'native-source-read') {
-          const controller = await service.ready
-          await controller.createWorkspaceTask(exec.agent.id, 'fixture-native-workspace', process.cwd().split(sep).join('/'),
-            { title: '原生源码引用', environmentIds: ['fixture-remote'] }, async () => ({ maxAttempts: 1 }))
           const result = await next()
           assert.notEqual(result.isError, true)
           await unlink(join(process.cwd(), 'handler.js'))
@@ -197,14 +218,6 @@ export async function apply(ctx) {
           return result
         }
         return next()
-      }
-      if (exec.name === 'skill' && exec.arguments.name === 'security-native') {
-        const result = await next()
-        if (result.isError) return result
-        const resources = join(process.cwd(), '.dsh', 'security-resources')
-        await cp(new URL('../../../packages/experimental/security-analysis/resources/', import.meta.url), resources, { recursive: true })
-        return { ...result, value: { ...result.value,
-          resourceBase: { kind: 'directory', path: join(resources, 'skills').split(sep).join('/') } } }
       }
       if (exec.name !== 'security_command' || JSON.parse(exec.arguments.command).action.kind !== 'report') return next()
       assert(exec.agent)

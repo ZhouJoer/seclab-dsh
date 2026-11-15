@@ -1,0 +1,13 @@
+{
+  "name": "local-direction-review",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-helper": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-spill-policy": "workspace:*",
+    "zod": "^4.0.0"
+  }
+}

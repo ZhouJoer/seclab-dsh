@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-15-security-method-context.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-15-security-method-context.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-15-security-method-context:
+  en: bf690542e13593de
+  zh: eeea9257ee80e25f
+/2026-11-15-security-method-context/summary:
+  en: fc4639ca1ebe2bd7
+  zh: ca9b8eeb980419d6
+/2026-11-15-security-method-context/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-15-security-method-context/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-15-security-method-context/compatibility:
+  en: 1b744f98b496bdac
+  zh: 1d09a3a3a6a5d0e2
+/2026-11-15-security-method-context/verification:
+  en: 541e1e3814e4ccd2
+  zh: 7af38336d5d37326
+/2026-11-15-security-method-context/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

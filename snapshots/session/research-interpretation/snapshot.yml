@@ -1,0 +1,10 @@
+version: 1
+scenario: research-interpretation
+profile: headless
+composition: research-interpretation
+recording: authored
+header:
+  class: research-interpretation
+  pin: true
+  childSystemPrompts: [1]
+  childToolSchemas: [1]

@@ -4,7 +4,7 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi, onTestFinished } from 'vitest'
-import { ToolAdapterProvider, adapterArguments, decodeAdapterOutput } from '../src/tool-adapter-provider.ts'
+import { ToolAdapterProvider, adapterArguments, decodeAdapterOutput, parseAdapterParameters } from '../src/tool-adapter-provider.ts'
 import { adapterResultPage, adapterResultSchema, retainAdapterResult } from '../src/tool-adapter-results.ts'
 import { ArtifactStore } from '../src/workbench/artifacts.ts'
 import { evidenceSchema, fileAssetSchema, operationSchema } from '../src/workbench/model.ts'
@@ -81,6 +81,39 @@ it('enforces role and fixed-operation admission, including calls bypassing disco
   expect(canObserve('reviewer', 'tool-adapter', 'radare2.functions')).toBe(false)
   expect(canObserve('reconnaissance', 'tool-adapter', 'r2ghidra.decompile')).toBe(false)
   expect(canObserve('web-analyst', 'tool-adapter', 'tshark.packets')).toBe(true)
+})
+
+it('reports all unsupported fields and exact same-adapter alternatives before executing', async () => {
+  const { provider, request, context } = await fixture()
+  const parameters = { queries: [{ operation: 'functions' }], count: 3, unrelated: 'not-an-operation-parameter' }
+  expect(() => provider.resolve({ ...request, parameters }, context)).toThrow(expect.objectContaining({
+    code: 'UNSUPPORTED_ADAPTER_PARAMETERS', operation: 'radare2.functions',
+    unsupportedParameters: ['queries', 'count', 'unrelated'], allowedParameters: [],
+    operationsByParameter: { queries: ['radare2.batch'], count: ['radare2.disassemble'], unrelated: [] },
+    message: 'Unsupported parameters for radare2.functions: queries, count, unrelated. Allowed parameters: none (pass {}). '
+      + 'Same-adapter operations accepting these fields: queries -> radare2.batch; count -> radare2.disassemble; unrelated -> none. '
+      + 'Correct the parameters or explicitly select the intended operation. This request was not executed.',
+  }))
+  expect(parameters).toEqual({ queries: [{ operation: 'functions' }], count: 3, unrelated: 'not-an-operation-parameter' })
+  expect(inspectToolbox).not.toHaveBeenCalled()
+  expect(runProcess).not.toHaveBeenCalled()
+  expect(parseAdapterParameters('radare2.functions', {})).toEqual({})
+  expect(parseAdapterParameters('radare2.batch', { queries: parameters.queries })).toEqual({ queries: parameters.queries })
+})
+
+it('derives parameter guidance for other adapters while retaining required fields and value validation', () => {
+  expect(() => parseAdapterParameters('objdump.headers', { startAddress: '0x1000', endAddress: '0x2000' }))
+    .toThrow(expect.objectContaining({ allowedParameters: [], operationsByParameter: {
+      startAddress: ['objdump.disassemble'], endAddress: ['objdump.disassemble'],
+    } }))
+  expect(() => parseAdapterParameters('ghidra-headless.identity', { address: '0x1000', queries: [] }))
+    .toThrow(expect.objectContaining({ allowedParameters: ['analysis'], unsupportedParameters: ['address', 'queries'],
+      operationsByParameter: { address: ['ghidra-headless.decompile', 'ghidra-headless.disassemble', 'ghidra-headless.xrefs-to', 'ghidra-headless.xrefs-from'], queries: [] } }))
+  expect(() => parseAdapterParameters('radare2.disassemble', { address: '0x1000;!cmd', count: 1 })).toThrow()
+  expect(() => parseAdapterParameters('radare2.batch', {})).toThrow('Batch requires queries')
+  expect(() => parseAdapterParameters('radare2.batch', { queries: [{ operation: 'functions', address: '0x1000' }] }))
+    .toThrow(expect.objectContaining({ operation: 'radare2.functions', unsupportedParameters: ['address'] }))
+  expect(() => parseAdapterParameters('file.identity', [])).toThrow()
 })
 
 it('analyzes the supplied function entry and retains native decompiler failures separately from malformed output', async () => {

@@ -12,14 +12,14 @@
   en: 06ae1b0d15e1ccc2
   zh: b524c17be8454ca7
 /deepseek-ai-dsh-experimental-security-analysis/table-of-contents:
-  en: 04b6afbf7b2bcbdb
-  zh: 3f3cf53134da6d9e
+  en: f46d59e92635af71
+  zh: 2cc96e7c9a62adb8
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package:
-  en: 5bc7c104d7596c53
-  zh: b68874dc42730438
+  en: 93f8b33b17e6dd0e
+  zh: c2a46f980da68796
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/configure-analysis-providers:
-  en: fee02174f4d23aeb
-  zh: 82ae5f800ce2dbe4
+  en: 9c4b8abc79f4fddc
+  zh: b3c947c3f45cffcf
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/tool-inventory-and-acceptance:
   en: 9e1cd834ba4cdec4
   zh: d1ae31b8f63bf84a
@@ -30,8 +30,8 @@
   en: 2c1ed63c88287683
   zh: e9c4877246881225
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/evidence-and-recovery:
-  en: 51948c9b4e51758f
-  zh: 7b0c223c5a272705
+  en: 22c3718814e4928f
+  zh: aa762237eff91da3
 /deepseek-ai-dsh-experimental-security-analysis/use-this-package/source-snapshots-and-offline-checks:
   en: 4b034d78fb712245
   zh: 112834686d333c71
@@ -57,11 +57,11 @@
   en: 48465898d655ca11
   zh: 5671fc2990940521
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/what-the-model-sees:
-  en: cc7e34a2ba305996
-  zh: 0149b7da7651bda4
+  en: a9edcdf99b22a1d9
+  zh: 576d4cc927a3f4fd
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/token-effect:
-  en: 71496a649ca6fc17
-  zh: b2891411ebd139fb
+  en: 0e634414df1dc26a
+  zh: e3db7d04434b8b7f
 /deepseek-ai-dsh-experimental-security-analysis/model-experience/security-context/kv-cache-effect:
   en: c14aa54f17e89496
   zh: da03364252d5de81

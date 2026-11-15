@@ -1422,6 +1422,25 @@ describe('headless recorded-session snapshots', () => {
               expect(results.every(result => result.isError === false)).toBe(true)
               expect(log).toContain('# Office task routing')
             }
+            if (scenario.name === 'research-interpretation') {
+              const events = parseSessionLog(actualLogs[0]!.content)
+              const results = events.flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
+              expect(results.map(result => [result.toolCallId, result.isError])).toEqual([
+                ['source', false], ['measure', false], ['dependent', true], ['check-full', false],
+              ])
+              expect(JSON.stringify(results[2])).toContain('check-required')
+              expect(JSON.stringify(results[2])).not.toContain('dependent exclusion must remain paused')
+              const review = events.filter(event => event.type === 'helper/auto-start')
+              expect(review).toHaveLength(1)
+              expect(JSON.stringify(review[0])).toContain('The sampled rows point towards retaining only even entries')
+              expect(JSON.stringify(review[0])).toContain('print([2,4,6])')
+              expect(events.filter(event => event.type === 'helper/auto-end')).toMatchObject([{ data: { status: 'completed' } }])
+              expect(actualLogs).toHaveLength(2)
+              const childHeaders = parseSessionLog(actualLogs[1]!.content).filter(event => event.type === 'request/header')
+              expect(childHeaders).toHaveLength(1)
+              expect(childHeaders.every(event => event.data.header.tools === undefined)).toBe(true)
+              expect(actualLogs[0]!.content).toContain('The proposed exclusion was not executed.')
+            }
             if (scenario.name === 'security-workbench') {
               const events = parseSessionLog(actualLogs[0]!.content)
               expect(events.filter(event => event.type === 'request/header')).toHaveLength(2)
@@ -1452,11 +1471,17 @@ describe('headless recorded-session snapshots', () => {
                 .flatMap(event => event.type === 'tool/result' ? [event.data.message] : [])
               const failed = results.filter(result => result.isError).map(result => result.toolCallId)
               expect(failed, 'security fixture assertions must not become accepted error snapshots: ' + JSON.stringify(results.filter(result => result.isError))).toEqual(
-                scenario.name === 'security-observation-failure' ? ['observe-outside-sample', 'identity-invalid-path'] : [],
+                scenario.name === 'security-observation-failure' ? ['observe-outside-sample', 'identity-invalid-path', 'adapter-invalid-queries'] : [],
               )
               if (scenario.name === 'security-native-citations') {
                 expect(actualLogs, 'publishing a report creates no model Session').toHaveLength(1)
                 expect(results.map(result => result.toolCallId)).toEqual(['native-source-read', 'save-native-progress', 'complete-native-investigation'])
+                const events = parseSessionLog(actualLogs[0]!.content)
+                const methods = events.filter(event => event.type === 'user/message' && event.data.source.kind === 'security-method')
+                expect(methods.map(event => event.type === 'user/message' && event.data.source.kind === 'security-method'
+                  ? event.data.source.name : '')).toEqual(['security-investigation', 'security-web'])
+                const firstCall = events.findIndex(event => event.type === 'tool/call')
+                expect(methods.every(event => events.indexOf(event) < firstCall), 'methods precede the first tool action').toBe(true)
               }
             }
             if (scenario.name === 'helper') {

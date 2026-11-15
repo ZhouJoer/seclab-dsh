@@ -4,6 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import { moduleAllowsTool, moduleSkills, resolveModuleSelection } from './analysis-modules.ts'
 import { installSecurityMethods } from './methods.ts'
+import { installMethodContext } from './method-context.ts'
 import { toolsForRole } from './workbench/roles.ts'
 import type { SecurityController } from './workbench/controller.ts'
 import type { SecurityJournal } from './workbench/journal.ts'
@@ -14,6 +15,7 @@ import type { SecurityJournal } from './workbench/journal.ts'
  * @param journal - committed task notifications.
  */
 export function installModuleRuntime(ctx: Context, controller: SecurityController, journal: SecurityJournal): void {
+  installMethodContext(ctx, controller)
   const views = new Map<Agent, { key: string; dispose(): void }>()
   let skillsAvailable = false
   let disposed = false
@@ -59,6 +61,7 @@ export function installModuleRuntime(ctx: Context, controller: SecurityControlle
   })
   ctx.systemPrompt.context({ name: 'security:modules', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'),
     text: ({ agent }) => agent ? 'Active analysis modules: ' + JSON.stringify(resolveModuleSelection(controller.moduleSelection(agent.id)))
-      + '. In auto mode the coordinator selects relevant modules with security_command action modules before specialist analysis. Manual mode requires an operator change. A module grants no additional permission.' : '' })
+      + '. In auto mode the coordinator selects relevant modules with security_command action modules before specialist analysis. Manual mode requires an operator change. A module grants no additional permission.'
+      + (skillsAvailable ? ' Investigation and selected entry methods are supplied as skill_content instructions before work. Use retained bodies without another skill call; load other applicable methods on demand.' : '') : '' })
   for (const agent of ctx.agents.list()) refresh(agent)
 }

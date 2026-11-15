@@ -715,6 +715,7 @@ function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
     })
   return [
     pnpmScript('native-system', 'build:native-system'),
+    localDirectionReviewGate(),
     ...electron,
     { ...instrumented, needs: ['native-system', ...electron.map(gate => gate.id)] },
     pnpmExec('coverage-exempt-heavy', [
@@ -743,7 +744,16 @@ function ciUnitGates(): Gate[] {
       needs: ['native-system'],
       streamOutput: true,
     }),
+    localDirectionReviewGate(),
   ]
+}
+
+/** Keep the opt-in file plugin's synthetic suites in CI without publishing or activating it. */
+function localDirectionReviewGate(): Gate {
+  return pnpmScript('local-direction-review', 'test:local-direction-review', {
+    needs: ['native-system'],
+    streamOutput: true,
+  })
 }
 
 // Recorded-session adapters boot process scenarios in `lib` mode. Callers wait

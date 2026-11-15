@@ -210,6 +210,39 @@
         "index": 0,
         "block": {
           "type": "tool-call",
+          "id": "adapter-invalid-queries",
+          "name": "security_radare2",
+          "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"operation\":\"functions\",\"queries\":[{\"operation\":\"imports\"},{\"operation\":\"xrefs-from\",\"address\":\"0x18001000\"},{\"operation\":\"disassemble\",\"address\":\"0x180001000\",\"count\":1}]}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
           "id": "adapter-pe-batch",
           "name": "security_radare2",
           "arguments": "{\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"operation\":\"batch\",\"queries\":[{\"operation\":\"imports\"},{\"operation\":\"xrefs-from\",\"address\":\"0x18001000\"},{\"operation\":\"disassemble\",\"address\":\"0x180001000\",\"count\":1}]}"
@@ -345,6 +378,39 @@
           "id": "resume-after-progress",
           "name": "security_static",
           "arguments": "{\"provider\":\"binary\",\"operation\":\"hex\",\"assetId\":\"00000000-0000-4000-8000-000000000006\",\"environmentId\":\"fixture-local\",\"parameters\":\"{\\\"offset\\\":0,\\\"length\\\":1}\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 3,
+          "outputTokens": 3
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "export-observation-items",
+          "name": "security_evidence",
+          "arguments": "{\"evidenceId\":\"00000000-0000-4000-8000-000000000045\",\"exportItems\":{\"offset\":2,\"limit\":1}}"
         }
       },
       {

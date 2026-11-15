@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import Agents from '@deepseek-ai/dsh-agent'
+import Agents, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import Llm, { LlmAdapter, ReasoningEffortId, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -20,7 +20,7 @@ import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepse
 import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
 import Projections from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import Tools, { defineTool } from '@deepseek-ai/dsh-tools'
+import Tools, { defineTool, type ToolExecution, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
@@ -53,6 +53,8 @@ import type { EvolutionConfig } from '../src/evolution.ts'
 import { evolutionInputSchema } from '../src/evolution-model.ts'
 import * as GhidraHeadless from '../src/ghidra-headless.ts'
 import { ToolAdapterProvider } from '../src/tool-adapter-provider.ts'
+import { prepareEvidenceExport, publishEvidenceExport } from '../src/evidence-export.ts'
+import { installMethodContext } from '../src/method-context.ts'
 import * as Frida from '../src/frida-provider.ts'
 import * as Debugger from '../src/debugger-provider.ts'
 import * as Android from '../src/android-provider.ts'
@@ -67,6 +69,8 @@ import * as Laboratory from '../src/laboratory.ts'
 import * as Environments from '../src/environment-local.ts'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
 import LocalFs from '@deepseek-ai/dsh-fs-local'
+import SandboxedFs from '@deepseek-ai/dsh-fs-sandbox'
+import SandboxPolicy, { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import LocalBash from '@deepseek-ai/dsh-bash-local'
 import LocalPwsh from '@deepseek-ai/dsh-pwsh-local'
 import * as ShellEnv from '@deepseek-ai/dsh-shell-env'
@@ -213,7 +217,7 @@ function independentTool(ctx: Context, name: string, execute = vi.fn(async () =>
 }
 
 async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
-  options: { advisor?: boolean; jobs?: boolean; browser?: boolean; externalKali?: boolean; bindings?: Record<string, string>; deviceId?: string; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
+  options: { fileSandbox?: boolean; advisor?: boolean; jobs?: boolean; browser?: boolean; externalKali?: boolean; bindings?: Record<string, string>; deviceId?: string; adapters?: boolean | 'deployment'; evolution?: Partial<EvolutionConfig>; installations?: ToolInstallation[]; dedicatedModel?: boolean; analysisTurnTokens?: number; analysisReviewSteps?: number; analysisWrapUpSteps?: number; analysisProgressCalls?: number; analysisCountCacheReads?: boolean; skills?: boolean; native?: boolean; taskIntake?: 'current' | 'other' | 'default'; maxConcurrentDelegations?: number; maxOutputBytes?: number; delegationTimeoutMs?: number } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-workbench-loader-'))
   roots.push(root)
   const model = new ScopeModel()
@@ -231,7 +235,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     ['storage-domain', StorageDomain],
     ['subprocess', UnusedSubprocess],
     ['subagents', Subagents],
-    ['native-fs', LocalFs],
+    ['native-fs', options.fileSandbox ? SandboxedFs : LocalFs],
     ['working-directory', WorkingDirectory],
     ['jobs', Jobs],
     ['approval', Approval],
@@ -276,6 +280,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
     modules.set('tool-skill', ToolSkill)
   }
   if (options.adapters) modules.set('subprocess', LocalSubprocess)
+  if (options.fileSandbox) modules.set('sandbox-policy', SandboxPolicy)
   if (options.browser) {
     modules.set('browser-use', BrowserUse)
     modules.set('browser-playwright', PlaywrightBrowser)
@@ -296,7 +301,7 @@ async function load(inheritJobTool = false, knowledgeIntervalMs = 0,
         id: name,
         name: 'cordis:' + name,
         config:
-          name === 'session-jsonl' ? { root: join(root, 'sessions'), compression: 'none' } : name === 'browser-playwright' ? { mode: 'launch', headless: true, executablePath: process.env.DSH_BROWSER_EXECUTABLE } : name === 'loop'
+          name === 'sandbox-policy' ? { mode: 'workspace-write' } : name === 'session-jsonl' ? { root: join(root, 'sessions'), compression: 'none' } : name === 'browser-playwright' ? { mode: 'launch', headless: true, executablePath: process.env.DSH_BROWSER_EXECUTABLE } : name === 'loop'
             ? { agents: [] }
             : name === 'storage-json'
               ? { root: join(root, 'domain') }
@@ -800,6 +805,185 @@ else if (!['run', 'rm'].includes(args[0])) throw new Error('Unexpected Docker op
     expect(await active()).toEqual(['security-investigation'])
   })
 
+  it('supplies investigation before work and the selected entry method before specialist work without repeated loads', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { skills: true })
+    const send = operator(controller, agent)
+    await send({ kind: 'create', title: 'Selected methods', objective: 'Inspect a native input', environmentIds: ['local'], maxAttempts: 3 })
+    model.scopeCalls = 0
+    model.nativeCalls = [
+      { name: 'security_scope', args: {} },
+      { name: 'security_command', args: () => ({ command: JSON.stringify({ operationId: 'native-method',
+        expectedRevision: controller.view(agent.id).revision,
+        action: { kind: 'modules', selection: { mode: 'auto', modules: ['reverse.native'], reason: 'Native structure' } } }) }) },
+      { name: 'security_scope', args: {} },
+    ]
+    agent.followup(webPrompt('Inspect the relevant material.'))
+    await agent.whenIdle()
+    const text = (index: number) => model.requests[index]?.messages.flatMap(message => message.content)
+      .filter(block => block.type === 'text').map(block => block.text).join('\n')
+    expect(text(0)).toContain('<skill_content name="security-investigation">')
+    expect(text(0)).not.toContain('<skill_content name="security-native">')
+    expect(text(2)).toContain('<skill_content name="security-native">')
+    expect(text(2)).not.toContain('<skill_content name="security-dynamic">')
+    const loaded = () => agent.session.snapshotEvents().flatMap(event => event.type === 'user/message'
+      && event.data.source.kind === 'security-method' ? [event.data.source.name] : [])
+    expect(loaded()).toEqual(['security-investigation', 'security-native'])
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'tool/call')).toHaveLength(3)
+    await send({ kind: 'modules', selection: { mode: 'auto', modules: [], reason: 'Common read' } })
+    await send({ kind: 'modules', selection: { mode: 'auto', modules: ['reverse.native'], reason: 'Resume native check' } })
+    agent.followup(webPrompt('Continue from the retained evidence.'))
+    await agent.whenIdle()
+    expect(loaded()).toEqual(['security-investigation', 'security-native'])
+    const { agent: restored } = await ctx.agents.create({ sessionId: SessionId('restored-methods'), seed: agent.session.snapshotEvents(),
+      meta: { cwd: agent.session.header.cwd! }, agentOptions: { provider: 'fixture', model: 'fixture' } })
+    await operator(controller, restored)({ kind: 'create', title: 'Restored methods', objective: 'Continue inspection',
+      environmentIds: ['local'], maxAttempts: 3, moduleSelection: { mode: 'auto', modules: ['reverse.native'], reason: 'Retained input' } })
+    restored.followup(webPrompt('Continue with the retained methods.'))
+    await restored.whenIdle()
+    expect(restored.session.snapshotEvents().filter(event => event.type === 'user/message'
+      && event.data.source.kind === 'security-method')).toHaveLength(2)
+  })
+
+  it('reuses an explicit skill and restores method instructions after their retained message is compacted', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { skills: true })
+    await operator(controller, agent)({ kind: 'create', title: 'Method recovery', objective: 'Inspect input', environmentIds: ['local'], maxAttempts: 3 })
+    model.scopeCalls = 0
+    agent.followup(webPrompt('/security-investigation'))
+    await agent.whenIdle()
+    const explicit = agent.session.snapshotEvents().find(event => event.type === 'user/message'
+      && event.data.source.kind === 'skill-invocation')
+    if (explicit?.type !== 'user/message') throw new Error('Missing explicit method')
+    expect(agent.session.snapshotEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'security-method')).toBe(false)
+    agent.session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Earlier work summarized.' }] }),
+      { surfaceOp: { op: 'replace', startSeq: explicit.seq, endSeq: explicit.seq }, sourceEventSeqs: [explicit.seq] })
+    agent.followup(webPrompt('Continue the investigation.'))
+    await agent.whenIdle()
+    const injected = agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'security-method')
+    expect(injected).toHaveLength(1)
+    expect(ctx.sessionProjections.stateOf(agent.session, 'securityMethods')?.retained.map(item => item.name)).toEqual(['security-investigation'])
+  })
+
+  it.each(['complete', 'head-only', 'head-tail-spill', 'failed'] as const)(
+    'reuses only complete successful prior skill output: %s', async (retention) => {
+      const { ctx, agent, controller, model } = await load(false, 0, { skills: true })
+      ctx.on('tools/post-execute', async (exec, result, next) => {
+        const decision = await next()
+        if (exec.name !== 'skill' || decision.kind === 'block' || retention === 'complete') return decision
+        if (retention === 'failed') return { kind: 'block', feedback: [{ type: 'text', text: 'Method read failed.' }] }
+        const full = result.content.filter(block => block.type === 'text').map(block => block.text).join('')
+        const text = retention === 'head-only' ? full.slice(0, 300)
+          : full.slice(0, 100) + '\n...\n' + full.slice(-100)
+            + '\n\n(Omitted 50000 bytes. Full formatted result stored at: /spill/output.txt. Read the file.)'
+        return { kind: 'accept', content: [{ type: 'text', text }] }
+      })
+      model.scopeCalls = 0
+      model.nativeCalls = [{ name: 'skill', args: { name: 'security-investigation' } }]
+      agent.followup(webPrompt('Read the investigation method.'))
+      await agent.whenIdle()
+      const result = agent.session.snapshotEvents().find(event => event.type === 'tool/result')
+      expect(result?.type === 'tool/result' && result.data.message.isError).toBe(retention === 'failed')
+      if (retention === 'head-tail-spill') {
+        const text = JSON.stringify(result)
+        expect(text).toContain('<skill_content')
+        expect(text).toContain('</skill_content>')
+        expect(text).toContain('Full formatted result stored at:')
+      }
+      expect(ctx.sessionProjections.stateOf(agent.session, 'securityMethods')?.retained.map(item => item.name))
+        .toEqual(retention === 'complete' ? ['security-investigation'] : [])
+      await operator(controller, agent)({ kind: 'create', title: 'Methods', objective: 'Inspect input', environmentIds: ['local'], maxAttempts: 3 })
+      agent.followup(webPrompt('Begin the investigation.'))
+      await agent.whenIdle()
+      expect(agent.session.snapshotEvents().filter(event => event.type === 'user/message' && event.data.source.kind === 'security-method'))
+        .toHaveLength(retention === 'complete' ? 0 : 1)
+    },
+  )
+
+  it.each(['{"name":', '{"name":17}'])('does not retain malformed skill arguments from the Session log: %s', async (argumentsText) => {
+    const { ctx, agent } = await load(false, 0, { skills: true })
+    agent.session.append('tool/call', { turn: 1, step: 1, callId: ToolCallId('invalid-skill'), name: 'skill', arguments: argumentsText })
+    expect(ctx.sessionProjections.stateOf(agent.session, 'securityMethods')).toEqual({ calls: {}, retained: [] })
+  })
+
+  it('propagates a skill argument parser failure without treating the method as loaded', async () => {
+    const { agent, controller } = await load(false, 0, { skills: true })
+    const argumentsText = '{"name":"security-investigation","fixture":"parse-failure"}'
+    agent.session.append('tool/call', { turn: 1, step: 1, callId: ToolCallId('failed-skill'), name: 'skill', arguments: argumentsText })
+    const projectionContext = new Context()
+    contexts.push(projectionContext)
+    await projectionContext.plugin(Projections)
+    installMethodContext(projectionContext, controller)
+    const originalParse = JSON.parse
+    const failure = new RangeError('Fixture parser allocation failure')
+    const parse = vi.spyOn(JSON, 'parse').mockImplementation((text, reviver) => {
+      if (text === argumentsText) throw failure
+      const parsed: unknown = originalParse(text, reviver)
+      return parsed
+    })
+    try { expect(() => projectionContext.sessionProjections.stateOf(agent.session, 'securityMethods')).toThrow(failure) }
+    finally { parse.mockRestore() }
+    expect(projectionContext.sessionProjections.stateOf(agent.session, 'securityMethods')?.retained).toEqual([])
+  })
+
+  it.each(['missing', 'not-model-invocable'] as const)('stops before the model when a selected method is %s', async (availability) => {
+    const { ctx, agent, controller, model } = await load(false, 0, { skills: true })
+    await operator(controller, agent)({ kind: 'create', title: 'Method availability', objective: 'Inspect input', environmentIds: ['local'], maxAttempts: 3 })
+    const skill = await ctx.skills.get('security-investigation', { scope: agent })
+    if (!skill) throw new Error('Missing fixture method')
+    const lookup = vi.spyOn(ctx.skills, 'get').mockResolvedValue(availability === 'missing' ? undefined
+      : { ...skill, invocation: { modelInvocable: false, userInvocable: true } })
+    const message = webPrompt('Inspect the input.')
+    try {
+      await expect(agentEvents(ctx, agent).waterfall('agent/pre-step', {
+        messages: [message], turn: 1, step: 1, signal: new AbortController().signal,
+      }, () => Promise.resolve({ kind: 'enter' as const, messages: [message] })))
+        .rejects.toThrow('Selected security method is unavailable: security-investigation')
+      expect(model.requests).toHaveLength(0)
+      expect(ctx.sessionProjections.stateOf(agent.session, 'securityMethods')?.retained).toEqual([])
+    } finally { lookup.mockRestore() }
+  })
+
+  it('fails visibly when the selected method projection is unavailable', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { skills: true })
+    await operator(controller, agent)({ kind: 'create', title: 'Method projection', objective: 'Inspect input', environmentIds: ['local'], maxAttempts: 3 })
+    const stateOf = ctx.sessionProjections.stateOf.bind(ctx.sessionProjections)
+    const projection = vi.spyOn(ctx.sessionProjections, 'stateOf').mockImplementation((session, key) =>
+      key === 'securityMethods' ? undefined : stateOf(session, key))
+    const message = webPrompt('Inspect the input.')
+    try {
+      await expect(agentEvents(ctx, agent).waterfall('agent/pre-step', {
+        messages: [message], turn: 1, step: 1, signal: new AbortController().signal,
+      }, () => Promise.resolve({ kind: 'enter' as const, messages: [message] })))
+        .rejects.toThrow('Security method projection is unavailable')
+      expect(model.requests).toHaveLength(0)
+    } finally { projection.mockRestore() }
+  })
+
+  it('loads the selected method from the Session cwd without an optional working-directory service', async () => {
+    const { ctx, agent, controller, model } = await load(false, 0, { skills: true })
+    await operator(controller, agent)({ kind: 'create', title: 'Method cwd', objective: 'Inspect input', environmentIds: ['local'], maxAttempts: 3 })
+    const skill = await ctx.skills.get('security-investigation', { scope: agent })
+    if (!skill) throw new Error('Missing fixture method')
+    const methodContext = new Context()
+    contexts.push(methodContext)
+    await methodContext.plugin(Projections)
+    await methodContext.plugin(Skills)
+    methodContext.skills.register(skill)
+    installMethodContext(methodContext, controller)
+    const lookup = vi.spyOn(methodContext.skills, 'get')
+    const message = webPrompt('Inspect the input.')
+    try {
+      const decision = await methodContext.waterfall('agent/pre-step', {
+        agent, messages: [message], turn: 1, step: 1, signal: new AbortController().signal,
+      }, () => Promise.resolve({ kind: 'enter' as const, messages: [message] }))
+      expect(lookup).toHaveBeenCalledWith('security-investigation', expect.objectContaining({ cwd: agent.session.header.cwd }))
+      expect(decision.kind).toBe('enter')
+      if (decision.kind !== 'enter') throw new Error('Missing method input')
+      expect(decision.messages.flatMap(item => item.source.kind === 'security-method' ? [item.source.name] : []))
+        .toEqual(['security-investigation'])
+      expect(model.requests).toHaveLength(0)
+    } finally { lookup.mockRestore() }
+  })
+
   it('activates coordinator consultation and premise checks while retaining role enforcement', async () => {
     const { ctx, shell } = await load()
     const consult = vi.fn(async () => true)
@@ -1047,7 +1231,7 @@ else if (args.includes('--output')) {
   })
 
   it('dispatches a dedicated adapter through the model and reuses saved evidence without extra activity', async () => {
-    const { ctx, agent, controller, model } = await load(false, 0, { adapters: true })
+    const { ctx, agent, controller, model } = await load(false, 0, { adapters: true, fileSandbox: true })
     const root = roots[roots.length - 1]!
     const launcher = join(root, 'radare fixture.mjs'), calls = join(root, 'calls.txt')
     await writeFile(launcher, 'import fs from "node:fs"; const args=process.argv.slice(2); if(args.includes("-v")) console.log("radare2 fixture 1"); else { fs.appendFileSync(' + JSON.stringify(calls) + ', "run\\n"); console.log(JSON.stringify([{offset:4096,name:"main"},{offset:8192,name:"entry"}])) }')
@@ -1068,8 +1252,8 @@ else if (args.includes('--output')) {
       expect(result.total).toBe(2)
       evidenceId = result.evidenceId
       return { evidenceId, itemOffset: 1, itemLimit: 1 }
-    } }]
-    agent.followup(webPrompt('Inspect functions, then read the second saved observation.'))
+    } }, { name: 'security_evidence', args: () => ({ evidenceId, exportItems: { offset: 1, limit: 1 } }) }]
+    agent.followup(webPrompt('Inspect functions, read the second saved observation, then export it as script input.'))
     await agent.whenIdle()
     expect(evidenceId, JSON.stringify(agent.session.snapshotEvents().filter(event => event.type === 'tool/result'))).not.toBe('')
     const projectId = controller.binding(agent.id)!.engagementId
@@ -1078,7 +1262,46 @@ else if (args.includes('--output')) {
     await writeFile(join(root, 'tools.json'), JSON.stringify({ version: 1, installations: {}, bindings: {} }))
     expect((await execute(ctx, agent, 'security_radare2', args, 'native-1')).isError).toBe(false)
     expect(await readFile(calls, 'utf8')).toBe('run\n')
-    expect(agent.session.snapshotEvents().filter(event => event.type === 'tool/call').map(event => event.data.name)).toEqual(['security_radare2', 'security_evidence'])
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'tool/call').map(event => event.data.name))
+      .toEqual(['security_radare2', 'security_evidence', 'security_evidence'])
+    const exportArgs = { evidenceId, exportItems: { offset: 1, limit: 1 } }
+    const copied = await execute(ctx, agent, 'security_evidence', exportArgs, 'export-again')
+    expect(copied.isError).toBe(false)
+    const receipt = JSON.parse(copied.content.filter(block => block.type === 'text').map(block => block.text).join('')) as { path: string; sha256: string }
+    const exported = JSON.parse(await readFile(receipt.path, 'utf8')) as { items: unknown[]; range: { allRetainedItems: boolean } }
+    expect(exported.items).toEqual([{ offset: 8192, name: 'entry' }])
+    expect(exported.range.allRetainedItems).toBe(false)
+    const saved = controller.view(agent.id).records.find(item => item.kind === 'evidence' && item.value.id === evidenceId)
+    if (saved?.kind !== 'evidence') throw new Error('Missing exported evidence')
+    const prepared = prepareEvidenceExport(await controller.artifacts.read(saved.value.artifact), saved.value,
+      { offset: 0, limit: 1 }, { maxItems: 10, maxBytes: 4096 })
+    const publication: ToolExecution & { agent: Agent } = { agent, name: 'security_evidence', arguments: exportArgs,
+      callId: ToolCallId('publication'), rootCallId: ToolCallId('publication'), token: Symbol('publication') as ToolExecutionToken,
+      signal: new AbortController().signal }
+    const binding = controller.binding(agent.id)
+    await expect(publishEvidenceExport(publication, undefined, prepared, 4096)).rejects.toThrow('active analysis task')
+    const missingFs = vi.spyOn(agent.ctx, 'get').mockReturnValueOnce(undefined)
+    try { await expect(publishEvidenceExport(publication, binding, prepared, 4096)).rejects.toThrow('filesystem provider') }
+    finally { missingFs.mockRestore() }
+    const missingPolicy = vi.spyOn(agent.ctx, 'get').mockReturnValueOnce(ctx.fs).mockReturnValueOnce(undefined)
+    try { await expect(publishEvidenceExport(publication, binding, prepared, 4096)).rejects.toThrow('filesystem sandbox policy') }
+    finally { missingPolicy.mockRestore() }
+    const outside = vi.spyOn(ctx.fs, 'contains').mockReturnValueOnce(false)
+    try { await expect(publishEvidenceExport(publication, binding, prepared, 4096)).rejects.toThrow('within the analysis directory') }
+    finally { outside.mockRestore() }
+    await expect(publishEvidenceExport(publication, binding, prepared, 1)).rejects.toThrow('receipt exceeds')
+    setSandboxMode(agent.session, 'read-only')
+    const deniedExport = await execute(ctx, agent, 'security_evidence', { evidenceId, exportItems: { offset: 0, limit: 1 } }, 'readonly-export')
+    expect(deniedExport.isError).toBe(true)
+    expect(deniedExport.content.filter(block => block.type === 'text').map(block => block.text).join('')).toContain('read-only mode')
+    setSandboxMode(agent.session, 'workspace-write')
+    expect((await execute(ctx, agent, 'security_evidence', { ...exportArgs, offset: 0, length: 1 }, 'mixed-export')).isError).toBe(true)
+    expect((await execute(ctx, agent, 'security_evidence', { ...exportArgs, evidenceId: 'foreign' }, 'foreign-export')).isError).toBe(true)
+    await writeFile(receipt.path, '{}')
+    const altered = await execute(ctx, agent, 'security_evidence', exportArgs, 'altered-export')
+    expect(altered.isError).toBe(true)
+    expect(altered.content.filter(block => block.type === 'text').map(block => block.text).join('')).toContain('not overwritten')
+    expect(await readFile(receipt.path, 'utf8')).toBe('{}')
     expect(await readdir(join(root, 'workbench', 'runs'))).toEqual([])
     const denied = await execute(ctx, agent, 'security_radare2', { ...args, assetId: 'foreign' }, 'foreign-asset')
     expect(denied.isError).toBe(true)
@@ -1424,6 +1647,12 @@ else if (args.includes('--output')) {
     expect(prompt).toContain('Shell remains available for auxiliary file inspection')
     expect(prompt).toContain('preserve the failed evidence and do not silently change the selected executable or environment')
     expect(prompt).toContain('moduleEnabled')
+    expect(prompt).toContain('toolId')
+    expect(prompt).toContain('security_ghidra_headless')
+    expect(prompt).toContain('environmentId')
+    expect(prompt).toContain('local')
+    expect(prompt).toContain('reverse.native')
+    expect(inspect).toHaveBeenCalledOnce()
     const shell = process.platform === 'win32' ? 'pwsh' : 'bash'
     const listing = await execute(ctx, agent, shell, { command: process.platform === 'win32' ? 'Get-ChildItem -LiteralPath . -Name' : 'ls',
       workdir: root, description: 'Locate the imported sample' })

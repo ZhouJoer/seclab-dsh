@@ -541,7 +541,7 @@ describe('gate graph validation', () => {
 
     expect(scripts['check:ci:windows-observational-ready']).toBe('tsx scripts/run-gates.ts ci-windows-observational-ready')
     expect(scripts).not.toHaveProperty('check:ci:windows-observational')
-    const completeOnly = new Set(['build', 'windows-site', 'native-system', 'coverage', 'coverage-exempt-heavy'])
+    const completeOnly = new Set(['build', 'windows-site', 'native-system', 'coverage', 'coverage-exempt-heavy', 'local-direction-review'])
     const shared = complete.filter(gate => !completeOnly.has(gate.id))
     expect(ready.map(gate => gate.id).sort()).toEqual([...shared.map(gate => gate.id), 'docs-site-build'].sort())
     expect(ready.some(gate => gate.id === 'build')).toBe(false)
@@ -657,7 +657,7 @@ describe('gate graph validation', () => {
     for (const budget of ['15000', undefined]) {
       const gates = withEnv('DSH_COVERAGE_TEST_TIMEOUT_MS', budget, () =>
         withPnpmEntrypoint(() => gatesForMode('ci-windows-complete')))
-      for (const id of ['coverage', 'coverage-exempt-heavy']) {
+      for (const id of ['coverage', 'coverage-exempt-heavy', 'local-direction-review']) {
         const gate = gates.find(subject => subject.id === id)
         if (gate === undefined) throw new Error(`ci-windows-complete must define the ${id} gate`)
         expect(gate.args).not.toEqual(expect.arrayContaining([
@@ -674,16 +674,14 @@ describe('gate graph validation', () => {
     }
     expect(scripts['check:ci:unit']).toBe('tsx scripts/run-gates.ts ci-unit')
 
-    // The aggregate is the `test` package script's two segments, in order,
-    // so a step added to one cannot silently leave the other. The lane sets
-    // DSH_COVERAGE_TEST_TIMEOUT_MS; vitest.config.ts reads it per inline
-    // project (coverageTestTimeoutOptions), so the gate passes no budget flag.
+    // The ordinary inventory retains the `test` script's two segments. The
+    // optional file plugin has a separate config and inherits the same lane budget.
     const [nativeBuild, unitRun, ...rest] = (scripts.test ?? '').split(' && ')
     expect(rest).toEqual([])
     for (const budget of ['15000', undefined]) {
       const gates = withEnv('DSH_COVERAGE_TEST_TIMEOUT_MS', budget, () =>
         withPnpmEntrypoint(() => gatesForMode('ci-unit')))
-      expect(gates.map(gate => gate.id)).toEqual(['native-system', 'unit'])
+      expect(gates.map(gate => gate.id)).toEqual(['native-system', 'unit', 'local-direction-review'])
       expect(gates[0]).toMatchObject({ displayCommand: nativeBuild })
       expect(gates[1]?.displayCommand).toBe(`pnpm exec ${unitRun}`)
       expect(gates[1]).toMatchObject({
@@ -695,6 +693,25 @@ describe('gate graph validation', () => {
       expect(gates[1]?.env ?? {}).not.toHaveProperty('DSH_COVERAGE_TEST_TIMEOUT_MS')
     }
   })
+
+  it.each(['ci-coverage', 'ci-unit', 'ci-primary', 'ci-linux-primary', 'ci-windows-complete'] as const)(
+    'runs the opt-in local review suites as a blocking gate in %s', (mode) => {
+      const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+        scripts: Record<string, string>
+      }
+      expect(scripts['test:local-direction-review'])
+        .toBe('vitest run --config .dsh/flare-context-study/direction-review/vitest.config.mjs')
+      const gates = withPnpmEntrypoint(() => gatesForMode(mode))
+      const selected = gates.filter(gate => gate.id === 'local-direction-review')
+      expect(selected).toHaveLength(1)
+      expect(selected[0]).toMatchObject({
+        args: ['/private/pnpm.cjs', 'run', 'test:local-direction-review'],
+        streamOutput: true,
+      })
+      expect(selected[0]?.needs).toContain('native-system')
+      expect(selected[0]?.allowFailure).not.toBe(true)
+    },
+  )
 
   it('selects partitioned coverage only when explicitly configured', () => {
     const coverage = withEnv('DSH_COVERAGE_PARTITIONS', '3', () =>

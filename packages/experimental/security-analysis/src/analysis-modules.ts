@@ -18,6 +18,8 @@ export type ModuleSelection = z.infer<typeof moduleSelectionSchema>
 export interface AnalysisModule {
   id: AnalysisModuleId
   description: string
+  /** Entry method supplied when this module is selected; other skills remain on demand. */
+  entrySkill: string
   skills: readonly string[]
   tools: readonly string[]
   scripts: readonly string[]
@@ -25,18 +27,23 @@ export interface AnalysisModule {
 /** Module metadata is discoverable without loading instructions or probing tools. */
 export const analysisModules: readonly AnalysisModule[] = [
   { id: 'reverse.android', description: 'APK, DEX and JAR: manifest, Java/Kotlin, API and JNI entry points.',
+    entrySkill: 'security-android',
     skills: ['security-android'], tools: ['jadx', 'adb', 'apk', 'analysis'],
     scripts: ['analysis.android-fingerprint', 'analysis.android-api', 'analysis.kotlin-names', 'analysis.android-callchain'] },
   { id: 'reverse.native', description: 'PE, ELF, shared libraries and firmware: native code and bounded process observations.',
+    entrySkill: 'security-native',
     skills: ['security-native', 'security-firmware', 'security-dynamic'],
     tools: ['radare2', 'r2ghidra', 'ghidra-headless', 'readelf', 'objdump', 'nm', 'analysis'],
     scripts: ['analysis.native-triage', 'analysis.native-xref-paths', 'dynamic.module-watch', 'dynamic.function-trace'] },
   { id: 'web', description: 'Web source, HTTP APIs and authorized application behavior.',
+    entrySkill: 'security-web',
     skills: ['security-web', 'security-kali'], tools: [], scripts: [] },
   { id: 'iot', description: 'Offline captures, MQTT, wireless protocols and device logs.',
+    entrySkill: 'security-iot-offline',
     skills: ['security-iot-offline', 'security-packet-analysis', 'security-mqtt'], tools: ['tshark', 'packet-capture'],
     scripts: ['tshark.wireless', 'tshark.capture-summary', 'tshark.extract-packets', 'mqtt.sessions', 'mqtt.topics'] },
   { id: 'pentest', description: 'Authorized penetration testing through operator-managed Kali environments: network, Web/API, password and wireless scenarios.',
+    entrySkill: 'security-kali',
     skills: ['security-kali', 'security-web'], tools: [], scripts: [] },
 ]
 

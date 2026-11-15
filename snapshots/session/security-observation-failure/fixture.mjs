@@ -1,10 +1,13 @@
 /** Persisted binary observation diagnostics and partial adapter results visible to the model. */
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { peImageBytes } from '../../../packages/experimental/security-analysis/tests/pe-fixture.ts'
 
 export function apply(ctx) {
   ctx.inject(['securityWorkbench'], (securityCtx) => {
     const service = securityCtx.securityWorkbench
+    let batchEvidenceId
     securityCtx.on('tools/execute', async (exec, next) => {
       if (exec.callId === 'prepare-observation') {
         assert(exec.agent)
@@ -18,6 +21,7 @@ export function apply(ctx) {
           material: { kind: 'files', directory: false, files: [{ name: 'sample.bin', base64: peImageBytes().toString('base64') }] } }))
         await service.toolPreferences(exec.agent, JSON.stringify({ toolIds: ['radare2'], collectionIds: [], tags: [] }))
       }
+      if (exec.callId === 'export-observation-items') assert.equal(exec.arguments.evidenceId, batchEvidenceId)
       const result = await next()
       if (exec.callId === 'identity-invalid-path') {
         assert.equal(result.isError, true)
@@ -54,6 +58,7 @@ export function apply(ctx) {
         assert.notEqual(result.isError, true)
         assert.equal(result.value.tool, 'radare2')
         assert.equal(result.value.incomplete, true)
+        batchEvidenceId = result.value.evidenceId
         const [imports, rejected, disassembly] = result.value.items
         assert.deepEqual(result.value.items.map(item => item.queryIndex), [0, 1, 2])
         assert.deepEqual(imports.items, [{ name: 'ReadFile' }])
@@ -65,7 +70,22 @@ export function apply(ctx) {
         assert.equal(activity.verified, true)
         assert.deepEqual(activity.tools, ['radare2'])
         assert.deepEqual(activity.evidenceIds, [result.value.evidenceId])
-        assert.equal(controller.activity.usage(projectId).find(row => row.tool === 'radare2').total, 1)
+        assert.equal(controller.activity.usage(projectId).find(row => row.tool === 'radare2').total, 2)
+        const rejectedAttempt = controller.activity.invocation(exec.agent.id, 'adapter-invalid-queries')
+        assert.equal(rejectedAttempt.status, 'failed')
+        assert.deepEqual(rejectedAttempt.evidenceIds, [])
+      }
+      if (exec.callId === 'adapter-invalid-queries') {
+        assert.equal(result.isError, true)
+        assert.match(result.content[0].text, /Unsupported parameters for radare2.functions: queries/)
+        assert.match(result.content[0].text, /Allowed parameters: none \(pass \{\}\)/)
+        assert.match(result.content[0].text, /queries -> radare2.batch/)
+        assert.match(result.content[0].text, /This request was not executed/)
+        const view = await service.view(exec.agent)
+        assert.equal(view.records.filter(record => record.kind === 'evidence').length, 2)
+        const controller = await service.ready
+        const projectId = controller.binding(exec.agent.id).engagementId
+        assert.equal(controller.activity.usage(projectId).some(row => row.tool === 'radare2'), false)
       }
       if (exec.callId === 'adapter-device-packages') {
         assert.notEqual(result.isError, true)
@@ -75,7 +95,20 @@ export function apply(ctx) {
         assert.equal(evidence.value.provider, 'android')
         assert.equal(evidence.value.incomplete, false)
       }
-      if (exec.name === 'security_evidence') {
+      if (exec.callId === 'export-observation-items') {
+        assert.notEqual(result.isError, true)
+        const receipt = result.value
+        const bytes = await readFile(receipt.path)
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), receipt.sha256)
+        assert.equal(bytes.length, receipt.bytes)
+        const saved = JSON.parse(bytes.toString('utf8'))
+        assert.deepEqual(saved.items, [{ queryIndex: 2, operation: 'disassemble', offset: 0, total: 1, nextOffset: null,
+          items: [{ offset: 6442455040, opcode: 'ret' }], incomplete: false, filter: null }])
+        assert.deepEqual(saved.range, { itemOffset: 2, itemCount: 1, totalRetainedItems: 3, nextItemOffset: null, allRetainedItems: false })
+        assert.equal(saved.source.incomplete, true)
+        assert.deepEqual(saved.source, receipt.source)
+      }
+      if (exec.callId === 'read-failure-evidence') {
         assert.notEqual(result.isError, true)
         assert.equal(result.value.incomplete, true)
         assert.equal(result.value.text, 'Offset exceeds sample size')
@@ -88,7 +121,7 @@ export function apply(ctx) {
         assert(checkpoint)
         assert.equal(controller.activity.has(exec.agent.id, 'continue-without-checkpoint'), true)
         assert.equal(controller.activity.progress(checkpoint.value.engagementId, exec.agent.id, checkpoint.value).pending, 0)
-        assert.equal(controller.activity.page(checkpoint.value.engagementId, checkpoint.value.id, 0, 10).items.length, 6)
+        assert.equal(controller.activity.page(checkpoint.value.engagementId, checkpoint.value.id, 0, 10).items.length, 7)
       }
       if (exec.callId === 'continue-without-checkpoint') assert.notEqual(result.isError, true)
       if (exec.callId === 'resume-after-progress') {

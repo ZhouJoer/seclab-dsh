@@ -1,5 +1,6 @@
 /** Fixed external-tool queries over immutable project artifacts. @module */
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-llm'
 import assert from 'node:assert/strict'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
@@ -63,13 +64,28 @@ const operationParts = (operation: string) => {
   return { adapter, action: operation.slice(adapter.id.length + 1) }
 }
 
+/** Parameter rejection before installation selection or execution, with exact operation alternatives. */
+class UnsupportedAdapterParametersError extends HarnessError {
+  constructor(readonly operation: string, readonly unsupportedParameters: readonly string[],
+    readonly allowedParameters: readonly string[], readonly operationsByParameter: Readonly<Record<string, readonly string[]>>) {
+    const alternatives = unsupportedParameters.map(key => key + ' -> ' + (operationsByParameter[key]?.join(', ') || 'none'))
+    super('Unsupported parameters for ' + operation + ': ' + unsupportedParameters.join(', ') + '. '
+      + 'Allowed parameters: ' + (allowedParameters.length ? allowedParameters.join(', ') : 'none (pass {})') + '. '
+      + 'Same-adapter operations accepting these fields: ' + alternatives.join('; ') + '. '
+      + 'Correct the parameters or explicitly select the intended operation. This request was not executed.',
+    'UNSUPPORTED_ADAPTER_PARAMETERS')
+  }
+}
+
 /** Validate the parameters belonging to one fixed operation before selecting an installation.
  * @param operation - Adapter and operation identity.
  * @param parameters - Untrusted model or wire parameters.
  * @returns validated semantic inputs without deployment overrides.
+ * @throws A parameter error listing unsupported fields, permitted fields and same-adapter alternatives.
+ * No operation is rewritten or executed.
  */
 export function parseAdapterParameters(operation: string, parameters: unknown): z.infer<typeof ghidraArgsSchema> {
-  operationParts(operation)
+  const { adapter } = operationParts(operation)
   const fields: Record<string, readonly string[]> = {
     'radare2.batch': ['queries'],
     'radare2.xrefs-to': ['address'], 'radare2.xrefs-from': ['address'],
@@ -91,6 +107,14 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
     'ghidra-headless.xrefs-to': ['address', 'offset', 'limit', 'filter'],
     'ghidra-headless.xrefs-from': ['address', 'offset', 'limit', 'filter'],
   }
+  const allowedFields = (name: string): readonly string[] => [...fields[name] ?? [],
+    ...name.startsWith('ghidra-headless.') ? ['analysis'] : []]
+  const allowed = allowedFields(operation)
+  const submitted = z.record(z.string(), z.unknown()).parse(parameters)
+  const unsupported = Object.keys(submitted).filter(key => !allowed.includes(key))
+  if (unsupported.length) throw new UnsupportedAdapterParametersError(operation, unsupported, allowed,
+    Object.fromEntries(unsupported.map(key => [key, adapter.operations.map(action => adapter.id + '.' + action)
+      .filter(candidate => allowedFields(candidate).includes(key))])))
   const args = (operation.startsWith('ghidra-headless.') ? ghidraArgsSchema : argsSchema).parse(parameters)
   if (operation === 'radare2.batch') {
     if (!args.queries) throw new Error('Batch requires queries')
@@ -103,8 +127,6 @@ export function parseAdapterParameters(operation: string, parameters: unknown): 
   if (operation === 'analysis.native-xref-paths') address.parse(args.seed)
   if (['ghidra-headless.decompile', 'ghidra-headless.disassemble', 'ghidra-headless.xrefs-to', 'ghidra-headless.xrefs-from'].includes(operation) && !args.address)
     throw new Error('This Ghidra operation requires an address returned by Ghidra')
-  for (const key of Object.keys(args)) if (!fields[operation]?.includes(key) && !(key === 'analysis' && operation.startsWith('ghidra-headless.')))
-    throw new Error('Unsupported parameter for ' + operation + ': ' + key)
   return args
 }
 

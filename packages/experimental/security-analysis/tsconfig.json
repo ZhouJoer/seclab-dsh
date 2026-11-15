@@ -8,6 +8,8 @@
     "src"
   ],
   "references": [
+    { "path": "../../fs/fs" },
+    { "path": "../../sandbox/sandbox-policy" },
     {
       "path": "../../preset/agent-preset-registry"
     },

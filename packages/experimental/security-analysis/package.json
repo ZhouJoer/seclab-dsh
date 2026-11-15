@@ -145,7 +145,8 @@
     "yauzl": "^3.4.0",
     "zod": "^4.4.3",
     "@deepseek-ai/dsh-atomic-write": "workspace:*",
-    "@deepseek-ai/dsh-home-paths": "workspace:*"
+    "@deepseek-ai/dsh-home-paths": "workspace:*",
+    "jsonc-parser": "3.3.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -168,7 +169,9 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
-    "@deepseek-ai/dsh-helper": "workspace:*"
+    "@deepseek-ai/dsh-helper": "workspace:*",
+    "@deepseek-ai/dsh-fs": "workspace:*",
+    "@deepseek-ai/dsh-sandbox-policy": "workspace:*"
   },
   "devDependencies": {
     "chokidar": "5.0.0",
@@ -216,6 +219,9 @@
     "@deepseek-ai/dsh-workspace": "workspace:*",
     "@deepseek-ai/dsh-office-to-pdf": "workspace:*",
     "@deepseek-ai/dsh-helper": "workspace:*",
-    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:*"
+    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:*",
+    "@deepseek-ai/dsh-fs": "workspace:*",
+    "@deepseek-ai/dsh-sandbox-policy": "workspace:*",
+    "@deepseek-ai/dsh-fs-sandbox": "workspace:*"
   }
 }
