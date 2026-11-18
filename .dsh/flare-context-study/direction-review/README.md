@@ -39,6 +39,8 @@ Run a small distinguishing check directly. Ordinary observations, installation c
 
 By default, automatic review targets an experiment’s public interpretation when it is about to guide a subsequent configured operation. The packet contains reconstructable producer code, actual output, the interpretation and the next operation. `automaticInterpretationSignals` defaults to `[]`, so eligibility does not depend on fixed words; only an explicitly nonempty list filters candidates by wording. The optional `before-execution` stage reviews eligible generated scripts before execution. A trailing `Out-String -Width` with a positive integer preserves producer association as formatting metadata; it does not certify the measurement.
 
+The recorded Python invocation may include the literal `-X utf8` option. Even without an independent source observation, a proposed script write or edit can receive review when the adjacent explanation cites the completed experiment by call ID, result sequence or a quoted value from its output. The packet identifies the missing input so the reviewer can assess the scope of the inference.
+
 A concrete `check-required`, `insufficient-evidence` or proposal-only result blocks the reviewed operation. Independent checks and unrelated observations continue through normal permissions. Automatic coverage gaps caused by limits or incomplete delivery remain `unreviewed` and allow ordinary unregistered operations; known concerns and explicit registrations retain their stricter gates. A suggestion cannot bypass another operation’s registration.
 
 <a id="evidence-and-delivery"></a>
@@ -50,12 +52,14 @@ Execution receipts describe host-observed completion, exit status, cancellation,
 
 Reviews accept one complete JSON object or one complete JSON code block followed by ordinary explanation. Multiple candidates, truncation, missing required fields and invalid references cannot be silently repaired into success. A usable proposed check remains advice until executed and assessed.
 
-Final handoff review checks the certainty of the public answer. Source retrieval matches named numeric fields as well as explicit references and literals, and gives recent checks priority over older literal matches within the packet budget; a matching label and number select material without validating the claim. The host preserves the original answer and appends a source-linked correction or an explicit unreviewed notice when required. It does not ask the main model to copy the correction and does not run another experiment. Completion review separately checks a completion declaration against the original objective before saving it.
+Final handoff review checks the certainty of the public answer. Evidence selection keeps explicit references and recent checks, then searches older outputs for named numeric fields, digests and other literals within the packet budget. A complete digest matching a quoted prefix can retrieve the original observation. The reviewer still has to check what was compared. The host preserves the original answer and appends a source-linked correction or an explicit unreviewed notice when required. Completion review separately checks a completion declaration against the original objective before saving it.
 
 <a id="limits-and-lifecycle"></a>
 ## Limits and lifecycle
 
 Consultations share a per-user-request count, token reservation, interval and cancellation owner. Internal recovery does not reset spending. New human requests reset their allowance; steering changes eligible evidence without erasing already incurred cost. Final handoff reserves consultation capacity, but reservation does not guarantee successful delivery. Unknown usage is conservatively charged against the reservation, not reported as a confirmed bill.
+
+With at least two exploration slots, `reserveInterpretationCall` (default `true`) prevents an automatic interpretation without a measurement citation from using the last slot. A script decision citing its measurement, an explicit registration or a completion check can still use that slot, subject to the shared token budget and interval.
 
 The Advisor has no tools. Closing and finalizing prohibit new research consultations while allowing the designated handoff flow. Cancellation, new user input and plugin disposal stop owned work and prevent late advice from authorizing an old operation or writing an old correction. Deduplication uses recorded user requests, source versions, decisions and results.
 

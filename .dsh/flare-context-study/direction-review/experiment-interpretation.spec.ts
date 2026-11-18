@@ -73,6 +73,20 @@ describe('bounded experiment producer recognition', () => {
     expect(identifyInterpretationProducer({ name: 'pwsh', arguments: { command } }, options.cwd)).toMatchObject({ status: 'identified', kind })
   })
 
+  it.each([
+    ['python -B -X utf8 "scan.py" 12 2>&1', { kind: 'file', path: 'D:/actual/scan.py', arguments: ['12'], interpreterOptions: ['-B', '-X', 'utf8'] }],
+    ['python -X utf8 -c "print(1)"', { kind: 'inline', code: 'print(1)', interpreterOptions: ['-X', 'utf8'] }],
+  ] as const)('recovers a completed Python UTF-8 measurement with its recorded options: %s', (command, expected) => {
+    const op = { name: 'pwsh', arguments: { command, workdir: 'D:/actual' } }
+    expect(identifyInterpretationProducer(op, options.cwd)).toMatchObject({ status: 'identified', cwd: 'D:/actual', ...expected })
+    expect(identifyInterpretationProducer(op, options.cwd, 'proposed-check').status).toBe('uncovered')
+  })
+
+  it.each(['-X', '-X other', '-X $mode', '-X utf8 -m other', '-X utf8; echo done'])('rejects unsupported Python options: %s', prefix => {
+    expect(identifyInterpretationProducer({ name: 'pwsh', arguments: { command: 'python ' + prefix + ' scan.py' } }, options.cwd).status)
+      .toBe('uncovered')
+  })
+
   it('expands only literal PowerShell variables in double-quoted inline code', () => {
     const command = "$ad='D:/analysis'; python -c \"print(r'$ad/input.bin')\""
     expect(identifyInterpretationProducer({ name: 'pwsh', arguments: { command } }, options.cwd)).toMatchObject({ code: "print(r'D:/analysis/input.bin')" })
@@ -151,6 +165,33 @@ describe('producer versions and interpretation evidence', () => {
       proposedOperation: { status: 'planned', ...operation } })
     expect(body.sourceSelection.missingOriginalInputs).toBe(false)
     expect(p.rawUsableRefs).toEqual(['run', 'source'])
+  })
+
+  it('reviews a script derived from a cited measurement without representing it as an independent input', () => {
+    const f = fixture()
+    f.write(); f.execute('run', 'sample marker = aa bb cc dd, three rows')
+    f.explain('The prefix `aa bb cc dd...` identifies the complete record. Generate the transformation.')
+    const p = packet(f)
+    expect(p.status).toBe('ready')
+    const body = JSON.parse(p.context)
+    expect(body.observations.map((item: { callId: string }) => item.callId)).toEqual(['run'])
+    expect(body.sourceSelection).toMatchObject({ missingOriginalInputs: true, analysisEligibilityCount: 0 })
+    f.review(p, adverse)
+    f.explain('I still want to write the same transformation.')
+    expect(interpretationConcernFromSession(f.session, packet(f), options)?.review.decision).toBe('check-required')
+  })
+
+  it('keeps a script-only review tied to the adjacent output and a proposed analysis script', () => {
+    const f = fixture()
+    f.write(); const measured = f.execute('run', 'source records: aa bb cc dd')
+    for (const explanation of ['Create the next script.', 'The value was `aa bb cc ee`.', 'A total of `10000000`.', 'Read r' + measured.seq + '0 next.']) {
+      f.explain(explanation)
+      expect(packet(f).status).toBe('no-candidate')
+    }
+    f.explain('Use r' + measured.seq + ' for the next transformation.')
+    expect(packet(f).status).toBe('ready')
+    expect(packet(f, { ...operation, arguments: { ...operation.arguments, file_path: 'notes.txt' } }).status).toBe('no-candidate')
+    expect(interpretationPacket(f.session, state, options, scan).status).toBe('no-candidate')
   })
 
   it('keeps code from execution time after the file is rewritten', () => {
@@ -503,6 +544,12 @@ describe('interpretation review reuse and unresolved concerns', () => {
     const f = ready(), p = packet(f); f.review(p, adverse)
     expect(interpretationCheckFromSession(f.session, state, options, smallCheck)).toBe(true)
     expect(interpretationCheckFromSession(f.session, state, options, { ...smallCheck, arguments: { command: 'python -c "print(2)"' } })).toBe(false)
+  })
+
+  it('keeps a suggested UTF-8 invocation outside automatic check exemptions', () => {
+    const f = ready(), check = { name: 'pwsh', arguments: { command: 'python -X utf8 -c "print(1)"' } }
+    f.review(packet(f), { ...adverse, check })
+    expect(interpretationCheckFromSession(f.session, state, options, check)).toBe(false)
   })
 
   it('requires the same known file check version, rejecting later writes and unknown files', () => {

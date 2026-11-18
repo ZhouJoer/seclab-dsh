@@ -162,6 +162,40 @@ describe('research handoff evidence', () => {
     ])
   })
 
+  const digest = 'a1b2c3d4'.repeat(4)
+  it.each([digest.toUpperCase(), 'a1b2c3d4…', '`a1b2c3d4...`'])(
+    'retrieves both complete digest records under a bounded extra-source quota for %s', spelling => {
+      const source = session([user(1), ...tool(2, 'call_manifest', 'archive index: ' + digest),
+        ...tool(4, 'call_observed', 'measured bytes: ' + digest, 'pwsh'),
+        ...tool(6, 'call_partial', 'a1b2c3d4xyz-tool ' + digest + 'zz'),
+        ...tool(8, 'call_kind', 'named release stable'), ...tool(10, 'call_recent', 'status ready'),
+        final(12, 'Inspect r9, `release stable` and digest ' + spelling + '. The measured association remains provisional.')])
+      const packet = handoffPacket(source, state, { ...config, handoffMaxMatchedEvidencePairs: 2,
+        handoffMaxRecentEvidencePairs: 1 })
+      expect(packet.status).toBe('ready')
+      expect(JSON.parse(packet.context).observations.map((item: { callId: string }) => item.callId))
+        .toEqual(['call_manifest', 'call_observed', 'call_kind', 'call_recent'])
+    })
+
+  it('requires an explicit abbreviation for a short unquoted digest and never promotes bare counts', () => {
+    expect(answerLiterals('a1b2c3d4 ff12… 12345678… xyz' + digest, 32)).toEqual([])
+  })
+
+  it('keeps explicitly cited observations ahead of an incidental digest match', () => {
+    const source = session([user(1), ...tool(2, 'call_digest', digest), ...tool(4, 'call_cited', 'original observation'),
+      final(6, 'Keep r5; the unrelated digest is ' + digest + '.')])
+    const packet = handoffPacket(source, state, { ...config, maxEvidencePairs: 1, handoffMaxRecentEvidencePairs: 0 })
+    expect(JSON.parse(packet.context).observations.map((item: { callId: string }) => item.callId)).toEqual(['call_cited'])
+  })
+
+  it('preserves the named measurement when digest matches compete for the remaining bytes', () => {
+    const source = session([user(1), ...tool(2, 'call_named', 'process_id=731'),
+      ...tool(4, 'call_hash', digest + ' release stable'), ...saved(6, []),
+      final(8, 'Observed process_id=731 and `release stable` with digest ' + digest + '.')])
+    const packet = handoffPacket(source, state, { ...config, maxEvidencePairs: 1, handoffMaxRecentEvidencePairs: 0 })
+    expect(JSON.parse(packet.context).observations.map((item: { callId: string }) => item.callId)).toEqual(['call_named'])
+  })
+
   it('keeps the recent failed check and its formatted producer when an older numeric match is too large', () => {
     const code = 'print("malformed length=90000")'
     const execution = tool(6, 'call_check', 'malformed length=90000', 'pwsh')

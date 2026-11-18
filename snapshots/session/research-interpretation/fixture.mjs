@@ -7,7 +7,7 @@ export const name = 'research-interpretation-fixture'
 export const inject = ['tools']
 const output = { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
 const commands = new Map([
-  ['python -c "print([2,4,6]) # D:/snapshot-analysis/input.bin"', [2, 4, 6]],
+  ['python -X utf8 -c "print([2,4,6]) # D:/snapshot-analysis/input.bin"', [2, 4, 6]],
   ['python -c "print([2,4,6,7,9]) # D:/snapshot-analysis/input.bin"', [2, 4, 6, 7, 9]],
 ])
 

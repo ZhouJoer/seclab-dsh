@@ -1434,6 +1434,11 @@ describe('headless recorded-session snapshots', () => {
               expect(review).toHaveLength(1)
               expect(JSON.stringify(review[0])).toContain('The sampled rows point towards retaining only even entries')
               expect(JSON.stringify(review[0])).toContain('print([2,4,6])')
+              const reviewContext = review[0]?.data.question.context
+              if (typeof reviewContext !== 'string') throw new Error('Missing interpretation review context')
+              expect(JSON.parse(reviewContext)).toMatchObject({
+                producer: { invocation: { interpreterOptions: ['-X', 'utf8'] } },
+              })
               expect(events.filter(event => event.type === 'helper/auto-end')).toMatchObject([{ data: { status: 'completed' } }])
               expect(actualLogs).toHaveLength(2)
               const childHeaders = parseSessionLog(actualLogs[1]!.content).filter(event => event.type === 'request/header')

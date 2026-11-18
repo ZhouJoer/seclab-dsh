@@ -50,6 +50,7 @@ export const Config = Schema.object({
   automaticExperimentStage: Schema.union(['interpretation', 'before-execution']).default('interpretation'),
   automaticInterpretationTools: Schema.array(Schema.string()).default(['write', 'edit', 'bash', 'pwsh', 'security_execute', 'run_code', 'security_ghidra_headless', 'security_radare2', 'security_r2ghidra', 'security_tshark']),
   automaticInterpretationSignals: Schema.array(Schema.string()).default([]),
+  reserveInterpretationCall: Schema.boolean().default(true),
   automaticExperimentMaxRequestBytes: Schema.number().default(64000), automaticExperimentMaxSourcePairs: Schema.number().default(2),
   automaticExperimentMaxTokens: Schema.number().default(8192), automaticExperimentReasoningEffort: Schema.string().default('low'),
   automaticExperimentScriptExtensions: Schema.array(Schema.string()).default(['.py', '.ps1', '.sh', '.js', '.mjs', '.cjs']),
@@ -76,6 +77,7 @@ const configSchema = z.object({
   automaticExperimentReviewEnabled: z.boolean(), automaticExperimentMaxRequestBytes: positive.min(2000), automaticExperimentMaxSourcePairs: positive,
   automaticExperimentStage: z.enum(['interpretation', 'before-execution']), automaticInterpretationTools: z.array(z.string().min(1)).min(1),
   automaticInterpretationSignals: z.array(z.string().min(1)),
+  reserveInterpretationCall: z.boolean(),
   automaticExperimentMaxTokens: positive, automaticExperimentReasoningEffort: z.string(),
   automaticExperimentScriptExtensions: z.array(z.string().regex(/^\.[a-z0-9]+$/)).min(1),
   automaticExperimentSourceTools: z.array(z.string().min(1)).min(1), automaticExperimentSourceOperations: z.array(z.string().min(1)).min(1),
@@ -355,6 +357,10 @@ export function apply(ctx, input) {
     const reservedCalls = !final && config.handoffReviewEnabled ? 1 : 0
     const reservedTokens = !final ? handoffReservation : 0
     const reviewConfig = consultationConfig(config, packet.reason)
+    const explorationSlots = config.maxPerTurn - reservedCalls
+    if (config.reserveInterpretationCall && packet.measurementCited === false && explorationSlots > 1
+      && state.calls === explorationSlots - 1)
+      return { status: 'unreviewed', message: '剩余一次探索咨询优先用于显式登记的决定或引用实测输出的分析脚本。当前解释仍待核对，可继续独立检查。' }
     if (state.calls >= config.maxPerTurn - reservedCalls
       || spent + reservation(packet.context, reviewConfig, question) + reservedTokens > config.maxTokensPerTurn)
       return { status: 'unreviewed', message: '复核预算不足；最后交接保留独立额度。未复核的前提不能成为已验证结论。' }
@@ -798,7 +804,7 @@ export function apply(ctx, input) {
       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
       execute: async (args, exec) => JSON.stringify(await run(args, exec)),
     }))
-    const prompt = agent.ctx.systemPrompt.section({ name: 'local:premise-check', order: 900, text: POLICY + '\n' + CHECKPOINT_POLICY, interpolate: false })
+    const prompt = agent.ctx.systemPrompt.section({ name: 'local:premise-check', order: 900, text: POLICY + '\n\n' + CHECKPOINT_POLICY, interpolate: false })
     installations.set(agent, [tool, prompt])
     if (config.handoffReviewEnabled) handoffControllers.set(agent.id, installHandoffDelivery(agent, {
       canDeliver: () => localAvailable(agent),

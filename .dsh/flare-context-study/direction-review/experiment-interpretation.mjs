@@ -76,9 +76,10 @@ function literalTokens(line) {
 /** Identify supported file or literal Python inline producers without executing shell text.
  * @param operation Exact shell tool name and arguments.
  * @param cwd Working directory at the recorded execution.
+ * @param purpose Proposed checks use the narrower syntax eligible for review reuse.
  * @returns Identified code/file with explicit selection and formatting limits, not-script, or uncovered syntax; formatting never certifies output completeness.
  */
-export function identifyInterpretationProducer(operation, cwd) {
+export function identifyInterpretationProducer(operation, cwd, purpose = 'observation') {
   const command = operation.arguments?.command
   if (typeof command !== 'string' || !command.trim()) return { status: 'not-script', reason: 'no-command' }
   const effectiveCwd = operationCwd(operation, cwd)
@@ -111,8 +112,19 @@ export function identifyInterpretationProducer(operation, cwd) {
   if (!tokens.length) return { status: 'not-script', reason: 'empty-command' }
   const executable = tokens[0].value.replaceAll('\\', '/').split('/').at(-1).toLowerCase().replace(/\.exe$/, '')
   const python = /^(?:python(?:\d+(?:\.\d+)*)?|py)$/.test(executable)
-  let position = 1
-  if (python) while (/^(?:-u|-B|-I|-3(?:\.\d+)?)$/.test(tokens[position]?.value ?? '')) position++
+  let position = 1, utf8Index
+  if (python) {
+    while (position < tokens.length) {
+      if (/^(?:-u|-B|-I|-3(?:\.\d+)?)$/.test(tokens[position].value)) position++
+      else if (purpose === 'observation' && utf8Index === undefined
+        && !tokens[position].quote && tokens[position].value === '-X'
+        && !tokens[position + 1]?.quote && tokens[position + 1]?.value === 'utf8') {
+        utf8Index = position
+        position += 2
+      } else break
+    }
+  }
+  const recordedOptions = utf8Index === undefined ? {} : { interpreterOptions: tokens.slice(1, position).map(token => token.value) }
   if (python && tokens[position]?.value === '-c') {
     const code = tokens[position + 1]
     if (!code?.quote || tokens.length !== position + 2
@@ -134,15 +146,16 @@ export function identifyInterpretationProducer(operation, cwd) {
       })
       if (unknown || expanded.includes('$')) return { status: 'uncovered', reason: 'nonliteral-inline-code' }
     }
-    return { status: 'identified', kind: 'inline', interpreter: executable, code: expanded, cwd: effectiveCwd?.path,
+    return { status: 'identified', kind: 'inline', interpreter: executable, ...recordedOptions, code: expanded, cwd: effectiveCwd?.path,
       codeSha256: hash(expanded), outputSelection, ...formatting ? { formatting } : {},
       coverage: 'Literal Python -c only; output selection, when present, is not complete producer output.' }
   }
+  if (utf8Index !== undefined) tokens.splice(utf8Index, 2)
   const direct = tokens.map(token => token.quote ? `${token.quote}${token.value}${token.quote}` : token.value).join(' ')
   const normalized = [...prelude, direct].join('\n')
   const result = identifyScriptExecution({ ...operation, arguments: { ...operation.arguments, command: normalized,
     cwd: effectiveCwd?.path } }, effectiveCwd?.path)
-  return result.status === 'identified' ? { ...result, kind: 'file', cwd: effectiveCwd?.path, outputSelection,
+  return result.status === 'identified' ? { ...result, kind: 'file', ...recordedOptions, cwd: effectiveCwd?.path, outputSelection,
     ...formatting ? { formatting } : {} } : result
 }
 
@@ -252,6 +265,23 @@ function historicalAnalysisSources(session, boundary, producer, options) {
       ...(asset.engagementId ? { engagementId: asset.engagementId } : {}) }]
   })) }
 }
+
+/** A script-only inference can be reviewed from the exact measured value it cites.
+ * The citation locates the producer. It supplies no independent input or control.
+ */
+function citedMeasurement(producer, explanation, operation, options) {
+  if (!['write', 'edit'].includes(operation.name)) return false
+  const path = operation.arguments?.file_path ?? operation.arguments?.path
+  if (typeof path !== 'string' || !options.scriptExtensions.includes(posix.extname(path).toLowerCase())) return false
+  const references = explanation.split(/[^A-Za-z0-9_-]+/)
+  if (references.includes(producer.callId) || references.includes(`r${producer.resultSeq}`)) return true
+  for (const match of explanation.matchAll(/(?:^|[^`])`([^`\r\n]+)`(?!`)/g)) {
+    const value = match[1].trim().replace(/(?:\.\.\.|…)$/, '').trimEnd()
+    if (value.length >= 8 && !/^\d+$/.test(value) && producer.pair.result.text.includes(value)) return true
+  }
+  return false
+}
+
 function candidate(session, state, options, operation, ownershipOnly = false) {
   if (!options.consumptionTools.includes(operation.name)) return { status: 'no-candidate', reason: 'not-a-consumption-tool' }
   const events = session.snapshotEvents(), boundary = boundaryOf(events, state)
@@ -281,9 +311,11 @@ function candidate(session, state, options, operation, ownershipOnly = false) {
   }
   const historical = historicalAnalysisSources(session, boundary, producer, options)
   const eligible = [...historical.pairs, ...allPairs.filter(pair => pair.resultSeq < producer.callSeq && analysisObservation(pair, options))]
-  if (!eligible.length) return { status: 'no-candidate', reason: 'no-prior-analysis-observation' }
+  const measurementCited = citedMeasurement(producer, explanation, operation, options)
+  if (!eligible.length && !(concern?.context.producer.callId === producer.callId || measurementCited))
+    return { status: 'no-candidate', reason: 'no-prior-analysis-observation' }
   return { status: 'candidate', boundary, producer, interpretation, explanation, eligible, allPairs,
-    historicalBindings: historical.bindings }
+    historicalBindings: historical.bindings, measurementCited }
 }
 
 /** Identify a pending interpretation-owned operation even when steering prevents review.
@@ -346,7 +378,7 @@ export function interpretationPacket(session, state, options, operation, checkTo
       script: producer.script, invocation: producer.invocation,
       coverage: 'Code is reconstructed at execution time from logged writes/edits or a literal inline argument; unlogged external changes are unknown.' },
     interpretation: { seq: interpretation.seq, text: explanation, status: 'analyst-interpretation' },
-    sourceSelection: { strategy: 'explicit-reference-path-or-proposed-asset', analysisEligibilityCount: eligible.length,
+    sourceSelection: { strategy: eligible.length ? 'explicit-reference-path-or-proposed-asset' : 'quoted-producer-without-independent-input', analysisEligibilityCount: eligible.length,
       previousRequestCount: eligible.filter(pair => historicalBindings.has(pair.callId)).length,
       relatedCount: related.length, omittedRelatedCount: related.length - sources.length,
       missingOriginalInputs: !sources.length,
@@ -358,7 +390,7 @@ export function interpretationPacket(session, state, options, operation, checkTo
       workingDirectory: operationCwdKey, ...operation.callId ? { callId: operation.callId } : {} },
     allowedCheckTools: options.checkTools, allowedCheckToolSchemas: checkToolSchemas,
     refs, rawUsableRefs, referenceAliases: aliases, plannedRefs })
-  const packet = { basisKey, reason, userSeq: boundary.sinceSeq, decisionSeq: interpretation.seq, toolFingerprint,
+  const packet = { basisKey, reason, measurementCited: input.measurementCited, userSeq: boundary.sinceSeq, decisionSeq: interpretation.seq, toolFingerprint,
     checkToolSchemaKey, operationCwdKey, producerCallId: producer.callId, resultSeq: producer.resultSeq,
     scriptPath: producer.script.path, scriptCodeSha256: producer.script.codeSha256,
     refs, rawUsableRefs, referenceAliases: aliases, plannedRefs, requestBytes: Buffer.byteLength(context) }
@@ -446,7 +478,7 @@ export function interpretationCheckFromSession(session, state, options, operatio
     const earlierCwd = operationCwd(operation, cwdAt(session, seq, options))
     const currentCwd = operationCwd(operation, cwdAt(session, Infinity, options))
     if (!earlierCwd || earlierCwd.key !== currentCwd?.key) continue
-    const invocation = identifyInterpretationProducer(operation, cwdAt(session, Infinity, options))
+    const invocation = identifyInterpretationProducer(operation, cwdAt(session, Infinity, options), 'proposed-check')
     if (invocation.status === 'uncovered') continue
     if (invocation.status === 'not-script' || invocation.kind === 'inline') return true
     const syntheticCallId = 'interpretation-check-version'

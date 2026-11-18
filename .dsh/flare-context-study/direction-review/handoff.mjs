@@ -20,6 +20,15 @@ const assessmentSchema = z.object({ status: z.enum(['supported', 'contradicted',
 }).passthrough()
 const mentions = (value, key) => new RegExp('(^|[^A-Za-z0-9_-])' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Za-z0-9_-])').test(value)
 
+function sourcePriority(cited, recent, literal, executionOutput) {
+  if (cited) return executionOutput ? 1 : 0
+  if (recent) return 2
+  if (literal?.namedScore) return 3
+  if (literal?.digestScore) return 4
+  if (literal) return executionOutput ? 6 : 5
+  return 7
+}
+
 /** Read model-owned decision records without treating their descriptions as original observations. */
 function decisionRecords(events) {
   const calls = new Map()
@@ -70,14 +79,13 @@ export function handoffPacket(session, state, config) {
   const recent = config.handoffMaxRecentEvidencePairs === 0 ? []
     : allEvidence.filter(pair => pair.callSeq > userSeq).slice(-config.handoffMaxRecentEvidencePairs)
   const lookup = matchedHandoffEvidence(answerText, allEvidence, config)
-  const matched = lookup.candidates.slice(0, config.handoffMaxMatchedEvidencePairs)
+  const matched = lookup.candidates.filter(({ pair }) => !explicitEvidence.includes(pair) && !recent.includes(pair))
+    .slice(0, config.handoffMaxMatchedEvidencePairs)
   const sourceCandidates = allEvidence.filter(pair => selectedRefs.has(pair.callId) || selectedRefs.has('r' + pair.resultSeq)
     || recent.includes(pair) || matched.some(item => item.pair === pair)).map(pair => {
     const literal = matched.find(item => item.pair === pair)
     const executionOutput = config.checkTools.includes(pair.name)
-    const namedNumber = literal?.literals.some(item => item.kind === 'named-number')
-    const priority = explicitEvidence.includes(pair) ? executionOutput ? 1 : 0
-      : recent.includes(pair) ? 2 : namedNumber ? 3 : literal ? executionOutput ? 5 : 4 : 6
+    const priority = sourcePriority(explicitEvidence.includes(pair), recent.includes(pair), literal, executionOutput)
     const producer = config.checkTools.includes(pair.name) ? loggedProducerForCall(session, pair.callId, {
       cwd: session.header?.cwd, scriptExtensions: config.automaticExperimentScriptExtensions ?? ['.py', '.ps1', '.sh', '.js', '.mjs', '.cjs'],
       executionTools: config.adoptionTools ?? config.checkTools, checkTools: config.checkTools, excludedTools: config.excludedTools,

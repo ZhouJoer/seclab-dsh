@@ -379,6 +379,26 @@ describe('experiment interpretation through the real loop', () => {
     expect(notices.every(value => value.scientificallyVerified === false)).toBe(true)
   })
 
+  it.each([true, false])('uses the last exploration slot for an output-linked script when reservation is %s', async (reserved) => {
+    let f: Fixture
+    const steps: ConstructorParameters<typeof MockAdapter>[0] = [toolCallResponse('native', 'native_observe', {}),
+      () => writeScript(f, 'initial-code', 24)]
+    for (const [index, explanation] of ['Inspect another range.', 'Collect a second sample.', 'Apply the measured `odd-count=17` to the next transformation.'].entries()) {
+      steps.push(() => toolCallResponse('measure-' + index, 'pwsh', scriptOperation(f)))
+      steps.push(() => decision(f, 'write-' + index, explanation))
+      if (index === 0 || index === (reserved ? 2 : 1))
+        steps.push(textResponse(JSON.stringify(experimentVerdict('observe', ['measure-' + index]))))
+    }
+    steps.push(textResponse('The interpretation remains limited to this dataset.'))
+    f = await setup(steps, { ...config, maxPerTurn: 2, reserveInterpretationCall: reserved })
+    f.shell.outcome = shellResult({ stdout: { text: 'odd-count=17', truncated: false } })
+    f.start(); await f.agent.whenIdle()
+    expect(calls(f)).toHaveLength(2)
+    expect(experimentNoticeValues(f).map(value => value.status)).toEqual(reserved
+      ? ['reviewed', 'unreviewed', 'reviewed'] : ['reviewed', 'reviewed', 'unreviewed'])
+    for (const index of [0, 1, 2]) expect(executedResult(f, 'write-' + index).data.message.isError).toBe(false)
+  })
+
   it.each(['steer', 'cancel'] as const)('does not execute a proposed adoption after %s during interpretation review', async mode => {
     let f: Fixture
     f = await setup([toolCallResponse('native', 'native_observe', {}), () => writeScript(f, 'produce-code', 20),
