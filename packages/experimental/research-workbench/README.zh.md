@@ -39,7 +39,7 @@ kind: "package-reference"
 <details>
 <summary>实现说明</summary>
 
-浏览器服务 `researchWorkbench` 注册资源适配器和附加面板，并返回清理函数。单个根 Factory 声明 `research.panel` 与 `research.reference`，由 `shell.bottom` 和 `shell.overlay` 共用。参见[适配类型](src/client/contract.ts)、[视图状态](src/client/store.ts)和[文件服务](src/index.ts)。
+浏览器服务 `researchWorkbench` 注册资源适配器和附加面板，并返回清理函数。导航、底部面板与浮层共用一份[已打开文档状态](src/client/store.ts)。两处视图的根 Factory 声明 `research.panel` 与 `research.reference`。参见[适配类型](src/client/contract.ts)和[文件服务](src/index.ts)。
 
 `registerPreview()` 为显式打开操作贡献可选阅读器。阅读器返回是否已处理资源；未匹配的资源和比较操作继续使用文本适配器。释放阅读器会移除其路由，不改变现有文本草稿。
 

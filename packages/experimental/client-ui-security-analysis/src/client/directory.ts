@@ -2,17 +2,22 @@
 import type { SessionPresentation } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SecurityProjectSummary } from '@deepseek-ai/dsh-experimental-security-analysis/client'
-import { notifySubscribers } from '@deepseek-ai/dsh-client-store'
+import { notifySubscribers, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 
 /** Current directory facts; a failed connection retains its last known associations. */
 export interface SecurityDirectorySnapshot {
+  /** True after the first Host frame, including an empty directory. */
+  received: boolean
   projects: readonly SecurityProjectSummary[]
   failed: boolean
 }
 
+/** Directory snapshot shared by task lists and Session navigation. */
+export type DirectoryHooks = { directory: ObservableSnapshot<SecurityDirectorySnapshot> }
+
 /** Shared read-only directory; disposal cancels its stream before removing presentation. */
 export class SecurityDirectory {
-  private snapshot: SecurityDirectorySnapshot = { projects: [], failed: false }
+  private snapshot: SecurityDirectorySnapshot = { received: false, projects: [], failed: false }
   private readonly listeners = new Set<() => void>()
   private names: ReadonlyMap<SessionId, SessionPresentation> = new Map()
   private lifetime: AbortController | undefined
@@ -39,27 +44,6 @@ export class SecurityDirectory {
     return () => { this.listeners.delete(listener) }
   }
 
-  /** Adapt the shared observable to existing directory consumers without another Remote stream.
-   * @param signal - consumer lifetime.
-   * @returns directory baselines; a disconnected source rejects while retaining its data. */
-  async *followProjects(signal: AbortSignal): AsyncIterable<SecurityProjectSummary[]> {
-    let dirty = true
-    let wake = () => {}
-    const changed = () => { dirty = true; wake() }
-    const off = this.subscribe(changed)
-    signal.addEventListener('abort', changed)
-    try {
-      while (!signal.aborted) {
-        const pending = Promise.withResolvers<void>(); wake = () => { pending.resolve() }
-        if (dirty) {
-          dirty = false
-          if (this.snapshot.failed) throw new Error('Security directory disconnected')
-          yield [...this.snapshot.projects]
-        } else await pending.promise
-      }
-    } finally { off(); signal.removeEventListener('abort', changed) }
-  }
-
   /** Replace an obsolete connection stream; late frames cannot overwrite the new connection. */
   start(): void {
     this.lifetime?.abort()
@@ -69,7 +53,7 @@ export class SecurityDirectory {
       try {
         for await (const projects of this.follow(lifetime.signal)) {
           if (lifetime.signal.aborted) return
-          this.snapshot = { projects, failed: false }
+          this.snapshot = { received: true, projects, failed: false }
           const names = new Map<SessionId, SessionPresentation>()
           for (const summary of projects) for (const binding of summary.sessions) {
             const primary = summary.project.mainSessionId === binding.sessionId

@@ -2,7 +2,6 @@
 // over the real Host Typert Remote flow.
 import type {} from '@deepseek-ai/dsh-experimental-security-analysis'
 import { fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
@@ -10,15 +9,13 @@ import { once } from 'node:events'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterEach, beforeEach, describe, expect, it, onTestFailed, onTestFinished } from 'vitest'
-import * as yaml from 'js-yaml'
 import { interpolate } from '@deepseek-ai/cordis-plugin-loader'
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import { loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import {
   launchWebScaffold, watchConsole, captureStableAria, compareOrRefreshGolden, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
-const OVERLAY = fileURLToPath(new URL('./security-workbench.overlay.yml', import.meta.url))
 const HOST_PATCH = fileURLToPath(new URL('../../../packages/experimental/security-profile/cordis.patch.yml', import.meta.url))
 const WEB_PATCH = fileURLToPath(new URL('../../../packages/experimental/security-web-profile/cordis.patch.yml', import.meta.url))
 const INSTALL_ANCHORS = [
@@ -26,27 +23,18 @@ const INSTALL_ANCHORS = [
   fileURLToPath(new URL('../../../packages/experimental/security-web-profile/package.json', import.meta.url)),
 ]
 
-function profileEntries(path: string): unknown[] {
-  const parsed = yaml.load(readFileSync(path, 'utf8'), { schema: entryListSchema })
-  if (!Array.isArray(parsed)) throw new Error(`profile layer at ${path} must be a list`)
-  return parsed
-}
-
-describe('Security workbench overlay', () => {
+describe('Security Web profile', () => {
+  const entries = loadOverlayPatches('security Web profile', WEB_PATCH)
   it('uses an independent default port and preserves explicit CLI port selection', () => {
-    const row = (profileEntries(WEB_PATCH) as { id?: string; config?: unknown }[]).find(entry => entry.id === 'webserver')
+    const row = entries.find(entry => entry.id === 'webserver')
     expect(row).toBeDefined()
     expect(interpolate({ ctx: { webStartup: {} } }, row?.config))
       .toMatchObject({ host: '127.0.0.1', port: 3081, compression: 'gzip' })
     for (const port of [0, 4567])
       expect(interpolate({ ctx: { webStartup: { port } } }, row?.config)).toMatchObject({ port })
   })
-  it('matches the shipped Host and Web profile layers', () => {
-    expect(profileEntries(WEB_PATCH)).toContainEqual({ id: 'harness-dev-context', disabled: true })
-    expect(profileEntries(OVERLAY)).toEqual([
-      ...profileEntries(HOST_PATCH),
-      ...profileEntries(WEB_PATCH),
-    ])
+  it('disables harness development context', () => {
+    expect(entries).toContainEqual({ id: 'harness-dev-context', disabled: true })
   })
 })
 
@@ -57,7 +45,7 @@ describe('web e2e: Security workbench', () => {
   let tripwire: ReturnType<typeof watchConsole>
 
   beforeEach(async () => {
-    scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: INSTALL_ANCHORS,
+    scaffold = await launchWebScaffold({ extraOverlayPath: [HOST_PATCH, WEB_PATCH], extraInstallAnchors: INSTALL_ANCHORS,
       agentPresets: { default: 'security' }, profile: { hmr: false, packages: [{
         dir: fileURLToPath(new URL('../../../packages/experimental/research-workbench-bundle', import.meta.url)), enabled: true,
       }] } })

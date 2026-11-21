@@ -1,15 +1,7 @@
 /** Authenticated Connection Fetch endpoint for operator report downloads. @module */
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-connection'
 import type { SecurityController } from './workbench/controller.ts'
-
-interface ExportConnection {
-  fetch: { register(route: {
-    path: string
-    methods: readonly ('GET' | 'HEAD')[]
-    requestBody: 'buffered'
-    fetch(request: Request): Promise<Response>
-  }): () => Promise<void> }
-}
 
 /** Install the download only in compositions providing authenticated Connection Fetch.
  * @param ctx - service-owned context.
@@ -18,7 +10,7 @@ interface ExportConnection {
  */
 export function installReportExport(ctx: Context, ready: Promise<SecurityController>, maxBytes: number): void {
   ctx.inject(['connection'], (connected) => {
-    const connection = Reflect.get(connected, 'connection') as ExportConnection
+    const { connection } = connected
     connected.effect(() => connection.fetch.register({ path: '/api/security.report', methods: ['GET', 'HEAD'], requestBody: 'buffered',
       fetch: async (request) => {
         const query = new URL(request.url).searchParams

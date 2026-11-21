@@ -4,8 +4,8 @@ import type { SecurityRecord } from './model.ts'
 
 /** Deployment limits for rendered output and main-body findings. */
 export interface ReportLimits {
-  maxFindings: number
-  outputBytes: number
+  reportMaxFindings: number
+  maxOutputBytes: number
 }
 interface RenderedReport {
   markdown: string
@@ -42,8 +42,8 @@ export function renderReport(records: SecurityRecord[], limits: ReportLimits): R
     const basis = review?.kind === 'review' ? review.value.basis === 'static' ? '，静态复核' : '，运行复核' : ''
     return `- ${clean(finding.title)}（${status}${basis}）：${clean(finding.explanation)}；条件：${clean(finding.conditions)}。 ${links(finding.evidenceIds)}`
   }
-  const main = findings.slice(0, limits.maxFindings)
-  const extra = findings.slice(limits.maxFindings)
+  const main = findings.slice(0, limits.reportMaxFindings)
+  const extra = findings.slice(limits.reportMaxFindings)
   const lines = [`# ${title}：任务分析报告`, '', '## 任务目标', clean(project.objective)]
   const assets = records.filter(item => item.kind === 'asset')
   lines.push('', '## 范围', ...assets.map(({ value }) => {
@@ -86,7 +86,7 @@ export function renderReport(records: SecurityRecord[], limits: ReportLimits): R
       ...lines.slice(lines.indexOf('## 引用')), ''].join('\n') } : {}),
     ...(recommendations.length ? { recommendationsMarkdown: [`# ${title}：修复建议`, '', ...recommendations, ''].join('\n') } : {}) }
   for (const content of [documents.markdown, documents.findingsMarkdown, documents.recommendationsMarkdown])
-    if (content !== undefined && Buffer.byteLength(content) > limits.outputBytes)
+    if (content !== undefined && Buffer.byteLength(content) > limits.maxOutputBytes)
       throw new Error('Rendered report exceeds the configured byte budget')
   return documents
 }

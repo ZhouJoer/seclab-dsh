@@ -1249,7 +1249,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-security-analysis`
 
 - `inject`: `tools` · `agents` · `llm` · `systemPrompt` · `storageDomain` · `jobs` · `subagents` · `sessionProjections` · `subprocess`
-- `source`: [`packages/experimental/security-analysis/src/index.ts:128`](../packages/experimental/security-analysis/src/index.ts)
+- `source`: [`packages/experimental/security-analysis/src/index.ts:147`](../packages/experimental/security-analysis/src/index.ts)
 
 ```ts config-catalog
 /** Explicit host locations and operational limits. */
@@ -1278,7 +1278,7 @@ export interface WorkbenchConfig {
   taskIntake?: TaskIntakeConfig | undefined
   /** Maximum complete task declaration and background snapshot in UTF-8 bytes. */
   taskContextMaxBytes: number
-  /** Absolute Host directory for ownership, immutable artifacts and the derived search index. */
+  /** Absolute Host directory for ownership, immutable artifacts and run files. */
   root: string
   /** Absolute directories whose real paths may contain imported samples. */
   importRoots: string[]

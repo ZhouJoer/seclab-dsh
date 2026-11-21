@@ -2318,10 +2318,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the committed project view after refinement.',
       },
       {
-        signature: '@Remote(\'manageProject\') async manageProject(projectId: string, input: string): Promise<string>',
+        signature: '@Remote(\'manageProject\') async manageProject(projectId: string, input: string): Promise<void>',
         description: 'Update a project from the authenticated project browser.',
         parameters: [{ name: 'projectId', description: 'operator-selected project.' }, { name: 'input', description: 'revision-checked management request.' }],
-        returns: 'complete project list, including removed projects.',
+        returns: 'completion of the requested change.',
       },
       {
         signature: '@Remote(\'restartTask\') async restartTask(agent: Agent, input: string): Promise<{ sessionId: SessionId; projectId: string; objective: string }>',
@@ -2334,12 +2334,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Attach user-selected materials without granting model access to their live paths.',
         parameters: [{ name: 'agent', description: 'authenticated top-level conversation.' }, { name: 'input', description: 'material selection and current revision.' }],
         returns: 'scope containing immutable imported assets.',
-      },
-      {
-        signature: '@Remote(\'projects\') async projects(): Promise<string>',
-        description: 'List persistent projects, including removed projects available for restoration.',
-        parameters: [],
-        returns: 'project identities and objectives.',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) async *followProjects(signal: AbortSignal): AsyncIterable<SecurityProjectSummary[]>',
@@ -7568,7 +7562,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReportLimits',
-    declaration: 'export interface ReportLimits {\n    maxFindings: number;\n    outputBytes: number;\n}',
+    declaration: 'export interface ReportLimits {\n    reportMaxFindings: number;\n    maxOutputBytes: number;\n}',
   },
   {
     name: 'RequestContext',
@@ -7824,7 +7818,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SecurityJournal',
-    declaration: 'export interface SecurityJournal {\n    view(): WorkbenchView;\n    sessionProjects(): Map<string, Set<string>>;\n    mainSession(projectId: string): string | undefined;\n    subscribeAll(listener: () => void): () => void;\n    subscribe(project: string, listener: () => void): () => void;\n    subscribeSelection(session: string, listener: () => void): () => void;\n    replay(operationId: string, input: unknown): WorkbenchView | undefined;\n    commit(operationId: string, expectedRevision: number | {\n        revision: number;\n        projectId: string;\n        sessionId: string;\n    } | undefined, input: unknown, produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[]): Promise<WorkbenchView>;\n    purge(operationId: string, expectedRevision: number, projectId: string, plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<WorkbenchView>;\n    pendingPurges(): {\n        projectId: string;\n        artifacts: string[];\n    }[];\n    finishPurge(projectId: string): Promise<void>;\n    close(): Promise<void>;\n}',
+    declaration: 'export interface SecurityJournal {\n    view(): WorkbenchView;\n    sessionProjects(): Map<string, Set<string>>;\n    mainSession(projectId: string): string | undefined;\n    subscribeAll(listener: () => void): () => void;\n    subscribe(project: string, listener: () => void): () => void;\n    subscribeSelection(session: string, listener: () => void): () => void;\n    hasCommitted(operationId: string, input: unknown): boolean;\n    commit(operationId: string, expectedRevision: number | {\n        revision: number;\n        projectId: string;\n        sessionId: string;\n    } | undefined, input: unknown, produce: (view: WorkbenchView) => Promise<SecurityRecord[]> | SecurityRecord[]): Promise<WorkbenchView>;\n    purge(operationId: string, expectedRevision: number, projectId: string, plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<void>;\n    pendingPurges(): {\n        projectId: string;\n        artifacts: string[];\n    }[];\n    finishPurge(projectId: string): Promise<void>;\n    close(): Promise<void>;\n}',
   },
   {
     name: 'SecurityProjectSummary',
@@ -9660,7 +9654,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkbenchOptions',
-    declaration: 'export interface WorkbenchOptions {\n    taskContextMaxBytes: number;\n    importRoots: string[];\n    environments: SecurityEnvironment[];\n    maxDurationMs: number;\n    maxOutputBytes: number;\n    approvalTtlMs: number;\n    sessionSelfApprove: boolean;\n    maxDerivedAssets: number;\n    maxArtifactBytes: number;\n    reportLimits?: ReportLimits;\n}',
+    declaration: 'export interface WorkbenchOptions extends ReportLimits {\n    taskContextMaxBytes: number;\n    importRoots: string[];\n    environments: SecurityEnvironment[];\n    maxDurationMs: number;\n    approvalTtlMs: number;\n    sessionSelfApprove: boolean;\n    maxDerivedAssets: number;\n    maxArtifactBytes: number;\n}',
   },
   {
     name: 'WorkbenchView',

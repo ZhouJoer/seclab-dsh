@@ -211,9 +211,9 @@ async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityComm
 /** Update a project from the authenticated project browser.
  * @param projectId - operator-selected project.
  * @param input - revision-checked management request.
- * @returns complete project list, including removed projects.
+ * @returns completion of the requested change.
  */
-@Remote('manageProject') async manageProject(projectId: string, input: string): Promise<string>
+@Remote('manageProject') async manageProject(projectId: string, input: string): Promise<void>
 
 /** Archive one round and prepare a fresh conversation without sending a prompt.
  * @param agent - authenticated source coordinator.
@@ -228,10 +228,6 @@ async saveAnalysisCheckpoint(agent: Agent, checkpoint: Omit<Extract<SecurityComm
  * @returns scope containing immutable imported assets.
  */
 @Remote('importMaterials') async importMaterials(agent: Agent, input: string): Promise<WorkbenchView>
-
-/** List persistent projects, including removed projects available for restoration.
- * @returns project identities and objectives. */
-@Remote('projects') async projects(): Promise<string>
 
 /** Follow all task summaries over one disposable subscription.
  * @param signal - connection lifetime.

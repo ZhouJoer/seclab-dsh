@@ -31,8 +31,11 @@ export interface SecurityJournal {
   subscribe(project: string, listener: () => void): () => void
   /** Subscribe to committed selection changes for one Session; disposal removes the listener. */
   subscribeSelection(session: string, listener: () => void): () => void
-  /** Return a completed identical command without invoking its producer. */
-  replay(operationId: string, input: unknown): WorkbenchView | undefined
+  /** Check an operation's retry identity.
+   * @param operationId - stable command identity.
+   * @param input - complete command used to detect changed retries.
+   * @returns whether the same command committed; different input for the same ID throws. */
+  hasCommitted(operationId: string, input: unknown): boolean
   /**
    * Commit one command atomically as one domain record.
    * @param operationId - caller's stable retry identity.
@@ -52,9 +55,9 @@ export interface SecurityJournal {
    * @param expectedRevision - revision displayed at confirmation.
    * @param projectId - archived project to remove.
    * @param plan - collect unshared artifact digests before deleting any content.
-   * @returns snapshot after durable deletion; cleanup digests remain until acknowledged. */
+   * @returns completion after the history is scrubbed; cleanup digests remain until acknowledged. */
   purge(operationId: string, expectedRevision: number, projectId: string,
-    plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<WorkbenchView>
+    plan: (removed: SecurityRecord[], retained: SecurityRecord[]) => Promise<string[]>): Promise<void>
   /** @returns durable deletions still requiring file and activity cleanup. */
   pendingPurges(): { projectId: string; artifacts: string[] }[]
   /** Acknowledge completed file and activity cleanup.
@@ -64,6 +67,17 @@ export interface SecurityJournal {
   /** @returns completion after accepted commands settle and storage closes. */
   close(): Promise<void>
 }
+/** Resolve a primary coordinator without activating an archived binding.
+ * @param journal - Source of the project's original coordinator.
+ * @param view - Current journal snapshot.
+ * @param sessionId - Current or archived conversation.
+ * @returns the bound project's ID when this conversation is its primary coordinator.
+ */
+export function primaryProjectId(journal: SecurityJournal, view: WorkbenchView, sessionId: string): string | undefined {
+  const binding = view.records.find(item => item.kind === 'binding' && item.value.sessionId === sessionId)
+  if (binding?.kind === 'binding' && journal.mainSession(binding.value.engagementId) === sessionId) return binding.value.engagementId
+}
+
 /**
  * Open the security journal; another host must not share its storage root.
  * @param ctx - context providing storage-domain.
@@ -88,15 +102,17 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
   let revision = 0
   let chain = Promise.resolve()
   let closing: Promise<void> | undefined
-  const apply = (items: SecurityRecord[]) => {
+  const projectOf = (item: SecurityRecord) => item.kind === 'engagement' ? item.value.id : item.value.engagementId
+  const apply = (commit: z.infer<typeof commitSchema>, items = commit.records) => {
+    revision = commit.revision
+    operations.set(commit.operationId, commit.fingerprint)
     for (const item of items) {
       const key = item.kind === 'binding' ? item.value.sessionId : item.value.id
       records.set(item.kind + ':' + key, item)
-      projectRevisions.set(item.kind === 'engagement' ? item.value.id : item.value.engagementId, revision)
+      projectRevisions.set(projectOf(item), revision)
       if (item.kind === 'binding') selectionRevisions.set(item.value.sessionId, revision)
     }
   }
-  const projectOf = (item: SecurityRecord) => item.kind === 'engagement' ? item.value.id : item.value.engagementId
   const scrub = async () => {
     const deleted = new Set([...table.entries()].flatMap(([, commit]) => commit.purge ? [commit.purge.projectId] : []))
     for (const [key, item] of records) if (deleted.has(projectOf(item))) records.delete(key)
@@ -111,9 +127,7 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
       if (commit.revision !== revision + 1 || key !== String(commit.revision) || operations.has(commit.operationId)) {
         throw new Error('Invalid security journal sequence or duplicate operation')
       }
-      revision = commit.revision
-      operations.set(commit.operationId, commit.fingerprint)
-      apply(commit.records)
+      apply(commit)
     }
     await scrub()
   } catch (error) {
@@ -122,18 +136,52 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
   }
   const view = (): WorkbenchView => ({ revision, records: structuredClone([...records.values()]) })
   const fingerprintOf = (input: unknown) => createHash('sha256').update(JSON.stringify(input)).digest('hex')
+  function matchesCommit(operationId: string, fingerprint: string): boolean {
+    const previous = operations.get(operationId)
+    if (previous === undefined) return false
+    if (previous !== fingerprint) throw new Error('operationId was already used for different input')
+    return true
+  }
+  function enqueue<T>(write: () => Promise<T>) {
+    const pending = chain.then(write)
+    chain = pending.then(() => {}, () => {})
+    return pending
+  }
+  function queueOperation<T>(operationId: string, input: unknown,
+    replay: () => T | Promise<T>, write: (fingerprint: string) => Promise<T>) {
+    if (closing) return Promise.reject(new Error('Security journal is closing'))
+    const fingerprint = fingerprintOf(input)
+    return enqueue(async () => {
+      if (!operationId.trim()) throw new Error('operationId is required')
+      return matchesCommit(operationId, fingerprint) ? replay() : write(fingerprint)
+    })
+  }
+  function publish(changed: SecurityRecord[], projects: Iterable<string>) {
+    const notify = (kind: string, group?: Set<() => void>) => {
+      for (const listener of group ?? []) {
+        try { listener() } catch (error) { ctx.logger.warn('Security %s subscriber failed: %s', kind, String(error)) }
+      }
+    }
+    notify('directory', allListeners)
+    for (const item of changed) if (item.kind === 'binding') notify('selection', selections.get(item.value.sessionId))
+    for (const id of projects) notify('project', listeners.get(id))
+  }
+  function mainSession(projectId: string): string | undefined {
+    const project = records.get('engagement:' + projectId)
+    if (project?.kind !== 'engagement') return undefined
+    if (project.value.mainSessionId) return project.value.mainSessionId
+    const commits = [...table.entries()].map(([, commit]) => commit).sort((a, b) => a.revision - b.revision)
+    for (const commit of commits) {
+      if (!commit.records.some(record => record.kind === 'engagement' && record.value.id === projectId)) continue
+      const binding = commit.records.find(record => record.kind === 'binding'
+        && record.value.engagementId === projectId && record.value.role === 'coordinator')
+      if (binding?.kind === 'binding') return binding.value.sessionId
+    }
+    return undefined
+  }
   return {
     view,
-    mainSession(projectId) {
-      const commits = [...table.entries()].map(([, commit]) => commit).sort((a, b) => a.revision - b.revision)
-      for (const commit of commits) {
-        if (!commit.records.some(record => record.kind === 'engagement' && record.value.id === projectId)) continue
-        const binding = commit.records.find(record => record.kind === 'binding'
-          && record.value.engagementId === projectId && record.value.role === 'coordinator')
-        if (binding?.kind === 'binding') return binding.value.sessionId
-      }
-      return undefined
-    },
+    mainSession,
     sessionProjects() {
       const result = new Map<string, Set<string>>()
       for (const [, commit] of table.entries()) for (const record of commit.records) {
@@ -154,22 +202,11 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
       group.add(listener); selections.set(session, group)
       return () => { group.delete(listener); if (!group.size) selections.delete(session) }
     },
-    replay(operationId, input) {
-      const previous = operations.get(operationId)
-      if (previous === undefined) return undefined
-      if (previous !== fingerprintOf(input)) throw new Error('operationId was already used for different input')
-      return view()
+    hasCommitted(operationId, input) {
+      return operations.has(operationId) && matchesCommit(operationId, fingerprintOf(input))
     },
     commit(operationId, expectedRevision, input, produce) {
-      if (closing !== undefined) return Promise.reject(new Error('Security journal is closing'))
-      const fingerprint = fingerprintOf(input)
-      const pending = chain.then(async () => {
-        if (!operationId.trim()) throw new Error('operationId is required')
-        const previous = operations.get(operationId)
-        if (previous !== undefined) {
-          if (previous !== fingerprint) throw new Error('operationId was already used for different input')
-          return view()
-        }
+      return queueOperation(operationId, input, view, async (fingerprint) => {
         if (expectedRevision !== undefined) {
           const observed = typeof expectedRevision === 'number' ? expectedRevision : expectedRevision.revision
           const changedAt = typeof expectedRevision === 'number' ? revision
@@ -184,42 +221,13 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
           .parse(await produce(view()))
         const commit = commitSchema.parse({ revision: revision + 1, operationId, fingerprint, records: changed })
         await table.put(String(commit.revision), commit)
-        revision = commit.revision
-        operations.set(operationId, fingerprint)
-        apply(changed)
-        for (const listener of allListeners) {
-          try { listener() } catch (error) { ctx.logger.warn('Security directory subscriber failed: %s', String(error)) }
-        }
-        for (const item of changed) {
-          if (item.kind !== 'binding') continue
-          for (const listener of selections.get(item.value.sessionId) ?? []) {
-            try { listener() } catch (error) { ctx.logger.warn('Security selection subscriber failed: %s', String(error)) }
-          }
-        }
-        for (const project of new Set(changed.map(item => item.kind === 'engagement' ? item.value.id : item.value.engagementId))) {
-          for (const listener of listeners.get(project) ?? []) {
-            try { listener() } catch (error) { ctx.logger.warn('Security project subscriber failed: %s', String(error)) }
-          }
-        }
+        apply(commit, changed)
+        publish(changed, new Set(changed.map(projectOf)))
         return view()
       })
-      chain = pending.then(
-        () => {},
-        () => {},
-      )
-      return pending
     },
     purge(operationId, expectedRevision, projectId, plan) {
-      if (closing !== undefined) return Promise.reject(new Error('Security journal is closing'))
-      const fingerprint = fingerprintOf({ projectId, purge: true })
-      const pending = chain.then(async () => {
-        if (!operationId.trim()) throw new Error('operationId is required')
-        const previous = operations.get(operationId)
-        if (previous !== undefined) {
-          if (previous !== fingerprint) throw new Error('operationId was already used for different input')
-          await scrub()
-          return view()
-        }
+      return queueOperation(operationId, { projectId, purge: true }, scrub, async (fingerprint) => {
         if (revision !== expectedRevision) throw new Error('Security state changed; reload before retrying')
         const project = records.get('engagement:' + projectId)
         if (project?.kind !== 'engagement') throw new Error('Unknown project')
@@ -232,22 +240,11 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
         const commit = commitSchema.parse({ revision: revision + 1, operationId, fingerprint, records: [],
           purge: { projectId, artifacts, pending: true } })
         await table.put(String(commit.revision), commit)
-        revision = commit.revision; operations.set(operationId, fingerprint)
+        apply(commit)
         const sessions = [...records.values()].filter(item => item.kind === 'binding' && item.value.engagementId === projectId)
         await scrub()
-        for (const listener of allListeners) {
-          try { listener() } catch (error) { ctx.logger.warn('Security directory subscriber failed: %s', String(error)) }
-        }
-        for (const item of sessions) if (item.kind === 'binding') for (const listener of selections.get(item.value.sessionId) ?? []) {
-          try { listener() } catch (error) { ctx.logger.warn('Security selection subscriber failed: %s', String(error)) }
-        }
-        for (const listener of listeners.get(projectId) ?? []) {
-          try { listener() } catch (error) { ctx.logger.warn('Security project subscriber failed: %s', String(error)) }
-        }
-        return view()
+        publish(sessions, [projectId])
       })
-      chain = pending.then(() => {}, () => {})
-      return pending
     },
     pendingPurges() {
       return [...table.entries()].flatMap(([, commit]) => commit.purge?.pending
@@ -255,12 +252,10 @@ export async function openSecurityJournal(ctx: Context): Promise<SecurityJournal
     },
     finishPurge(projectId) {
       if (closing !== undefined) return Promise.reject(new Error('Security journal is closing'))
-      const pending = chain.then(async () => {
+      return enqueue(async () => {
         for (const [key, commit] of table.entries()) if (commit.purge?.projectId === projectId && commit.purge.pending)
           await table.put(key, { ...commit, purge: { projectId, artifacts: [], pending: false } })
       })
-      chain = pending.then(() => {}, () => {})
-      return pending
     },
     close() {
       allListeners.clear()

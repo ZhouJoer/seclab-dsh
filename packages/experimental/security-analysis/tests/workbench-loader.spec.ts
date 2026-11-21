@@ -4,8 +4,9 @@ import * as fileOperations from 'node:fs/promises'
 import * as chokidar from 'chokidar'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { pathToFileURL } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { afterEach, describe, expect, it, vi, onTestFinished } from 'vitest'
@@ -46,6 +47,7 @@ import type { SecurityEnvironment, ToolInstallation } from '../src/workbench/pro
 import { ToolInstallationStore } from '../src/tool-installation-store.ts'
 import { findingHash } from '../src/workbench/assessment.ts'
 import { SecurityActivityStore } from '../src/workbench/activity.ts'
+import { openTaskSettings } from '../src/task-settings.ts'
 import { bindDelegatedChild } from './delegation-fixture.ts'
 import { peImageBytes } from './pe-fixture.ts'
 import type { SessionBinding } from '../src/workbench/model.ts'
@@ -390,6 +392,61 @@ function operator(controller: Awaited<Security['ready']>, agent: Agent) {
     operationId: JSON.stringify(action), expectedRevision: controller.view(agent.id).revision, action,
   }, true)
 }
+
+it('releases task settings and root ownership when the activity domain cannot open', async () => {
+  const { ctx, agent } = await load()
+  const plugin = [...ctx.loader.entries()].find(entry => entry.options.id === 'security')!
+  await plugin.fiber!.dispose()
+  const otherActivity = await SecurityActivityStore.open(ctx)
+  try {
+    await plugin.init()
+    await expect(ctx.securityWorkbench.ready).rejects.toThrow('already open')
+    const reopened = await openTaskSettings(ctx)
+    await reopened.close()
+    using ownership = new DatabaseSync(join(agent.session.header.cwd!, 'workbench', 'owner.sqlite'))
+    ownership.exec('BEGIN EXCLUSIVE')
+  } finally { await otherActivity.close() }
+})
+
+it('removes the identified disk search index on startup and searches retained evidence in memory', async () => {
+  const { ctx, controller, agent } = await load()
+  const workspace = agent.session.header.cwd!
+  const root = join(workspace, 'workbench')
+  const send = operator(controller, agent)
+  await send({ kind: 'create', title: 'Archived material', objective: 'Read saved notes', environmentIds: ['local'], maxAttempts: 1 })
+  const path = join(workspace, 'notes.txt')
+  await writeFile(path, 'Selected notes')
+  await send({ kind: 'import', path, label: 'Notes' })
+  const asset = controller.view(agent.id).records.find(record => record.kind === 'asset')!
+  const bytes = Buffer.from('{"note":"留存材料 archivalword"}')
+  const evidence = await controller.captureAnalysis(agent.id, asset.value.id, ['notes'], bytes, new AbortController().signal)
+  if (evidence.kind !== 'evidence') throw new Error('Missing saved evidence')
+  const plugin = [...ctx.loader.entries()].find(entry => entry.options.id === 'security')!
+  await plugin.fiber!.dispose()
+
+  const cachePath = join(root, 'search.sqlite')
+  const cache = new DatabaseSync(cachePath)
+  try {
+    cache.exec("CREATE VIRTUAL TABLE IF NOT EXISTS records USING fts5(id UNINDEXED, engagement UNINDEXED, content); INSERT INTO records VALUES ('old', 'p', 'archivalword')")
+  } finally {
+    cache.close()
+  }
+  const quarantine = 'search.sqlite.corrupt-' + randomUUID()
+  const retained = ['search.sqlite.backup', 'search.sqlite.corrupt-not-a-uuid', quarantine]
+  for (const name of retained) await writeFile(join(root, name), name)
+  const directory = 'search.sqlite.corrupt-' + randomUUID()
+  await mkdir(join(root, directory))
+  await writeFile(join(root, directory, 'search.sqlite'), 'nested')
+
+  await plugin.init()
+  await ctx.loader.await()
+  const reopened = await ctx.securityWorkbench.ready
+  expect(await ctx.securityWorkbench.search(agent, '留存 archivalword', false)).toMatchObject({ records: [evidence] })
+  expect(await reopened.artifacts.read(evidence.value.artifact)).toEqual(bytes)
+  expect(await readdir(root)).not.toContain('search.sqlite')
+  for (const name of retained) expect(await readFile(join(root, name), 'utf8')).toBe(name)
+  expect(await readFile(join(root, directory, 'search.sqlite'), 'utf8')).toBe('nested')
+})
 
 describe('first-message security preparation', () => {
   it('saves task-only mode and modules before creation and prevents edits after association', async () => {
@@ -1697,9 +1754,9 @@ else if (args.includes('--output')) {
     await expect(controller.manageProject(project, { operationId: randomUUID(), expectedRevision: revision,
       action: { kind: 'add-environments', environmentIds: ['missing'] } })).rejects.toThrow('Unknown security environment')
     expect(controller.view(agent.id).revision).toBe(revision)
-    const projects = await controller.manageProject(project, { operationId: randomUUID(), expectedRevision: revision,
+    await controller.manageProject(project, { operationId: randomUUID(), expectedRevision: revision,
       action: { kind: 'add-environments', environmentIds: ['local', 'local'] } })
-    expect(projects.find(item => item.id === project)?.environmentIds).toEqual(['local'])
+    expect(controller.projects().find(item => item.id === project)?.environmentIds).toEqual(['local'])
   })
   it('runs generated scripts and relative outputs in the analysis directory and captures the execution log', async () => {
     const { ctx, agent, model, controller } = await load(false, 0, { native: true })
@@ -2606,7 +2663,10 @@ it('publishes submitted conclusions through the Loader without a report model re
   expect(markdown).toContain('已确认，静态复核')
   expect(markdown).toContain('调用方与运行行为未验证。')
   expect(markdown).not.toContain('读取前校验记录所有权')
-  expect((await controller.artifacts.read(report.value.recommendationsMarkdown!)).toString()).toContain('读取前校验记录所有权')
+  const recommendations = report.value.recommendationsMarkdown!
+  const preview: unknown = JSON.parse(await ctx.securityWorkbench.projectArtifact(report.value.engagementId, recommendations.sha256))
+  expect(preview).toMatchObject({ sha256: recommendations.sha256, size: recommendations.size })
+  expect(preview).toHaveProperty('text', expect.stringContaining('读取前校验记录所有权'))
   expect(loggedInputs).toEqual([])
   expect(model.requests).toHaveLength(0)
   {
@@ -3746,6 +3806,7 @@ it('reads project artifacts and coordinator IDs without writes, rejecting foreig
   const events = agent.session.snapshotEvents()
   expect(await ctx.securityWorkbench.projectSessions(first)).toEqual([agent.id])
   expect(JSON.parse(await ctx.securityWorkbench.projectArtifact(first, asset.value.artifact.sha256))).toMatchObject({ truncated: false })
+  await expect(ctx.securityWorkbench.projectArtifact(first, createHash('sha256').update('owned').digest('hex'))).rejects.toThrow('outside')
   expect(controller.projectView(first)).toEqual(before)
   expect(agent.session.snapshotEvents()).toEqual(events)
   await expect(ctx.securityWorkbench.projectSessions('unknown')).rejects.toThrow('Unknown')
@@ -3769,9 +3830,9 @@ it('streams Session selection from unbound through create, switch and leave, and
     const first = stream.next()
     await send({ kind: 'create', title: 'First', objective: 'Inspect owned material', environmentIds: ['local'], maxAttempts: 3 })
     expect((await first).value?.records.find(item => item.kind === 'engagement')?.value.title).toBe('First')
-    const second = stream.next()
+    await send({ kind: 'create', title: 'Intermediate', objective: 'Separate material', environmentIds: ['local'], maxAttempts: 3 })
     await send({ kind: 'create', title: 'Second', objective: 'Separate material', environmentIds: ['local'], maxAttempts: 3 })
-    expect((await second).value?.records.find(item => item.kind === 'engagement')?.value.title).toBe('Second')
+    expect((await stream.next()).value?.records.find(item => item.kind === 'engagement')?.value.title).toBe('Second')
     const left = stream.next()
     await send({ kind: 'leave' })
     expect((await left).value?.records).toEqual([])
@@ -3779,6 +3840,27 @@ it('streams Session selection from unbound through create, switch and leave, and
     abort.abort()
     expect((await pending).done).toBe(true)
   } finally { abort.abort(); await stream.return?.() }
+})
+
+it('ends cancelled directory and improvement streams and rejects a cancelled Session selection', async () => {
+  const { ctx, agent } = await load()
+  const cancelled = AbortSignal.abort(new Error('Closed by reader'))
+  const workbench = ctx.securityWorkbench
+  await expect(workbench.followSessionView(agent.id, cancelled)[Symbol.asyncIterator]().next()).rejects.toThrow('Closed by reader')
+  for (const follow of [
+    (signal: AbortSignal) => workbench.followProjects(signal),
+    (signal: AbortSignal) => workbench.followImprovements(signal),
+  ]) {
+    expect((await follow(cancelled)[Symbol.asyncIterator]().next()).done).toBe(true)
+    const abort = new AbortController()
+    const stream = follow(abort.signal)[Symbol.asyncIterator]()
+    try {
+      expect((await stream.next()).done).toBe(false)
+      const waiting = stream.next()
+      abort.abort()
+      expect((await waiting).done).toBe(true)
+    } finally { abort.abort(); await stream.return?.() }
+  }
 })
 
 it('reads a delegated historical Session without creating an Agent', async () => {
@@ -4288,6 +4370,9 @@ it('synchronizes primary task deletion and native archive in both directions wit
   const project = controller.projects()[0]!
   const manage = (kind: 'archive' | 'restore') => ctx.securityWorkbench.manageProject(project.id,
     JSON.stringify({ operationId: randomUUID(), expectedRevision: controller.projectView(project.id).revision, action: { kind } }))
+  const abort = new AbortController()
+  const directory = ctx.securityWorkbench.followProjects(abort.signal)[Symbol.asyncIterator]()
+  await expect(directory.next()).resolves.toMatchObject({ value: [{ project: { id: project.id }, state: 'idle' }] })
   const { agent: child } = await ctx.agents.create({ sessionId: SessionId('archive-child'), parentAgent: agent,
     meta: { origin: 'subagent' } })
   await ctx.workspaceRegistry.archiveSession(child.id)
@@ -4297,6 +4382,7 @@ it('synchronizes primary task deletion and native archive in both directions wit
   expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
   await ctx.workspaceRegistry.archiveSession(agent.id)
   expect(controller.projects(true)[0]).toMatchObject({ archived: true, stopped: true })
+  await expect(directory.next()).resolves.toMatchObject({ value: [{ project: { id: project.id, archived: true }, state: 'removed' }] })
   expect(controller.binding(agent.id)).toBeUndefined()
   await ctx.workspaceRegistry.unarchiveSession(agent.id)
   expect(controller.projects()[0]).toMatchObject({ archived: false, stopped: true })
@@ -4312,7 +4398,10 @@ it('synchronizes primary task deletion and native archive in both directions wit
   await ctx.securityWorkbench.manageProject(project.id, request)
   await ctx.securityWorkbench.manageProject(project.id, request)
   expect(ctx.workspaceRegistry.archivedSessionIds).toContain(agent.id)
-  await manage('restore')
+  await expect(manage('restore')).resolves.toBeUndefined()
+  await expect(directory.next()).resolves.toMatchObject({ value: [{ project: { id: project.id, archived: false }, state: 'stopped' }] })
+  abort.abort()
+  await expect(directory.next()).resolves.toMatchObject({ done: true })
   expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(agent.id)
   await expect(ctx.securityWorkbench.manageProject(project.id, request)).rejects.toThrow('newer task action')
   expect(controller.projects()[0]).toMatchObject({ archived: false, stopped: true })

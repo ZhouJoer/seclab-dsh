@@ -11,7 +11,6 @@ export function ProjectDeletion(props: PropsLocale<typeof NS> & {
   title: string
   disabled: boolean
   remove(): Promise<boolean>
-  deleted?(): void
   permanent?: boolean
 }) {
   const { t } = props
@@ -30,7 +29,7 @@ export function ProjectDeletion(props: PropsLocale<typeof NS> & {
         <div className={css.actions}><button disabled={pending} onClick={cancel}>{t('cancel')}</button>
           <button className={css.danger} disabled={props.disabled || pending} onClick={() => {
             setPending(true)
-            void props.remove().then((success) => { if (success) { setOpen(false); props.deleted?.() } })
+            void props.remove().then((success) => { if (success) setOpen(false) })
               .finally(() => { setPending(false) })
           }}>{t(pending ? 'deleteProjectPending' : confirmation)}</button></div>
       </div></div>

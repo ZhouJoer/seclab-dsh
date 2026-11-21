@@ -39,7 +39,7 @@ The [research bundle](../research-workbench-bundle/README.md) composes the file 
 <details>
 <summary>Implementation details</summary>
 
-The `researchWorkbench` browser service registers resource adapters and panels with disposers. A single root Factory owns `research.panel` and `research.reference`, shared by `shell.bottom` and `shell.overlay`. See [adapter types](src/client/contract.ts), [view state](src/client/store.ts) and [file service](src/index.ts).
+The `researchWorkbench` browser service registers resource adapters and panels with disposers. Navigation, the bottom panel and the overlay share one [store of open documents](src/client/store.ts). Their root Factory owns `research.panel` and `research.reference`. See [adapter types](src/client/contract.ts) and [file service](src/index.ts).
 
 `registerPreview()` contributes an optional reader for explicit open actions. Readers return whether they handled a resource; unmatched resources and comparisons use their text adapter. Disposing a reader removes its routing without changing existing text drafts.
 

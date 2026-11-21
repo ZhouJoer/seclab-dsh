@@ -187,13 +187,24 @@ export async function apply(ctx) {
         }
         if (exec.callId === 'complete-native-investigation') {
           const requests = modelRequests
+          const controller = await service.ready
+          const previous = await commandIO.run({ identifier: 400 }, async () => {
+            const saved = await controller.command(exec.agent.id, { operationId: 'operator-save-first',
+              expectedRevision: controller.view(exec.agent.id).revision, action: { kind: 'complete-task',
+                results: [{ title: '文件', result: '已读取 handler.js', citations: [{ kind: 'tool', callId: 'native-source-read' }] }],
+                limitations: '未检查调用方。' } }, true)
+            return controller.command(exec.agent.id, { operationId: 'operator-publish-first',
+              expectedRevision: saved.revision, action: { kind: 'report' } }, true)
+          })
+          const previousReport = previous.records.find(record => record.kind === 'report')
+          assert(previousReport)
           const result = await commandIO.run({ identifier: 0 }, next)
           assert.notEqual(result.isError, true, JSON.stringify(result))
+          assert.equal(JSON.parse(result.content[0].text).report, undefined)
           assert.equal(modelRequests, requests, 'report publication requests no model')
           const submitted = await service.view(exec.agent)
           assert.equal(submitted.records.find(record => record.kind === 'engagement').value.completion.status, 'saved')
-          assert.equal(submitted.records.some(record => record.kind === 'report'), false)
-          const controller = await service.ready
+          assert.deepEqual(submitted.records.filter(record => record.kind === 'report'), [previousReport])
           await commandIO.run({ identifier: 200 }, () => controller.command(exec.agent.id, {
             operationId: 'operator-report', expectedRevision: submitted.revision, action: { kind: 'report' },
           }, true))
@@ -204,7 +215,9 @@ export async function apply(ctx) {
           assert.equal(evidence[0].value.source.callId, 'native-source-read')
           assert((await controller.artifacts.read(evidence[0].value.artifact)).toString().includes('export const read = request => request.query;'))
           assert.equal(evidence[0].value.incomplete, true)
-          const report = view.records.find(record => record.kind === 'report')
+          const reportId = view.records.find(record => record.kind === 'engagement').value.completion.reportId
+          assert.notEqual(reportId, previousReport.value.id)
+          const report = view.records.find(record => record.kind === 'report' && record.value.id === reportId)
           assert(report)
           assert.equal(report.value.checkpointId, view.records.find(record => record.kind === 'checkpoint').value.id)
           assert.deepEqual(report.value.evidenceIds, [evidence[0].value.id])

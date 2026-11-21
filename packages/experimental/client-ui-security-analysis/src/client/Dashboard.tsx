@@ -5,7 +5,7 @@ import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/c
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { PropsRenderFactories, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderFactories, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DeviceDirectory, WorkbenchView, WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { CaptureControls } from './CaptureControls.tsx'
 import { IconRefreshOutlineRegular, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -31,7 +31,7 @@ import { ReportExportButton } from './ReportExportButton.tsx'
 import { TaskReportStatus } from './TaskReportStatus.tsx'
 import { HttpWorkbench, type HttpActions } from './HttpWorkbench.tsx'
 import { HttpHistory } from './HttpHistory.tsx'
-import type { SecurityProjectSummary } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import type { DirectoryHooks } from './directory.ts'
 import type { DashboardSessionInput } from './DashboardSession.tsx'
 import type { ReactNode } from 'react'
 
@@ -45,7 +45,7 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   generateReport(sessionId: SessionId, revision: number): Promise<WorkbenchView>
   /** Omission displays the task overview; supplying a destination opens that exact task. */
   destination?: { projectId: string; sessionId?: SessionId } | undefined
-  followProjects(this: void, signal: AbortSignal): AsyncIterable<SecurityProjectSummary[]>
+  refreshDirectory(this: void): void
   observe(id: SessionId, input: string): Promise<WorkbenchView>
   projectArtifact(projectId: string, hash: string): Promise<string>
   findSession(projectId: string): Promise<SessionId | undefined>
@@ -60,7 +60,7 @@ export interface DashboardActions extends ProjectActions, ActivityActions, Impro
   Promise<{ sessionId: SessionId; projectId: string; objective: string }>
   openRestartDraft(sessionId: SessionId, objective: string): Promise<void>
 }
-type Props = PropsRenderFactories & DashboardActions & PropsLocale<typeof NS>
+type Props = InjectFace<{ hooks: DirectoryHooks }> & PropsRenderFactories & DashboardActions & PropsLocale<typeof NS>
   & Pick<PropsRuntime<'main'>, 'useWorkspaces' | 'useResource'>
   & Pick<PropsRenderSlots<'security.workbench.session'>, 'SessionProvider'>
   & { renderSettings(input: DashboardSessionInput): ReactNode
@@ -72,24 +72,8 @@ type Props = PropsRenderFactories & DashboardActions & PropsLocale<typeof NS>
 export function Dashboard(props: Props) {
   const { t } = props
   const workspaces = props.useWorkspaces(state => state.items)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [directory, setDirectory] = useState<SecurityProjectSummary[]>([])
-  const [directoryError, setDirectoryError] = useState(false)
-  const [directoryEpoch, setDirectoryEpoch] = useState(0)
-  const pendingDeletion = useRef('')
-  useEffect(() => {
-    const controller = new AbortController()
-    setDirectoryError(false)
-    void (async () => {
-      try { for await (const items of props.followProjects(controller.signal)) {
-        if (controller.signal.aborted) break
-        setDirectory(items)
-        if (!pendingDeletion.current) setProjects(items.map(item => item.project))
-      } } catch (_error) { if (!controller.signal.aborted) setDirectoryError(true) }
-    })()
-    return () =>{  controller.abort() }
-  }, [props.followProjects, directoryEpoch])
-  useEffect(() => props.subscribeReset(() =>{  setDirectoryEpoch(value => value + 1) }), [props.subscribeReset])
+  const { projects: directory, failed: directoryError, received } = props.useDirectory(value => value)
+  const projects = directory.map(item => item.project)
   const states = { running: 'taskRunning', stopping: 'taskStopping', stopped: 'taskStopped', interrupted: 'taskInterrupted', approval: 'taskApproval', blocked: 'taskBlocked', idle: 'taskIdle', removed: 'taskRemoved' } as const
   const [selected, setSelected] = useState('')
   const [section, setSection] = useState<'tasks' | 'removed' | 'toolbox' | 'improvements'>('tasks')
@@ -106,7 +90,7 @@ export function Dashboard(props: Props) {
   const [contextSettings, setContextSettings] = useState<{ session: SessionId; config: WorkbenchConfiguration }>()
   const contextWorkspace = contextSettings?.config.workspace
   const [stopping, setStopping] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [workspace, setWorkspace] = useState<WorkspaceId>()
   const [path, setPath] = useState('')
   const [sessionId, setSessionId] = useState<SessionId>()
@@ -128,11 +112,11 @@ export function Dashboard(props: Props) {
   const [recommendations, setRecommendations] = useState('')
   const [readEpoch, setReadEpoch] = useState(0)
   const [reading, setReading] = useState(false)
-  const [deleting, setDeleting] = useState('')
+  const [removing, setRemoving] = useState<{ row: Project; index: number; exiting: boolean }>()
+  const deleting = removing?.exiting ? removing.row.id : undefined
   const [deletedProject, setDeletedProject] = useState<Project>()
   const [purgedTitle, setPurgedTitle] = useState('')
   const listHeading = useRef<HTMLHeadingElement>(null)
-  const deletedProjects = useRef<Project[]>([])
   const purgeRequests = useRef(new Map<string, string>())
   const generation = useRef(0)
   const readGeneration = useRef(0)
@@ -175,17 +159,15 @@ export function Dashboard(props: Props) {
   const refresh = async () => {
     const current = generation.current
     const request = ++refreshGeneration.current
-    const [items, next] = await Promise.all([
-      props.projects(), selected ? props.project(selected) : Promise.resolve({ revision: 0, records: [] }),
-    ])
+    if (!selected) return
+    const next = await props.project(selected)
     if (current === generation.current && request === refreshGeneration.current) {
-      setProjects(JSON.parse(items) as Project[])
       setView(previous => next.revision >= previous.revision ? next : previous)
       setLoading(false); setReadEpoch(value => value + 1)
     }
   }
   useEffect(() => {
-    setLoading(true); void perform(refresh)
+    if (selected) { setLoading(true); void perform(refresh) }
     return () => { generation.current++; readGeneration.current++ }
   }, [selected])
   useEffect(() => {
@@ -213,10 +195,10 @@ export function Dashboard(props: Props) {
   useEffect(() => {
     const current = ++readGeneration.current
     setArtifact(undefined); setReport(''); setRecommendations(''); setReading(false)
-    if (!selected || !((tab === 'evidence' && chosenEvidence) || (tab === 'reports' && selectedReport))) return
+    if (!selected || !((tab === 'evidence' && chosenEvidence && !chosenEvidence.http) || (tab === 'reports' && selectedReport))) return
     setReading(true)
     const pending = tab === 'evidence' && chosenEvidence
-      ? (chosenEvidence.http ? Promise.resolve('{}') : props.projectArtifact(selected, chosenEvidence.artifact.sha256)).then((value) => {
+      ? props.projectArtifact(selected, chosenEvidence.artifact.sha256).then((value) => {
         if (current === readGeneration.current) setArtifact(JSON.parse(value) as NonNullable<typeof artifact>)
       })
       : Promise.all([
@@ -238,7 +220,7 @@ export function Dashboard(props: Props) {
     setContextSettings(undefined)
     setRestartOpen(false)
     setEvidenceId(''); setEvidenceQuery(''); setReportId(''); setError(''); setBusy(false); setStopping(false)
-    setDeleting('')
+    setRemoving(undefined)
   }
   useEffect(() => {
     const target = props.destination?.projectId ?? ''
@@ -254,35 +236,37 @@ export function Dashboard(props: Props) {
       if (item.archived) purgeRequests.current.set(item.id, request)
     }
     try {
-      const result = await props.manageProject(item.id, request)
+      await props.manageProject(item.id, request)
       purgeRequests.current.delete(item.id)
-      return result
     } catch (error) {
       if (error instanceof Error && error.message.includes('Security state changed')) purgeRequests.current.delete(item.id)
       throw error
     }
   }
-  const removeFromList = (item: Project) => {
-    pendingDeletion.current = item.id
+  const removeFromList = (item: Project, index: number) => {
+    const current = generation.current
+    setRemoving({ row: item, index, exiting: false })
     return perform(async () => {
-      const current = generation.current
-      const items = await manageDeletion(item)
-      if (current === generation.current) deletedProjects.current = JSON.parse(items) as Project[]
-    }).then((success) => { if (!success) pendingDeletion.current = ''; return success })
+      await manageDeletion(item)
+      if (current !== generation.current) return
+      setRemoving({ row: item, index, exiting: true })
+    }).then((success) => {
+      if (!success && current === generation.current && !purgeRequests.current.has(item.id)) setRemoving(undefined)
+      return success
+    })
   }
   const finishRemoval = (item: Project) => {
-    pendingDeletion.current = ''
-    setProjects(deletedProjects.current); setDeleting(''); setDeletedProject(item.archived ? undefined : item)
+    setRemoving(undefined); setDeletedProject(item.archived ? undefined : item)
     setPurgedTitle(item.archived ? item.title : ''); listHeading.current?.focus()
   }
   const restoreProject = (item: Project) => perform(async () => {
     const current = generation.current
     const snapshot = await props.project(item.id)
     if (current !== generation.current) return
-    const items = await props.manageProject(item.id, JSON.stringify({ operationId: randomUUID(),
+    await props.manageProject(item.id, JSON.stringify({ operationId: randomUUID(),
       expectedRevision: snapshot.revision, action: { kind: 'restore' } }))
     if (current !== generation.current) return
-    setProjects(JSON.parse(items) as Project[]); setDeletedProject(undefined)
+    setDeletedProject(undefined)
     props.notifyImprovement(t('restoreProjectDone')); listHeading.current?.focus()
   })
   const connect = async (create: boolean, resume = false, showAdvanced = false, showReviews = false,
@@ -307,6 +291,8 @@ export function Dashboard(props: Props) {
   const visible = projects.filter(item => Boolean(item.archived) === (section === 'removed'))
     .filter(item => (item.title + ' ' + item.objective).toLocaleLowerCase().includes(query.toLocaleLowerCase()))
     .filter(item => status === 'all' || directory.find(entry => entry.project.id === item.id)?.state === status)
+  if (removing && Boolean(removing.row.archived) === (section === 'removed') && !visible.some(row => row.id === removing.row.id))
+    visible.splice(removing.index, 0, removing.row)
   const workspacePicker = <div className={css.workspacePicker}>
     <label>{t('dashboardWorkspace')}<select value={selectedWorkspace ?? ''} disabled={busy || !!sessionId} onChange={(event) => { setWorkspace(event.target.value as WorkspaceId) }}>
       <option value="">{t('notSelected')}</option>{workspaces.map(item => <option key={item.workspaceId} value={item.workspaceId}>{item.title} · {item.path}</option>)}
@@ -317,7 +303,7 @@ export function Dashboard(props: Props) {
   return <section ref={root} className={`${css.root} ${project?.unsealed ? css.unsealed : ''}`} aria-label={t('title')}>
     <div className={css.main}>
       <header className={css.topbar}><h1>{t('dashboardTitle')}</h1>
-        <div className={css.actions}><button disabled={busy} onClick={() => void perform(refresh)}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button>
+        <div className={css.actions}><button disabled={busy} onClick={() => { props.refreshDirectory(); void perform(refresh) }}>{t('refresh')}</button><button className={css.primary} onClick={() => { props.beginAnalysis() }}>{t('newAnalysis')}</button>
           {project && <ProjectUnseal key={`unseal:${project.id}`} t={t} value={project.unsealed}
             disabled={busy || !!project.archived} save={async (unsealed) => {
               const current = generation.current
@@ -330,7 +316,7 @@ export function Dashboard(props: Props) {
       {!selected && <nav className={css.navigation} aria-label={t('dashboardNavigation')}>{(['tasks', 'removed', 'toolbox', 'improvements'] as const).map(key => <button key={key} aria-current={section === key ? 'page' : undefined} onClick={() => { navigate(); setSection(key) }}>{t(key === 'tasks' ? 'dashboardTasks' : key === 'removed' ? 'removedProjects' : key === 'improvements' ? 'evoTitle' : 'toolbox')}</button>)}</nav>}
       {selected && project?.unsealed && <div className={css.unsealedBanner} role="status">
         <span className={css.unsealedDot} aria-hidden="true" />{t('unsealBanner')}</div>}
-      {directoryError && <p role="status">{t('taskDirectoryUnavailable')}<button onClick={() =>{  setDirectoryEpoch(value => value + 1) }}>{t('dashboardRetry')}</button></p>}
+      {directoryError && <p role="status">{t('taskDirectoryUnavailable')}<button onClick={props.refreshDirectory}>{t('dashboardRetry')}</button></p>}
       {error && <div className={css.error} role="alert">{error}<button disabled={busy} onClick={() => void perform(refresh)}>{t('dashboardRetry')}</button></div>}
       {deletedProject && <div className={css.deletionNotice} role="status"><span>{t('deleteProjectDone')} · {deletedProject.title}</span>
         <button disabled={busy} onClick={() => void restoreProject(deletedProject)}>{t('deleteProjectUndo')}</button><button onClick={() => { setDeletedProject(undefined) }}>{t('close')}</button></div>}
@@ -338,15 +324,15 @@ export function Dashboard(props: Props) {
       {section === 'improvements' ? <Improvements {...props} tasks={projects} /> : section === 'toolbox' ? <Toolbox {...props} /> : !selected ? <>
         <div className={css.stats}>{([['dashboardTotal', projects.length], ['dashboardStopped', projects.filter(item => !item.archived && item.stopped).length], ['dashboardRemoved', projects.filter(item => item.archived).length]] as const).map(([label, count]) => <article key={label}><span>{t(label)}</span><strong>{count}</strong></article>)}</div>
         <section className={css.panel}><div className={css.listHeader}><h2 ref={listHeading} tabIndex={-1}>{t(section === 'removed' ? 'removedProjects' : 'dashboardTasks')} <span>{visible.length}</span></h2><div className={css.filters}><input aria-label={t('dashboardSearch')} placeholder={t('dashboardSearch')} value={query} onChange={(event) => { setQuery(event.target.value) }} /><select aria-label={t('dashboardStatus')} value={status} onChange={(event) => { setStatus(event.target.value) }}><option value="all">{t('dashboardAll')}</option>{Object.entries(states).map(([state, key]) => <option key={state} value={state}>{t(key)}</option>)}</select></div></div>
-          {loading ? <p className={css.empty} role="status">{t('dashboardLoading')}</p> : !visible.length ? <div className={css.empty}><span className={css.emptyIcon} aria-hidden="true">◇</span><h3>{t(query || status !== 'all' ? 'dashboardNoResults' : 'dashboardEmpty')}</h3><p>{t(query || status !== 'all' ? 'dashboardFilterHint' : 'dashboardEmptyHint')}</p></div> :
-            <div className={css.taskList}>{visible.map(item => <article className={css.taskExit}
+          {!received ? (directoryError ? null : <p className={css.empty} role="status">{t('dashboardLoading')}</p>) : !visible.length ? <div className={css.empty}><span className={css.emptyIcon} aria-hidden="true">◇</span><h3>{t(query || status !== 'all' ? 'dashboardNoResults' : 'dashboardEmpty')}</h3><p>{t(query || status !== 'all' ? 'dashboardFilterHint' : 'dashboardEmptyHint')}</p></div> :
+            <div className={css.taskList}>{visible.map((item, index) => <article className={css.taskExit}
               data-deleting={deleting === item.id} key={item.id}
               onAnimationEnd={(event) => { if (event.target === event.currentTarget && deleting === item.id) finishRemoval(item) }}>
               <div className={css.taskClip}><div className={css.taskCard} data-archived={!!item.archived}>
                 <button className={css.taskRow} disabled={deleting === item.id} onClick={() => { navigate(item.id); props.selectDestination(item.id) }}><span className={css.taskIcon} aria-hidden="true">◇</span><span className={css.taskText}><strong>{item.title}</strong><span>{item.objective}</span></span><span className={item.stopped ? css.stopped : css.badge}>{directoryError ? t('taskDirectoryUnavailable') : t(states[directory.find(entry => entry.project.id === item.id)?.state ?? (item.stopped ? 'stopped' : 'idle')])}{!!directory.find(entry => entry.project.id === item.id)?.pendingPlanIds.length && <> · {t('taskApproval')}</>}</span><span aria-hidden="true">→</span></button>
                 {item.archived && <button disabled={busy || !!deleting} onClick={() => void restoreProject(item)}>{t('restoreProject')}</button>}
                 <ProjectDeletion t={t} title={item.title} disabled={busy || !!deleting} permanent={!!item.archived}
-                  remove={() => removeFromList(item)} deleted={() => { setDeleting(item.id) }} />
+                  remove={() => removeFromList(item, index)} />
               </div></div>
             </article>)}</div>}
         </section>
@@ -453,7 +439,7 @@ export function Dashboard(props: Props) {
             openPlans={() => { void perform(() => connect(false, false, true, true)) }} /></>}</div>
           {tab === 'activityEntry' && <ActivityTimeline key={project.id} {...props} activity={activity} project={project.id} view={view}
             openEvidence={(id) => { setEvidenceId(id); setTab('evidence') }} openFinding={() =>{  setTab('findings') }} openPlans={() => void perform(() => connect(false, false, true, true))}
-            changed={(next) =>{  setView(previous => next.revision >= previous.revision ? next : previous) }} />}
+          />}
           {tab === 'improvements' && <Improvements key={project.id} {...props} projectId={project.id} disabled={project.stopped || !!project.archived} />}
           {workspaceRoot && (tab === 'overview' || tab === 'assets') && <section className={css.workspaceSource}><h3>{t('workspaceMaterials')}</h3><span>{workspaceRoot}</span><p>{t('workspaceBrowseHint')}</p>{!project.archived && <button disabled={busy} onClick={() => void perform(() => connect(false))}>{t('workspaceOpenChat')}</button>}</section>}
           {tab === 'overview' && !project.objective && <p className={css.empty}>{t('analysisEmptyHint')}</p>}
@@ -465,13 +451,13 @@ export function Dashboard(props: Props) {
             <div className={css.panel}><ProjectManagement key={project.id + project.title} t={t} title={project.title}
               archived={project.archived} disabled={busy} manage={action => perform(async () => {
                 const current = generation.current
-                const items = action.kind === 'purge' ? await manageDeletion(project, view.revision)
-                  : await props.manageProject(selected,
-                    JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision, action }))
+                if (action.kind === 'purge') await manageDeletion(project, view.revision)
+                else await props.manageProject(selected,
+                  JSON.stringify({ operationId: randomUUID(), expectedRevision: view.revision, action }))
                 if (current !== generation.current) return
                 if (action.kind === 'archive' || action.kind === 'purge') {
                   setDeletedProject(action.kind === 'archive' ? project : undefined); setPurgedTitle(action.kind === 'purge' ? project.title : '')
-                  setProjects(JSON.parse(items) as Project[]); props.selectDestination(''); navigate()
+                  props.selectDestination(''); navigate()
                 }
                 else await refresh()
               })} /></div>

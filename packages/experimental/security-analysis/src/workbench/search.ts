@@ -1,78 +1,62 @@
-/** Rebuildable local full-text index; the security journal remains authoritative. @module */
+/** In-memory full-text search over committed security records. @module */
+import { lstatSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { renameSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 import type { SecurityRecord } from './model.ts'
 
-/** One host-local derived index, including Chinese word segmentation. */
-export class SecuritySearchIndex {
-  private readonly database: DatabaseSync
-  private readonly segmenter = new Intl.Segmenter('zh', { granularity: 'word' })
-  constructor(path: string) {
-    const open = (): DatabaseSync => {
-      const database = new DatabaseSync(path)
-      try {
-        database.exec('CREATE VIRTUAL TABLE IF NOT EXISTS records USING fts5(id UNINDEXED, engagement UNINDEXED, content)')
-        return database
-      } catch (error) {
-        database.close()
-        throw error
-      }
-    }
-    try {
-      this.database = open()
-    } catch (error) {
-      // Only this derived file is replaceable. Permission and I/O errors must
-      // remain visible; SQLite primary codes 11 and 26 mean corrupt/not-a-database.
-      if (!(error instanceof Error) || !('errcode' in error) || typeof error.errcode !== 'number'
-        || ![11, 26].includes(error.errcode & 0xff)) throw error
-      renameSync(path, path + '.corrupt-' + randomUUID())
-      this.database = open()
-    }
+const createRecords = 'CREATE VIRTUAL TABLE records USING fts5(id UNINDEXED, engagement UNINDEXED, content)'
+
+/**
+ * Remove a standalone disk index whose entire schema matches the workbench's FTS tables.
+ * @param root - Security root held under the Host's exclusive ownership lock.
+ */
+export function removeLegacySearchIndex(root: string): void {
+  const path = join(root, 'search.sqlite')
+  if (!lstatSync(path, { throwIfNoEntry: false })?.isFile()) return
+  if (['-journal', '-wal', '-shm'].some(suffix => lstatSync(path + suffix, { throwIfNoEntry: false }))) return
+  try {
+    using candidate = new DatabaseSync(pathToFileURL(path).href + '?immutable=1', { readOnly: true })
+    using expected = new DatabaseSync(':memory:')
+    expected.exec(createRecords)
+    const schema = 'SELECT type, name, tbl_name, sql FROM sqlite_schema ORDER BY name'
+    if (!isDeepStrictEqual(candidate.prepare(schema).all(), expected.prepare(schema).all())) return
+  } catch (error) {
+    // SQLITE_CORRUPT and SQLITE_NOTADB leave the owner of the file unidentified.
+    if (error instanceof Error && 'errcode' in error && typeof error.errcode === 'number'
+      && [11, 26].includes(error.errcode & 0xff)) return
+    throw error
   }
-  private words(text: string): string {
-    return [...this.segmenter.segment(text)].map(word => word.segment).join(' ')
+  unlinkSync(path)
+}
+
+/**
+ * Search exact tokens in the records visible to the caller.
+ * @param records - Authorized records, including searchable evidence text.
+ * @param engagementId - Project whose matches may be returned.
+ * @param query - Human query, including Chinese words or identifiers.
+ * @param limit - Positive maximum number of matches.
+ * @returns Matching record keys ordered by relevance.
+ */
+export function searchRecords(records: readonly SecurityRecord[], engagementId: string, query: string, limit: number): string[] {
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Search limit must be positive')
+  const segmenter = new Intl.Segmenter('zh', { granularity: 'word' })
+  const words = [...segmenter.segment(query)]
+    .filter(word => word.isWordLike)
+    .map(word => '"' + word.segment.replaceAll('"', '""') + '"')
+  if (!words.length) return []
+  using database = new DatabaseSync(':memory:')
+  database.exec('PRAGMA temp_store = MEMORY')
+  database.exec(createRecords)
+  const insert = database.prepare('INSERT INTO records(id, engagement, content) VALUES (?, ?, ?)')
+  for (const record of records) {
+    if (record.kind === 'binding' || (record.kind === 'knowledge' && (record.value.supersededBy || record.value.excluded))) continue
+    const project = record.kind === 'engagement' ? record.value.id : record.value.engagementId
+    const content = [...segmenter.segment(JSON.stringify(record.value))].map(word => word.segment).join(' ')
+    insert.run(record.kind + ':' + record.value.id, project, content)
   }
-  /**
-   * Replace the derived index from committed records.
-   * @param records - authoritative material, excluding unpublished cross-project access.
-   */
-  rebuild(records: SecurityRecord[]): void {
-    this.database.exec('BEGIN')
-    try {
-      this.database.exec('DELETE FROM records')
-      const insert = this.database.prepare('INSERT INTO records(id, engagement, content) VALUES (?, ?, ?)')
-      for (const record of records) {
-        if (record.kind === 'binding' || (record.kind === 'knowledge' && (record.value.supersededBy || record.value.excluded))) continue
-        const project = record.kind === 'engagement' ? record.value.id : record.value.engagementId
-        insert.run(record.kind + ':' + record.value.id, project, this.words(JSON.stringify(record.value)))
-      }
-      this.database.exec('COMMIT')
-    } catch (error) {
-      this.database.exec('ROLLBACK')
-      throw error
-    }
-  }
-  /**
-   * Search exact tokens inside one project.
-   * @param engagementId - allowed project.
-   * @param query - human query, never raw FTS syntax.
-   * @param limit - validated positive result limit.
-   * @returns record keys ordered by relevance.
-   */
-  search(engagementId: string, query: string, limit: number): string[] {
-    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Search limit must be positive')
-    const words = [...this.segmenter.segment(query)]
-      .filter(word => word.isWordLike)
-      .map(word => '"' + word.segment.replaceAll('"', '""') + '"')
-    if (!words.length) return []
-    const rows = this.database
-      .prepare('SELECT id FROM records WHERE records MATCH ? AND engagement = ? ORDER BY rank LIMIT ?')
-      .all(words.join(' AND '), engagementId, limit)
-    return rows.map(row => String(row.id))
-  }
-  /** Close SQLite before removing its owning directory. */
-  close(): void {
-    this.database.close()
-  }
+  const rows = database.prepare('SELECT id FROM records WHERE records MATCH ? AND engagement = ? ORDER BY rank LIMIT ?')
+    .all(words.join(' AND '), engagementId, limit)
+  return rows.map(row => String(row.id))
 }

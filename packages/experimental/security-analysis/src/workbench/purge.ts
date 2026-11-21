@@ -1,6 +1,6 @@
 /** Artifact reachability for irreversible task deletion. @module */
-import type { SecurityRecord, Artifact } from './model.ts'
-import type { ArtifactStore } from './artifacts.ts'
+import type { SecurityRecord } from './model.ts'
+import { recordArtifacts, type ArtifactStore } from './artifacts.ts'
 import { sourceManifest } from './source.ts'
 
 /** Collect all content referenced by task records, including source members.
@@ -8,19 +8,15 @@ import { sourceManifest } from './source.ts'
  * @param records - retained or deleted journal records.
  * @returns unique content digests. */
 export async function referencedArtifacts(store: ArtifactStore, records: SecurityRecord[]): Promise<Set<string>> {
-  const artifacts = new Map<string, Artifact>()
+  const digests = new Set<string>()
   for (const item of records) {
-    if ('artifact' in item.value) artifacts.set(item.value.artifact.sha256, item.value.artifact)
-    if (item.kind === 'report') for (const artifact of [item.value.markdown, item.value.json,
-      item.value.findingsMarkdown, item.value.recommendationsMarkdown])
-      if (artifact) artifacts.set(artifact.sha256, artifact)
-    if (item.kind === 'plan' && item.value.operation.script) artifacts.set(item.value.operation.script.sha256, item.value.operation.script)
+    for (const artifact of recordArtifacts(item)) digests.add(artifact.sha256)
     if (item.kind === 'asset' && 'kind' in item.value && item.value.kind === 'source') {
       const manifest = await sourceManifest(store, item.value)
-      for (const file of manifest.files) artifacts.set(file.artifact.sha256, file.artifact)
+      for (const file of manifest.files) digests.add(file.artifact.sha256)
     }
   }
-  return new Set(artifacts.keys())
+  return digests
 }
 
 /** Collect deleted task content that no retained journal record references.

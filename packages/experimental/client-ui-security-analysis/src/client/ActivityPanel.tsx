@@ -20,10 +20,9 @@ export interface ActivityActions {
   activityDetails(this: void, project: string, checkpoint: string, offset: number, through?: number): Promise<SecurityActivityPage>
   subscribeReset(this: void, listener: () => void): () => void
 }
-type Props = ActivityActions & PropsLocale<typeof NS> & {
+type TimelineProps = Pick<ActivityActions, 'skillUsage' | 'openChild' | 'activityDetails'> & PropsLocale<typeof NS> & {
   project: string
   view: WorkbenchView
-  changed(view: WorkbenchView): void
   openEvidence?: (id: string) => void
   openFinding?: (id: string) => void
   openPlans?: () => void
@@ -33,7 +32,9 @@ type Props = ActivityActions & PropsLocale<typeof NS> & {
  * @param props - localized project data, streaming reads and committed-view consumer.
  * @returns three-line briefs with on-demand execution and evidence details.
  */
-export function ActivityPanel(props: Props) {
+export function ActivityPanel(props: TimelineProps & Pick<ActivityActions, 'followActivity' | 'subscribeReset'> & {
+  changed(view: WorkbenchView): void
+}) {
   const activity = useProjectActivity(props)
   return <ActivityTimeline {...props} activity={activity} />
 }
@@ -42,7 +43,7 @@ export function ActivityPanel(props: Props) {
  * @param props - committed view and shared activity state.
  * @returns research briefs and lazily loaded calls.
  */
-export function ActivityTimeline(props: Props & { activity: ProjectActivity }) {
+export function ActivityTimeline(props: TimelineProps & { activity: ProjectActivity }) {
   const { t, project } = props
   const markdownLabels = { code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }
   const { usage, briefs, connected } = props.activity

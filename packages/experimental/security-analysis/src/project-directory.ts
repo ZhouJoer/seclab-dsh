@@ -16,21 +16,20 @@ export interface SecurityProjectSummary {
 }
 /** Derive one directory snapshot from committed records and live execution counts.
  * @param view - one consistent journal snapshot.
- * @param agents - running Agent counts by project.
+ * @param runningSessions - Sessions whose Agent is running.
  * @param invocations - running invocation counts by project, counted once per invocation.
  * @returns lightweight task directory. */
-export function projectDirectory(view: WorkbenchView, agents: ReadonlyMap<string,
-  number>, invocations: ReadonlyMap<string, number>): SecurityProjectSummary[] {
-  const grouped = new Map<string, WorkbenchView['records']>()
-  for (const record of view.records) {
-    const id = record.kind === 'engagement' ? record.value.id : record.value.engagementId
-    const items = grouped.get(id) ?? []; items.push(record); grouped.set(id, items)
-  }
+export function projectDirectory(view: WorkbenchView, runningSessions: ReadonlySet<string>,
+  invocations: ReadonlyMap<string, number>): SecurityProjectSummary[] {
+  const grouped = Map.groupBy(view.records.filter(record => record.kind !== 'engagement'), record => record.value.engagementId)
   return view.records.filter(record => record.kind === 'engagement').map(({ value: project }) => {
     const records = grouped.get(project.id) ?? []
+    const sessions = records.filter(record => record.kind === 'binding').map(({ value }) => ({
+      sessionId: value.sessionId, role: value.role, active: value.active !== false,
+    }))
     const checks = records.filter(item => item.kind === 'check')
     const consumed = new Set(records.filter(item => item.kind === 'execution').map(item => item.value.planId))
-    const runningAgentCount = agents.get(project.id) ?? 0
+    const runningAgentCount = sessions.filter(session => session.active && runningSessions.has(session.sessionId)).length
     const runningInvocationCount = invocations.get(project.id) ?? 0
     const active = runningAgentCount > 0 || runningInvocationCount > 0 || records.some(item =>
       item.kind === 'execution' && item.value.status === 'running' || item.kind === 'delegation' && ['pending', 'running'].includes(item.value.status))
@@ -40,9 +39,7 @@ export function projectDirectory(view: WorkbenchView, agents: ReadonlyMap<string
     const interruptedCheckIds = checks.filter(item => item.value.status === 'interrupted').map(item => item.value.id)
     const state: SecurityProjectSummary['state'] = project.archived ? 'removed' : project.stopped ? active ? 'stopping' : 'stopped'
       : active ? 'running' : interruptedCheckIds.length ? 'interrupted' : pendingPlanIds.length ? 'approval' : blockedCheckIds.length ? 'blocked' : 'idle'
-    return { project, sessions: records.filter(item => item.kind === 'binding').map(({ value }) => ({
-      sessionId: value.sessionId, role: value.role, active: value.active !== false,
-    })), runningAgentCount, runningInvocationCount, pendingPlanIds, blockedCheckIds, interruptedCheckIds, state,
-    next: project.completion ? '' : records.filter(item => item.kind === 'checkpoint').at(-1)?.value.next ?? '' }
+    return { project, sessions, runningAgentCount, runningInvocationCount, pendingPlanIds, blockedCheckIds, interruptedCheckIds, state,
+      next: project.completion ? '' : records.findLast(item => item.kind === 'checkpoint')?.value.next ?? '' }
   })
 }

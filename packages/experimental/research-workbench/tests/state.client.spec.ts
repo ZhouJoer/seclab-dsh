@@ -35,11 +35,24 @@ it('keeps same-path projects, selection and unsaved text through fullscreen and 
   expect(restored.state?.documents[0]?.selection?.text).toBe('draft'); expect(restored.state?.fullscreen).toBe(false)
   expect(instance.getSnapshot()).toMatchSnapshot()
 })
-it('does not replace edits made while a save was in flight', () => {
+it('retains later edits when a pending save completes and requests closure', () => {
   const instance = createResearchStore().create(); const { actions } = instance
   actions.open(resource('one')); actions.edit('one:a.txt', content); actions.change('one:a.txt', 'submitted'); actions.change('one:a.txt', 'newer draft')
   actions.saved('one:a.txt', 'submitted', { ...content, text: 'submitted', version: 'v2' })
+  actions.close('one:a.txt', 'submitted')
   expect(instance.getSnapshot().documents[0]).toMatchObject({ draft: 'newer draft', original: { text: 'submitted', version: 'v2' } })
+  actions.compare('one:a.txt')
+  actions.close('one:a.txt', 'newer draft')
+  expect(instance.getSnapshot()).toMatchObject({ documents: [], active: '', comparison: null })
+})
+it('reopening a resource updates the reader location and keeps its draft', () => {
+  const instance = createResearchStore().create()
+  const item = resource('one')
+  instance.actions.open(item)
+  instance.actions.edit(item.id, content)
+  instance.actions.change(item.id, 'draft')
+  instance.actions.open({ ...item, line: 4, label: 'Renamed' })
+  expect(instance.getSnapshot().documents).toMatchObject([{ resource: { ...item, line: 4, label: 'Renamed' }, draft: 'draft' }])
 })
 it('reports invalid recovery and storage quota failures', () => {
   sessionStorage.setItem('dsh.research.v1', '{broken'); expect(restoreResearch()).toEqual({ failed: true })

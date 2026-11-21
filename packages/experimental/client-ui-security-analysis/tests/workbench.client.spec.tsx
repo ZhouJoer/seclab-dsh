@@ -9,6 +9,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SecurityCommand, WorkbenchView, WorkbenchConfiguration } from '@deepseek-ai/dsh-experimental-security-analysis/client'
 import { recordSchema } from '@deepseek-ai/dsh-experimental-security-analysis/src/workbench/model.ts'
 import { Workbench, type WorkbenchActions, type WorkbenchProps } from '../src/client/Workbench.tsx'
+import { DashboardSession } from '../src/client/DashboardSession.tsx'
 import type {} from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 
@@ -27,30 +28,29 @@ function actions(overrides: Partial<WorkbenchActions> = {}) {
     activityDetails: vi.fn(async () => ({ items: [], next: null, through: 0 })), openChild: vi.fn(),
     sendAnalysis: vi.fn(async () => {}),
     openAnalysisChat: vi.fn(),
-    manageProject: vi.fn(async () => '[]'),
+    manageProject: vi.fn(async () => {}),
     importMaterials: vi.fn(async () => view),
-    observe: vi.fn(async () => view),
     subscribeReset: () => () => {},
     refine: vi.fn(async () => view), load: vi.fn(async () => view), command: vi.fn(async () => view),
     configuration: vi.fn(async () => workbenchConfiguration({ environments: [{ id: 'local', label: 'Lab', tools: [], kind: 'local' }], providers: [] })),
     configureWorkspace: vi.fn(async () => workbenchConfiguration()),
-    environment: vi.fn(async () => '{}'), execute: vi.fn(async () => view), search: vi.fn(async () => ({ revision: 8, records: [] })),
+    environment: vi.fn(async () => '{}'), execute: vi.fn(async () => view),
     artifact: vi.fn(async () => '{}'), report: vi.fn(async () => '# Target security\n\n## Key risk\n- Password exposure'), ...overrides,
   }
 }
 function props(api: WorkbenchActions, sessionId = 'parent', running = false): WorkbenchProps {
-  return { ...api, sessionId: sessionId as SessionId, t: makeTranslate(zh, commonZh),
+  return { ...api, initialTab: 'overview', sessionId: sessionId as SessionId, t: makeTranslate(zh, commonZh),
     useSession: (select: (snapshot: { running: boolean }) => unknown) => select({ running }),
   } as WorkbenchProps
 }
 it('retains one mode action when task settings arrive and the mode changes', async () => {
   const api = actions()
-  const mounted = render(<Workbench {...props(api)} autoOpen />)
+  const mounted = render(<Workbench {...props(api)} />)
   await screen.findByRole('heading', { name: 'Review the sample' })
   const action = screen.getByRole('button', { name: zh.unsealEnable })
   const snapshot: WorkbenchView = { revision: 9, records: [recordSchema.parse({ kind: 'engagement',
     value: { ...project.value, unsealed: true, moduleSelection: { mode: 'manual', modules: ['web'], reason: '' } } })] }
-  mounted.rerender(<Workbench {...props(api)} autoOpen snapshot={snapshot} />)
+  mounted.rerender(<Workbench {...props(api)} snapshot={snapshot} />)
   await screen.findByRole('button', { name: zh.unsealDisable })
   expect(screen.getAllByRole('region', { name: zh.unsealTitle })).toHaveLength(1)
   expect(screen.getByRole('button', { name: zh.unsealDisable })).toBe(action)
@@ -58,31 +58,15 @@ it('retains one mode action when task settings arrive and the mode changes', asy
 
 it('updates from parent task facts and rejects an older refresh response', async () => {
   const api = actions()
-  const mounted = render(<Workbench {...props(api)} autoOpen />)
+  const mounted = render(<Workbench {...props(api)} />)
   await screen.findByRole('heading', { name: 'Review the sample' })
   const snapshot: WorkbenchView = { revision: 9, records: [recordSchema.parse({ kind: 'engagement',
     value: { ...project.value, objective: 'Fresh task objective' } })] }
-  mounted.rerender(<Workbench {...props(api)} autoOpen snapshot={snapshot} />)
+  mounted.rerender(<Workbench {...props(api)} snapshot={snapshot} />)
   await screen.findByRole('heading', { name: 'Fresh task objective' })
   fireEvent.click(screen.getAllByRole('button', { name: '刷新' })[0]!)
   await waitFor(() => { expect(api.load).toHaveBeenCalledTimes(2) })
   expect(screen.getByRole('heading', { name: 'Fresh task objective' })).toBeTruthy()
-})
-it('reveals advanced pages on a separate navigation track', async () => {
-  render(<Workbench {...props(actions())} autoOpen />)
-  await screen.findByRole('heading', { name: 'Review the sample' })
-  const navigation = screen.getByRole('navigation', { name: '安全分析' })
-  const primary = within(navigation).getByRole('button', { name: '任务' })
-  const toggle = within(navigation).getByRole('button', { name: '高级详情' })
-  const advanced = within(navigation).getByText('资产').closest('button')!
-  expect(toggle.getAttribute('aria-expanded')).toBe('false')
-  expect(advanced.tabIndex).toBe(-1)
-  expect(within(navigation).queryByRole('button', { name: '资产' })).toBeNull()
-  expect(primary.parentElement).not.toBe(advanced.parentElement)
-  fireEvent.click(toggle)
-  expect(toggle.getAttribute('aria-expanded')).toBe('true')
-  expect(within(navigation).getByRole('button', { name: '资产' })).toBe(advanced)
-  expect(advanced.tabIndex).toBe(0)
 })
 it('focuses a blocked check without submitting and reports a removed target', async () => {
   const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView')
@@ -95,14 +79,14 @@ it('focuses a blocked check without submitting and reports a removed target', as
     title: 'Inspect ownership', phase: 'assessment', criterion: 'Read caller', dependencies: [], evidenceIds: [],
     status: 'blocked', attempts: 1, rationale: 'Caller unavailable' } })
   const api = actions({ load: vi.fn(async () => ({ revision: 9, records: [project, check] })) })
-  const ui = render(<Workbench {...props(api)} autoOpen initialTab="checks" focusCheckId="blocked" />)
+  const ui = render(<Workbench {...props(api)} initialTab="checks" focusCheckId="blocked" />)
   const title = await screen.findByText('Inspect ownership')
   await waitFor(() =>{  expect(document.activeElement).toBe(title.closest('article')) })
   expect(api.command).not.toHaveBeenCalled()
-  ui.rerender(<Workbench {...props(api)} autoOpen initialTab="checks" focusCheckId="missing" />)
+  ui.rerender(<Workbench {...props(api)} initialTab="checks" focusCheckId="missing" />)
   expect(screen.getByText(zh.coverageCheckUnavailable)).toBeDefined()
 })
-it('clears checks and findings after leaving, then exposes project creation', async () => {
+it('opens the overview from settings after leaving or selecting a project', async () => {
   const check = recordSchema.parse({ kind: 'check', value: { id: 'check', engagementId: 'project', assetId: 'sample',
     title: 'Old check', phase: 'recon', criterion: 'Inspect sample', dependencies: [], evidenceIds: [],
     status: 'planned', attempts: 0, rationale: '' } })
@@ -114,27 +98,26 @@ it('clears checks and findings after leaving, then exposes project creation', as
   const api = actions({
     load: vi.fn(async () => prior),
     command: vi.fn<WorkbenchActions['command']>(async (_id, input) =>
-      (JSON.parse(input) as SecurityCommand).action.kind === 'leave' ? empty : prior),
+      (JSON.parse(input) as SecurityCommand).action.kind === 'leave' ? empty : { ...prior, revision: 10 }),
     configuration: vi.fn(async () => workbenchConfiguration({ projects: [{ id: 'project', title: 'Owned lab' }],
       environments: [{ id: 'local', label: 'Lab', kind: 'local', tools: [] }], providers: [] })),
   })
-  render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
-  await screen.findByRole('heading', { name: 'Review the sample' })
-  expect(screen.getByText('高级设置与历史任务').closest('details')?.open).toBe(false)
-  fireEvent.click(screen.getByText('高级详情'))
-  fireEvent.click(screen.getByRole('button', { name: '检查' }))
+  render(<DashboardSession {...props(api)} advancedOpen />)
+  fireEvent.click(await screen.findByRole('button', { name: zh.checks }))
   expect(screen.getByText('Old check')).toBeDefined()
   fireEvent.click(screen.getByRole('button', { name: '退出当前分析任务' }))
   await screen.findByRole('heading', { name: '新建分析' })
   expect(screen.getByText('退出后可直接新建分析，或在此选择历史任务继续。')).toBeDefined()
   fireEvent.click(screen.getByText('高级设置与历史任务'))
   expect(screen.getByRole('button', { name: '创建分析任务' })).toBeDefined()
-  fireEvent.click(screen.getByRole('button', { name: '检查' }))
   expect(screen.queryByText('Old check')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: '发现' }))
   expect(screen.queryByText('Old finding')).toBeNull()
   expect((JSON.parse(vi.mocked(api.command).mock.calls[0]![1]) as SecurityCommand).action).toEqual({ kind: 'leave' })
+  fireEvent.change(screen.getByRole('combobox', { name: zh.project }), { target: { value: 'project' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.selectProject }))
+  await screen.findByRole('heading', { name: 'Review the sample' })
+  fireEvent.click(screen.getByRole('button', { name: zh.viewFindings }))
+  await screen.findByText('Old finding')
 })
 
 it('renders saved Markdown reports from the report read API', async () => {
@@ -144,70 +127,28 @@ it('renders saved Markdown reports from the report read API', async () => {
     json: { ...artifact, mediaType: 'application/json' }, createdAt: 1 } })
   const projectView = { ...view, records: [project, saved] }
   const report = vi.fn(async () => '# Target security\n\n## Key risk\n- Password exposure')
-  const api = actions({ load: vi.fn(async () => projectView), report })
+  const api = actions({ load: vi.fn(async () => projectView), command: vi.fn(async () => projectView), report })
   const workbench = render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByRole('button', { name: '报告' }))
-  fireEvent.click(screen.getByRole('button', { name: '任务分析报告' }))
+  fireEvent.click(screen.getByRole('button', { name: zh.generateReport }))
+  fireEvent.click(await screen.findByRole('button', { name: '任务分析报告' }))
   await screen.findByRole('heading', { name: 'Target security' })
   expect(report).toHaveBeenCalledWith('project', 'brief', 'markdown')
   fireEvent.click(screen.getByRole('button', { name: '修复建议' }))
   await waitFor(() => { expect(report).toHaveBeenCalledWith('project', 'brief', 'recommendationsMarkdown') })
   expect(api.artifact).not.toHaveBeenCalled()
   workbench.unmount()
-
-
 })
 
-it('registers an external HTTP target for an existing task', async () => {
-  const api = actions({ configuration: vi.fn(async () => workbenchConfiguration({
-    environments: [{ id: 'local', label: 'Lab', tools: [], kind: 'local' },
-      { id: 'kali', label: 'Kali Docker', tools: [], kind: 'docker' }],
-  })) })
-  render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
-  await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByText('高级详情'))
-  fireEvent.click(screen.getByRole('button', { name: '资产' }))
-  fireEvent.click(screen.getByText('Web 目标'))
-  fireEvent.change(screen.getAllByLabelText('运行环境').at(-1)!, { target: { value: 'kali' } })
-  fireEvent.change(screen.getAllByLabelText('Web 目标名称').at(-1)!, { target: { value: 'Loopback target' } })
-  fireEvent.change(screen.getByLabelText('站点地址'), { target: { value: 'http://127.0.0.1:18081' } })
-  fireEvent.change(screen.getByLabelText('允许路径前缀'), { target: { value: '/' } })
-  fireEvent.change(screen.getByLabelText('允许的 IP 或 CIDR（每行一个）'), { target: { value: '127.0.0.1' } })
-  fireEvent.click(screen.getByRole('button', { name: '登记目标' }))
-  await waitFor(() => { expect(api.command).toHaveBeenCalled() })
-  expect((JSON.parse(vi.mocked(api.command).mock.calls[0]![1]) as SecurityCommand).action).toEqual({
-    kind: 'external-web-target', environmentId: 'kali', label: 'Loopback target',
-    origin: 'http://127.0.0.1:18081', pathPrefix: '/', allowedAddresses: ['127.0.0.1'],
-  })
-  expect(screen.getByText(zh.httpEnvironmentHint)).toBeDefined()
-})
-
-it('keeps authoritative project state when an evidence search returns no matches', async () => {
-  const api = actions()
-  render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
-  await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByRole('button', { name: '证据' }))
-  fireEvent.change(screen.getByLabelText('关键词'), { target: { value: 'absent' } })
-  fireEvent.click(screen.getByRole('button', { name: '搜索' }))
-  await waitFor(() =>{  expect(api.search).toHaveBeenCalledWith('parent', 'absent', false) })
-  fireEvent.click(screen.getByRole('button', { name: '停止分析任务' }))
-  await waitFor(() =>{  expect(api.command).toHaveBeenCalled() })
-  const call = vi.mocked(api.command).mock.calls[0]
-  expect(JSON.parse(call?.[1] ?? '{}')).toMatchObject({ expectedRevision: 8, action: { kind: 'stop' } })
-})
 it('does not reveal an old project when its request completes after changing Sessions', async () => {
   let release!: (value: WorkbenchView) => void
   const pending = new Promise<WorkbenchView>((resolve) => { release = resolve })
-  const api = actions({ load: vi.fn(() => pending) })
+  const api = actions({ load: vi.fn<WorkbenchActions['load']>().mockImplementationOnce(() => pending)
+    .mockResolvedValue({ revision: 0, records: [] }) })
   const rendered = render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   rendered.rerender(<Workbench {...props(api, 'other')} />)
-  release(view)
-  await waitFor(() =>{  expect(screen.queryByRole('dialog')).toBeNull() })
+  await act(async () => { release(view); await pending })
+  await screen.findByRole('heading', { name: zh.newAnalysis })
   expect(screen.queryByText('Review the sample')).toBeNull()
 })
 it('opens pending plans directly and requires approval before execution', async () => {
@@ -216,7 +157,7 @@ it('opens pending plans directly and requires approval before execution', async 
   const approved = recordSchema.parse({ ...plan, value: { ...plan.value, status: 'approved' } })
   const api = actions({ load: vi.fn(async () => ({ ...view, records: [project, plan] })),
     command: vi.fn(async () => ({ revision: 9, records: [project, approved] })) })
-  render(<Workbench {...props(api)} autoOpen initialTab="planApprovals" />)
+  render(<Workbench {...props(api)} initialTab="planApprovals" />)
   await screen.findByText('a'.repeat(64))
   expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.execute }).disabled).toBe(true)
   expect(api.command).not.toHaveBeenCalled()
@@ -242,7 +183,7 @@ it('refreshes a persisted execution failure instead of leaving only the approved
     } })] }
     throw new Error('FileNotFoundError: /tmp/E:/workspace/check.py')
   }) })
-  render(<Workbench {...props(api)} autoOpen initialTab="planApprovals" />)
+  render(<Workbench {...props(api)} initialTab="planApprovals" />)
   fireEvent.click(await screen.findByRole('button', { name: zh.execute }))
   await screen.findByText(zh.planExecutionFailed)
   expect(screen.getByText(zh.planOfflineMissingFile)).toBeDefined()
@@ -257,9 +198,7 @@ it('separates concise knowledge cards from legacy text and evidence', async () =
   const legacy = recordSchema.parse({ kind: 'knowledge', value: { id: 'legacy', engagementId: 'project', title: 'Unrefined', content: 'private chain of thought', conditions: 'parsers', tags: [], evidenceIds: [], published: false } })
   const api = actions({ load: vi.fn(async () => ({ revision: 8, records: [project, note, legacy] })) })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByText('高级详情'))
   fireEvent.click(screen.getByRole('button', { name: '复盘与经验' }))
   fireEvent.click(screen.getByRole('button', { name: /经验 1/ }))
   expect(screen.getByText('Validate lengths.')).toBeDefined()
@@ -276,9 +215,7 @@ it('separates concise knowledge cards from legacy text and evidence', async () =
 it('saves retrospective fields without evidence or reasoning fields', async () => {
   const api = actions()
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByText('高级详情'))
   fireEvent.click(screen.getByRole('button', { name: '复盘与经验' }))
   fireEvent.click(screen.getByRole('button', { name: '新增记录' }))
   for (const [label, value] of [['名称', 'Parser review'], ['结果摘要', 'Found a length check gap'], ['适用条件', 'Binary parser'], ['改进措施', 'Check bytes'], ['遇到的问题', 'Trusted input sizes']])
@@ -288,41 +225,6 @@ it('saves retrospective fields without evidence or reasoning fields', async () =
   expect((JSON.parse(vi.mocked(api.command).mock.calls[0]![1]) as { action: unknown }).action).toEqual({ kind: 'remember', entry: {
     category: 'retrospective', title: 'Parser review', summary: 'Found a length check gap', conditions: 'Binary parser', actions: ['Check bytes'], pitfalls: ['Trusted input sizes'], tags: [],
   } })
-})
-
-it('reads an immutable source location and keeps partial observation warnings visible', async () => {
-  const asset = recordSchema.parse({ kind: 'asset', value: { kind: 'source', id: 'source', engagementId: 'project', label: 'Sources',
-    artifact: { sha256: 'a'.repeat(64), size: 100, mediaType: 'application/json' }, identity: 'measured' } })
-  const evidence = recordSchema.parse({ kind: 'evidence', value: { id: 'observation', engagementId: 'project', assetId: 'source',
-    title: 'Read lines', summary: 'Saved source lines', provider: 'source', operation: 'read', toolVersion: 'source v1',
-    request: { path: 'app.py', startLine: 9 }, source: { sessionId: 'parent', callId: 'read' },
-    artifact: { sha256: 'b'.repeat(64), size: 100, mediaType: 'application/json' }, method: 'static', incomplete: true,
-    failure: 'The read stopped before the final line.', createdAt: 1 } })
-  const api = actions({ load: vi.fn(async () => ({ ...view, records: [project, asset] })),
-    observe: vi.fn(async () => ({ revision: 9, records: [project, asset, evidence] })) })
-  render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
-  await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByText('高级详情'))
-  fireEvent.click(screen.getByRole('button', { name: '资产' }))
-  const assetDetails = within(screen.getByText('Sources', { selector: 'strong' }).closest('article')!).getByText('技术详情').closest('details')!
-  expect(assetDetails.open).toBe(false)
-  expect(assetDetails.textContent).toContain('a'.repeat(64))
-  fireEvent.change(screen.getAllByLabelText('运行环境').at(-1)!, { target: { value: 'local' } })
-  fireEvent.change(screen.getByLabelText('快照中的相对文件路径'), { target: { value: 'app.py' } })
-  fireEvent.change(screen.getByLabelText('起始行号'), { target: { value: '9' } })
-  fireEvent.click(screen.getByRole('button', { name: '按行读取' }))
-  await screen.findByText('静态观察')
-  expect(screen.getByText('The read stopped before the final line.').closest('details')).toBeNull()
-  expect(screen.getByText(zh.incomplete).closest('details')).toBeNull()
-  const technicalDetails = within(screen.getByText('Read lines', { selector: 'strong' }).closest('article')!).getByText('技术详情').closest('details')!
-  expect(technicalDetails.open).toBe(false)
-  expect(technicalDetails.textContent).toContain('source v1')
-  expect(technicalDetails.textContent).toContain('b'.repeat(64))
-  fireEvent.click(within(technicalDetails).getByText('技术详情'))
-  expect(technicalDetails.open).toBe(true)
-  expect(JSON.parse(vi.mocked(api.observe).mock.calls[0]![1])).toMatchObject({
-    provider: 'source', operation: 'read', assetId: 'source', parameters: { path: 'app.py', startLine: 9 } })
 })
 
 it('uses evidence and finding titles in reviews while retaining identifiers in technical details', async () => {
@@ -339,9 +241,7 @@ it('uses evidence and finding titles in reviews while retaining identifiers in t
     explanation: 'The source includes a length check.', uncertainty: 'Runtime behavior remains untested.', createdAt: 2 } })
   const api = actions({ load: vi.fn(async () => ({ ...view, records: [project, observation, finding, review] })) })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
-  fireEvent.click(screen.getByText('高级详情'))
   fireEvent.click(screen.getByRole('button', { name: zh.reviews }))
   expect(screen.getByText('Parser bounds check')).toBeTruthy()
   expect(screen.getByText(`${zh.supportingEvidence}: Parser length comparison`)).toBeTruthy()
@@ -359,12 +259,10 @@ it('uses evidence and finding titles in reviews while retaining identifiers in t
 it('starts from conversation guidance and keeps manual project setup available on demand', async () => {
   const api = actions({ load: vi.fn(async () => ({ revision: 0, records: [] })) })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: '新建分析' })
   expect(screen.getByText(zh.simpleStartHint)).toBeDefined()
   const setup = screen.getByText('高级设置与历史任务').closest('details')!
   expect(setup.open).toBe(false)
-  expect(screen.getByRole('button', { name: '高级详情' }).getAttribute('aria-expanded')).toBe('false')
   expect(screen.queryByText('生成四阶段检查计划')).toBeNull()
   fireEvent.click(screen.getByText('高级设置与历史任务'))
   expect(setup.open).toBe(true)
@@ -391,7 +289,6 @@ it('summarizes saved findings, evidence and blocked validation before advanced c
     artifact: { sha256: 'a'.repeat(64), size: 20, mediaType: 'text/plain' }, method: 'static', incomplete: false, createdAt: 1 } })
   const api = actions({ load: vi.fn(async () => ({ ...view, records: [project, finding, check, evidence] })) })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
   expect(screen.getByText('Missing object authorization')).toBeDefined()
   expect(screen.getByText('The test device is offline.')).toBeDefined()
@@ -399,7 +296,6 @@ it('summarizes saved findings, evidence and blocked validation before advanced c
   expect(screen.getByText('待验证发现').closest('article')?.textContent).toContain('1')
   expect(screen.getByText('证据记录').closest('article')?.textContent).toContain('1')
   expect(screen.getByText('验证受阻').closest('article')?.textContent).toContain('1')
-  expect(screen.getByRole('button', { name: '高级详情' }).getAttribute('aria-expanded')).toBe('false')
   expect(screen.queryByText('侦察')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '生成此修订的报告' }))
   await waitFor(() => { expect(api.command).toHaveBeenCalled() })
@@ -409,10 +305,9 @@ it('summarizes saved findings, evidence and blocked validation before advanced c
 it('returns from task setup to the existing conversation without creating a project', async () => {
   const api = actions({ load: vi.fn(async () => ({ revision: 0, records: [] })) })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: '新建分析' })
   fireEvent.click(screen.getByRole('button', { name: '返回对话' }))
-  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.queryByRole('region', { name: zh.advancedDetails })).toBeNull()
   expect(api.command).not.toHaveBeenCalled()
 })
 
@@ -421,7 +316,6 @@ it('does not submit an analysis objective after its preparation outlives the sel
   const pending = new Promise<WorkbenchView>((resolve) => { release = resolve })
   const api = actions({ load: vi.fn(async () => ({ revision: 0, records: [] })), importMaterials: vi.fn(() => pending) })
   const rendered = render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: zh.newAnalysis })
   fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: 'Inspect this sample' } })
   fireEvent.click(screen.getByRole('button', { name: zh.startAnalysis }))
@@ -429,7 +323,7 @@ it('does not submit an analysis objective after its preparation outlives the sel
   rendered.rerender(<Workbench {...props(api, 'other')} />)
   await act(async () => { release(view); await pending })
   expect(api.sendAnalysis).not.toHaveBeenCalled()
-  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.getByRole('heading', { name: zh.newAnalysis })).toBeTruthy()
 })
 
 it('saves workspace environment choices and can disable intake without changing an existing project', async () => {
@@ -448,7 +342,6 @@ it('saves workspace environment choices and can disable intake without changing 
     }),
   })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: '新建分析' })
   fireEvent.click(screen.getByText('高级设置与历史任务'))
   fireEvent.click(screen.getByText('调整可用环境'))
@@ -479,7 +372,6 @@ it('requires an explicit attempt limit when no deployment default is configured'
     } })),
   })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: '新建分析' })
   expect(screen.getByText(zh.missingAttemptLimit)).toBeDefined()
   const start = screen.getByRole<HTMLButtonElement>('button', { name: zh.startAnalysis })
@@ -510,7 +402,6 @@ it('uses the configured attempt limit for manual project creation', async () => 
     } })),
   })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: zh.title }))
   await screen.findByRole('heading', { name: zh.newAnalysis })
   fireEvent.click(screen.getByText(zh.manualSetup))
   fireEvent.change(screen.getByLabelText(zh.name), { target: { value: 'Manual analysis' } })
@@ -533,7 +424,6 @@ it('ignores a saved workspace response after switching conversations', async () 
     configureWorkspace: vi.fn(() => saved),
   })
   const rendered = render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: '新建分析' })
   fireEvent.click(screen.getByText('高级设置与历史任务'))
   fireEvent.click(screen.getByText('调整可用环境'))
@@ -544,7 +434,6 @@ it('ignores a saved workspace response after switching conversations', async () 
     workspace: { cwd: '/parent', revision: 1, environmentIds: ['parent'], maxAttempts: 3, configured: true },
     environments: [{ id: 'parent', label: 'parent', kind: 'local', tools: [] }], providers: [],
   }))
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: '新建分析' })
   fireEvent.click(screen.getByText('高级设置与历史任务'))
   fireEvent.click(screen.getByText('调整可用环境'))
@@ -562,7 +451,6 @@ it('refreshes an open task once when its conversation finishes and keeps manual 
     .mockResolvedValue({ revision: 9, records: [project, finding] })
   const api = actions({ load })
   const rendered = render(<Workbench {...props(api, 'parent', true)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
   expect(load).toHaveBeenCalledTimes(1)
   expect(screen.queryByText('Result saved during the turn')).toBeNull()
@@ -575,20 +463,16 @@ it('refreshes an open task once when its conversation finishes and keeps manual 
   await waitFor(() => { expect(load).toHaveBeenCalledTimes(3) })
 })
 
-it('does not refresh a closed panel or mistake a conversation switch for a finished turn', async () => {
+it('loads only open settings and refreshes the selected Session when it changes', async () => {
   const api = actions()
-  const rendered = render(<Workbench {...props(api, 'parent', true)} />)
-  rendered.rerender(<Workbench {...props(api, 'parent', false)} />)
+  const rendered = render(<DashboardSession {...props(api, 'parent', true)} advancedOpen={false} />)
+  rendered.rerender(<DashboardSession {...props(api, 'parent', false)} advancedOpen={false} />)
   expect(api.load).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
-  await screen.findByRole('heading', { name: 'Review the sample' })
-  expect(api.load).toHaveBeenCalledTimes(1)
-  rendered.rerender(<Workbench {...props(api, 'parent', true)} />)
-  rendered.rerender(<Workbench {...props(api, 'other', false)} />)
-  await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
-  expect(api.load).toHaveBeenCalledTimes(1)
+  rendered.rerender(<DashboardSession {...props(api, 'parent', true)} advancedOpen />)
+  await screen.findByRole('navigation', { name: zh.title })
+  rendered.rerender(<DashboardSession {...props(api, 'other', false)} advancedOpen />)
+  await waitFor(() => { expect(vi.mocked(api.load).mock.calls).toEqual([['parent'], ['other']]) })
 })
-
 
 it('lets the operator remove a saved environment that the deployment no longer provides', async () => {
   const configuration = {
@@ -604,7 +488,6 @@ it('lets the operator remove a saved environment that the deployment no longer p
     })),
   })
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   fireEvent.click(await screen.findByText('调整可用环境'))
   fireEvent.click(screen.getByRole('checkbox', { name: 'retired · 已不可用，取消选择后保存' }))
   expect(screen.queryByRole('checkbox', { name: 'retired · 已不可用，取消选择后保存' })).toBeNull()
@@ -628,7 +511,6 @@ it('waits for a workspace save before refreshing a completed turn and keeps the 
   const load = vi.fn<WorkbenchActions['load']>(async () => ({ revision: 0, records: [] }))
   const api = actions({ load, configuration: vi.fn(async () => workbenchConfiguration(configuration)), configureWorkspace: save })
   const rendered = render(<Workbench {...props(api, 'parent', true)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   fireEvent.click(await screen.findByText('调整可用环境'))
   fireEvent.click(screen.getByRole('checkbox', { name: 'Lab' }))
   fireEvent.click(screen.getByRole('button', { name: '保存工作区配置' }))
@@ -667,7 +549,6 @@ it.each([{ locale: 'zh', dictionary: zh }, { locale: 'en', dictionary: en }])(
     } })
     const api = actions({ load: vi.fn(async () => ({ revision: 8, records: [longProject, finding] })) })
     render(<Workbench {...props(api)} t={makeTranslate(dictionary, commonZh)} />)
-    fireEvent.click(screen.getByRole('button', { name: dictionary.title }))
     await screen.findByRole('heading', { name: objective })
     expect(screen.getByTitle(objective).textContent).toContain(objective)
     const details = screen.getByText(dictionary.fullObjective).closest('details')!
@@ -686,7 +567,6 @@ it.each([{ locale: 'zh', dictionary: zh }, { locale: 'en', dictionary: en }])(
 it('adds pasted material from the task overview and exposes reversible project removal', async () => {
   const api = actions()
   render(<Workbench {...props(api)} />)
-  fireEvent.click(screen.getByRole('button', { name: '安全分析' }))
   await screen.findByRole('heading', { name: 'Review the sample' })
   fireEvent.click(screen.getByRole('button', { name: '粘贴文字' }))
   fireEvent.change(screen.getByLabelText('要分析的文字'), { target: { value: '  const value = 1;\n' } })
@@ -699,25 +579,4 @@ it('adds pasted material from the task overview and exposes reversible project r
   fireEvent.click(screen.getByRole('button', { name: '保存名称' }))
   await waitFor(() =>{  expect(api.manageProject).toHaveBeenCalledTimes(1) })
   expect((JSON.parse(vi.mocked(api.manageProject).mock.calls[0]![1]) as { action: unknown }).action).toEqual({ kind: 'rename', title: 'New name' })
-})
-
-it('opens material intake directly from the composer and sends only after saving the task', async () => {
-  const api = actions({ load: vi.fn(async () => ({ revision: 4, records: [] })) })
-  render(<Workbench {...props(api)} />)
-  expect(screen.queryByRole('dialog')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: zh.startWithMaterials }))
-  await screen.findByRole('heading', { name: zh.newAnalysis })
-  fireEvent.click(screen.getByRole('button', { name: zh.hostPath }))
-  fireEvent.change(screen.getByLabelText(zh.materialPath), { target: { value: 'E:/samples/ctk-1.4.3.apk' } })
-  fireEvent.click(screen.getByRole('button', { name: zh.addMaterials }))
-  await screen.findByText(/ctk-1.4.3.apk/u)
-  fireEvent.change(screen.getByLabelText(zh.analysisRequest), { target: { value: '检查这个 APK 的静态安全问题' } })
-  fireEvent.click(screen.getByRole('button', { name: zh.startAnalysis }))
-  await waitFor(() => { expect(api.sendAnalysis).toHaveBeenCalledWith('parent', '检查这个 APK 的静态安全问题') })
-  expect(JSON.parse(vi.mocked(api.importMaterials).mock.calls[0]![1])).toMatchObject({
-    expectedRevision: 4, material: { kind: 'path', path: 'E:/samples/ctk-1.4.3.apk' },
-    title: 'ctk-1.4.3.apk', resources: { environmentIds: ['local'] },
-  })
-  expect(vi.mocked(api.importMaterials).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.sendAnalysis).mock.invocationCallOrder[0]!)
-  expect(screen.queryByRole('dialog')).toBeNull()
 })

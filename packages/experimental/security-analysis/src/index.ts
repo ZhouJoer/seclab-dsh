@@ -36,7 +36,7 @@ import { analysisScripts } from './analysis-scripts.ts'
 import { discoverScripts } from './script-discovery.ts'
 import type { AnalysisScript } from './analysis-script-types.ts'
 import { randomUUID } from 'node:crypto'
-import { installWorkspaceArchive } from './workspace-archive.ts'
+import { archiveRequestSchema, installWorkspaceArchive } from './workspace-archive.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { UserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -87,10 +87,10 @@ import { modelPage, recordDetail, commandReceipt, sourceEvidenceLines, type Comm
 import { SourceProvider } from './workbench/source.ts'
 import { BinaryProvider } from './workbench/binary.ts'
 import { toolsForRole, canObserve, delegationPrompt, resolveTask, taskKinds } from './workbench/roles.ts'
-import { ArtifactStore, isPacketCapture } from './workbench/artifacts.ts'
+import { ArtifactStore, isPacketCapture, recordArtifacts } from './workbench/artifacts.ts'
 import { openSecurityJournal, type SecurityJournal } from './workbench/journal.ts'
 import { SecurityController, commandSchema, type SecurityCommand } from './workbench/controller.ts'
-import { SecuritySearchIndex } from './workbench/search.ts'
+import { removeLegacySearchIndex, searchRecords } from './workbench/search.ts'
 import type { SecurityEnvironment } from './workbench/providers.ts'
 import { resolveEnvironmentConfiguration, securityEnvironmentSchema, validateSecurityEnvironments } from './security-environment-config.ts'
 import type { ToolboxDirectory, ToolboxInventory, ToolboxConfiguration, ToolboxConfigurationResult, ToolboxFiles } from './toolbox-types.ts'
@@ -105,6 +105,25 @@ import { EvolutionStore } from './evolution-store.ts'
 import type { EvolutionView, EvolutionBundle } from './evolution-model.ts'
 
 const scopeKinds = [...recordSchema.options.map(option => option.shape.kind.value), 'http', 'http-identities']
+
+async function* followSnapshots<T>(signal: AbortSignal, snapshot: () => T,
+  ...subscriptions: ((changed: () => void) => () => void)[]): AsyncGenerator<T, void> {
+  let change = Promise.withResolvers<void>()
+  const changed = () => { change.resolve() }
+  const disposers: (() => void)[] = []
+  signal.addEventListener('abort', changed, { once: true })
+  try {
+    for (const subscribe of subscriptions) disposers.push(subscribe(changed))
+    while (!signal.aborted) {
+      yield snapshot()
+      await change.promise
+      change = Promise.withResolvers<void>()
+    }
+  } finally {
+    signal.removeEventListener('abort', changed)
+    for (const dispose of disposers) dispose()
+  }
+}
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
@@ -150,7 +169,7 @@ export interface WorkbenchConfig {
   taskIntake?: TaskIntakeConfig | undefined
   /** Maximum complete task declaration and background snapshot in UTF-8 bytes. */
   taskContextMaxBytes: number
-  /** Absolute Host directory for ownership, immutable artifacts and the derived search index. */
+  /** Absolute Host directory for ownership, immutable artifacts and run files. */
   root: string
   /** Absolute directories whose real paths may contain imported samples. */
   importRoots: string[]
@@ -315,7 +334,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private readonly catalog: ToolCatalog
   private readonly toolConfiguration: LocalToolConfiguration
   private controller: SecurityController | undefined
-  private readonly manageWorkspaceProject: ReturnType<typeof installWorkspaceArchive>
+  private readonly archiveRequest: ReturnType<typeof installWorkspaceArchive>
   private creationQueue = Promise.resolve()
   private delegationCount = 0
   /** Domain initialization and recovery complete before accepting operations. */
@@ -328,7 +347,6 @@ export default class SecurityWorkbench extends TypertRemoteService {
   private workspaceIntake: WorkspaceIntakeStore | undefined
   private taskSettings: TaskSettings | undefined
   private readonly restarting = new Map<SessionId, Promise<{ sessionId: SessionId; projectId: string; objective: string }>>()
-  private index: SecuritySearchIndex | undefined
   private readonly shutdown = new AbortController()
   private readonly pending = new Set<Promise<unknown>>()
   private readonly startupOperations = new Map<SessionId, Promise<void>>()
@@ -390,7 +408,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       isInstallationInUse: (location, paths) => selections.inUse(location, paths),
       withUnusedInstallation: (location, paths, remove) => selections.withUnusedInstallation(location, paths, remove),
     })
-    this.manageWorkspaceProject = installWorkspaceArchive(ctx, this.ready, () => this.journal, this.pending)
+    this.archiveRequest = installWorkspaceArchive(ctx, this.ready, () => this.journal, this.pending)
     ctx.inject(['skills'], (skillCtx) => {
       installSecurityMethods(skillCtx)
     })
@@ -1178,18 +1196,13 @@ export default class SecurityWorkbench extends TypertRemoteService {
       this.shutdown.abort(new Error('Security service disposed'))
       try {
         await installationManager.close()
-        await this.evolution?.close()
-        await (await this.ready).dispose()
-        await closeActivity()
-        await Promise.allSettled([...this.pending])
       } finally {
-        this.index?.close()
-        await this.activity?.close()
-        await this.evolutionStore?.close()
-        await this.workspaceIntake?.close()
-        await this.taskSettings?.close()
-        await this.journal?.close()
-        this.ownership?.close()
+        await this.ready
+        try {
+          await this.evolution?.close()
+          await closeActivity()
+          await Promise.allSettled([...this.pending])
+        } finally { await this.closeStorage() }
       }
     })
   }
@@ -1462,6 +1475,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     }
     this.ownership = ownership
     try {
+      removeLegacySearchIndex(this.config.root)
       const journal = await openSecurityJournal(this.ctx)
       this.journal = journal
       this.taskSettings = await openTaskSettings(this.ctx)
@@ -1474,8 +1488,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
       const controller = new SecurityController(
         journal,
         artifacts,
-        { ...this.config, sessionSelfApprove: this.config.approval.sessionSelfApprove,
-          reportLimits: { maxFindings: this.config.reportMaxFindings, outputBytes: this.config.maxOutputBytes } },
+        { ...this.config, sessionSelfApprove: this.config.approval.sessionSelfApprove },
         this.activity,
         async (project) => {
           await this.evolution?.cancel(project); await this.evolutionStore?.removeProject(project)
@@ -1509,7 +1522,6 @@ export default class SecurityWorkbench extends TypertRemoteService {
           }
         })
       })
-      this.index = new SecuritySearchIndex(join(this.config.root, 'search.sqlite'))
       if (this.config.knowledgeIntervalMs > 0 && this.config.knowledgeProvider) this.ctx.effect(() => {
         let sweep: Promise<void> | undefined
         const tick = () => {
@@ -1530,15 +1542,17 @@ export default class SecurityWorkbench extends TypertRemoteService {
       installModuleRuntime(this.ctx, controller, this.journal)
       return controller
     } catch (error) {
-      await this.evolution?.close()
-      await this.evolutionStore?.close()
-      await this.activity?.close()
-      await this.workspaceIntake?.close()
-      await this.journal?.close()
-      ownership.close()
-      this.ownership = undefined
+      try { await this.evolution?.close() } finally { await this.closeStorage() }
       throw error
     }
+  }
+
+  private async closeStorage(): Promise<void> {
+    const errors: unknown[] = []
+    for (const store of [this.activity, this.evolutionStore, this.workspaceIntake, this.taskSettings, this.journal, this.ownership]) {
+      try { await store?.close() } catch (error) { errors.push(error) }
+    }
+    if (errors.length) throw new AggregateError(errors, 'Security workbench storage cleanup failed')
   }
 
   private refine(project: string, sessionId?: string): Promise<void> {
@@ -1631,19 +1645,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
     assert(this.evolutionStore, 'Improvement storage is initialized')
     const store = this.evolutionStore
     const combined = AbortSignal.any([signal, this.shutdown.signal])
-    let dirty = true
-    let wake = () => {}
-    const off = store.subscribe(() => { dirty = true; wake() })
-    const abort = () => { wake() }
-    combined.addEventListener('abort', abort, { once: true })
-    try {
-      while (!combined.aborted) {
-        const pending = Promise.withResolvers<void>()
-        wake = () => { pending.resolve() }
-        if (dirty) { dirty = false; yield store.view() }
-        else await pending.promise
-      }
-    } finally { off(); combined.removeEventListener('abort', abort) }
+    yield* followSnapshots(combined, () => store.view(), changed => store.subscribe(changed))
   }
 
   /**
@@ -1665,16 +1667,20 @@ export default class SecurityWorkbench extends TypertRemoteService {
   /** Update a project from the authenticated project browser.
    * @param projectId - operator-selected project.
    * @param input - revision-checked management request.
-   * @returns complete project list, including removed projects.
+   * @returns completion of the requested change.
    */
   @Remote('manageProject')
-  async manageProject(projectId: string, input: string): Promise<string> {
-    await this.ready
+  async manageProject(projectId: string, input: string): Promise<void> {
+    const controller = await this.ready
     const request: unknown = JSON.parse(input)
-    const result = await this.manageWorkspaceProject(this.ctx, projectId, request)
-    assert(this.journal, 'Initialized workbench requires its journal')
-    this.index?.rebuild(this.journal.view().records)
-    return JSON.stringify(result)
+    const archive = archiveRequestSchema.safeParse(request)
+    const workspaces = this.ctx.get('workspaceRegistry')
+    if (!archive.success || !workspaces) return controller.manageProject(projectId, request)
+    const sessionId = controller.mainSession(projectId)
+    if (!sessionId) throw new Error('Task has no primary conversation; reload the task')
+    const id = brandString<SessionId>(sessionId)
+    return this.archiveRequest.run({ projectId, input: archive.data }, () => archive.data.action.kind === 'archive'
+      ? workspaces.archiveSession(id, { stopActivity: true }) : workspaces.unarchiveSession(id))
   }
 
   /** Archive one round and prepare a fresh conversation without sending a prompt.
@@ -1773,40 +1779,26 @@ export default class SecurityWorkbench extends TypertRemoteService {
     return result
   }
 
-  /** List persistent projects, including removed projects available for restoration.
-   * @returns project identities and objectives. */
-  @Remote('projects')
-  async projects(): Promise<string> {
-    return JSON.stringify((await this.ready).projects(true))
-  }
   /** Follow all task summaries over one disposable subscription.
    * @param signal - connection lifetime.
    * @returns complete lightweight baselines after committed or runtime changes. */
   @Remote({ mode: 'stream' })
   async *followProjects(signal: AbortSignal): AsyncIterable<SecurityProjectSummary[]> {
-    const controller = await this.ready
+    await this.ready
     assert(this.journal && this.activity, 'Task directory requires initialized storage')
-    const journal = this.journal; const activity = this.activity
+    const journal = this.journal
+    const activity = this.activity
     const lifetime = AbortSignal.any([signal, this.shutdown.signal])
-    const state = { dirty: true }; let wake = () => {}
-    const changed = () => { state.dirty = true; wake() }
-    const disposers = [journal.subscribeAll(changed), activity.subscribe(changed),
-      this.ctx.on('agent/status', changed), this.ctx.on('agent/disposed', changed)]
-    lifetime.addEventListener('abort', changed, { once: true })
-    try {
-      while (!lifetime.aborted) {
-        const pending = Promise.withResolvers<void>(); wake = () => { pending.resolve() }
-        if (state.dirty) {
-          state.dirty = false
-          const agents = new Map<string, number>()
-          for (const agent of this.ctx.agents.list()) {
-            const binding = controller.binding(agent.id)
-            if (binding && binding.active !== false && agent.status === 'running') agents.set(binding.engagementId, (agents.get(binding.engagementId) ?? 0) + 1)
-          }
-          yield projectDirectory(journal.view(), agents, activity.runningCounts())
-        } else await pending.promise
-      }
-    } finally { for (const dispose of disposers) dispose(); lifetime.removeEventListener('abort', changed) }
+    const snapshot = () => {
+      const runningSessions = new Set(this.ctx.agents.list().filter(agent => agent.status === 'running').map(agent => agent.id))
+      return projectDirectory(journal.view(), runningSessions, activity.runningCounts())
+    }
+    yield* followSnapshots(lifetime, snapshot,
+      changed => journal.subscribeAll(changed),
+      changed => activity.subscribe(changed),
+      changed => this.ctx.on('agent/status', changed),
+      changed => this.ctx.on('agent/disposed', changed),
+    )
   }
   /** List target authentication descriptions without revealing secret values.
    * @param projectId - owning project.
@@ -2289,20 +2281,8 @@ export default class SecurityWorkbench extends TypertRemoteService {
     assert(this.journal, 'Session selection requires initialized storage')
     const lifetime = AbortSignal.any([signal, this.shutdown.signal])
     lifetime.throwIfAborted()
-    const state = { dirty: false }
-    let wake = () => {}
-    const off = this.journal.subscribeSelection(sessionId, () => { state.dirty = true; wake() })
-    const abort = () => { wake() }
-    lifetime.addEventListener('abort', abort, { once: true })
-    try {
-      yield controller.view(sessionId)
-      while (!lifetime.aborted) {
-        const pending = Promise.withResolvers<void>()
-        wake = () => { pending.resolve() }
-        if (state.dirty) { state.dirty = false; yield controller.view(sessionId) }
-        else await pending.promise
-      }
-    } finally { off(); lifetime.removeEventListener('abort', abort) }
+    const journal = this.journal
+    yield* followSnapshots(lifetime, () => controller.view(sessionId), changed => journal.subscribeSelection(sessionId, changed))
   }
   /**
    * Apply a user-authored command including approval gestures.
@@ -2408,10 +2388,7 @@ export default class SecurityWorkbench extends TypertRemoteService {
           : item,
       ),
     )
-    const index = this.index
-    assert(index, 'Initialized workbench requires its search index')
-    index.rebuild(indexed)
-    const ids = new Set(index.search(binding.engagementId, query, 100))
+    const ids = new Set(searchRecords(indexed, binding.engagementId, query, 100))
     const records = view.records.filter(item => item.kind !== 'binding' && ids.has(item.kind + ':' + item.value.id))
     if (shared)
       records.push(
@@ -2720,30 +2697,18 @@ export default class SecurityWorkbench extends TypertRemoteService {
   }
   private async readArtifact(records: WorkbenchView['records'], sha256: string): Promise<string> {
     const controller = await this.ready
-    const entry = records.find(
-      item =>
-        ((item.kind === 'asset' || item.kind === 'evidence' || item.kind === 'legacy') && 'artifact' in item.value &&
-          item.value.artifact.sha256 === sha256) ||
-        (item.kind === 'plan' && item.value.operation.script?.sha256 === sha256) ||
-        (item.kind === 'report' && [item.value.markdown.sha256, item.value.json.sha256,
-          item.value.findingsMarkdown?.sha256, item.value.recommendationsMarkdown?.sha256].includes(sha256)),
-    )
-    const reference =
-      (entry?.kind === 'asset' || entry?.kind === 'evidence' || entry?.kind === 'legacy') && 'artifact' in entry.value
-        ? entry.value.artifact
-        : entry?.kind === 'plan'
-          ? entry.value.operation.script
-          : entry?.kind === 'report' ? (entry.value.markdown.sha256 === sha256 ? entry.value.markdown :
-            entry.value.findingsMarkdown?.sha256 === sha256 ? entry.value.findingsMarkdown :
-              entry.value.recommendationsMarkdown?.sha256 === sha256 ? entry.value.recommendationsMarkdown : entry.value.json) : undefined
-    if (!reference) throw new Error('Artifact is outside the session scope')
-    const bytes = await controller.artifacts.read(reference)
-    return JSON.stringify({
-      sha256,
-      size: bytes.length,
-      truncated: bytes.length > this.config.maxOutputBytes,
-      ...(isPacketCapture(bytes) ? { binary: true, text: '' } : { text: bytes.subarray(0, this.config.maxOutputBytes).toString('utf8') }),
-    })
+    for (const record of records) {
+      const artifact = recordArtifacts(record).find(reference => reference.sha256 === sha256)
+      if (!artifact) continue
+      const bytes = await controller.artifacts.read(artifact)
+      return JSON.stringify({
+        sha256,
+        size: bytes.length,
+        truncated: bytes.length > this.config.maxOutputBytes,
+        ...(isPacketCapture(bytes) ? { binary: true, text: '' } : { text: bytes.subarray(0, this.config.maxOutputBytes).toString('utf8') }),
+      })
+    }
+    throw new Error('Artifact is outside the session scope')
   }
 }
 

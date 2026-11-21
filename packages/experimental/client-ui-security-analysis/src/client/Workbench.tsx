@@ -1,4 +1,3 @@
-import { CaptureControls } from './CaptureControls.tsx'
 import { TaskReportStatus } from './TaskReportStatus.tsx'
 /** Security project workbench presented inside the existing conversation shell. @module */
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
@@ -30,9 +29,8 @@ export interface WorkbenchActions extends ActivityActions, ToolPreferenceActions
   openAnalysisChat(sessionId: SessionId, objective: string): void
   /** Re-pull authoritative records after a new connection generation. */
   subscribeReset(this: void, listener: () => void): () => void
-  manageProject(projectId: string, input: string): Promise<string>
+  manageProject(projectId: string, input: string): Promise<void>
   importMaterials(sessionId: SessionId, input: string): Promise<WorkbenchView>
-  observe(sessionId: SessionId, input: string): Promise<WorkbenchView>
   load(sessionId: SessionId): Promise<WorkbenchView>
   refine(sessionId: SessionId): Promise<WorkbenchView>
   command(sessionId: SessionId, command: string): Promise<WorkbenchView>
@@ -40,24 +38,20 @@ export interface WorkbenchActions extends ActivityActions, ToolPreferenceActions
   configureWorkspace(sessionId: SessionId, input: string): Promise<WorkbenchConfiguration>
   environment(sessionId: SessionId, id: string, action: 'inspect' | 'start' | 'stop'): Promise<string>
   execute(sessionId: SessionId, planId: string, operationId: string, revision: number): Promise<WorkbenchView>
-  search(sessionId: SessionId, query: string, shared: boolean): Promise<WorkbenchView>
   artifact(sessionId: SessionId, sha256: string): Promise<string>
   report(projectId: string, reportId: string,
     format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown'): Promise<string>
 }
-/** Framework-derived input dock props. */
-export type WorkbenchProps = Pick<PropsRuntime<'conversation.input.dock'>, 'sessionId' | 'useSession'> &
+/** Project settings for a retained workbench Session. */
+export type WorkbenchProps = Pick<PropsRuntime<'security.workbench.session'>, 'sessionId' | 'useSession'> &
   PropsLocale<typeof NS> &
   WorkbenchActions & {
-    autoOpen?: boolean
-    settingsOnly?: boolean
     snapshot?: WorkbenchView
-    initialTab?: 'overview' | 'planApprovals' | 'checks' | 'environments'
+    initialTab: 'overview' | 'planApprovals' | 'checks' | 'environments'
     focusCheckId?: string | undefined
   }
-type Tab = 'overview' | 'assets' | 'checks' | 'findings' | 'environments' | 'knowledge' | 'evidence' | 'reviews' | 'reports' | 'planApprovals'
-const tabKeys: Tab[] = ['overview', 'findings', 'evidence', 'reports', 'planApprovals']
-const advancedTabKeys: Tab[] = ['assets', 'checks', 'environments', 'reviews', 'knowledge']
+const settingsTabs = ['environments', 'checks', 'planApprovals', 'reviews', 'knowledge'] as const
+type Tab = typeof settingsTabs[number] | 'overview' | 'findings' | 'reports'
 const ids = (text: string): string[] =>
   text
     .split(',')
@@ -68,9 +62,8 @@ const ids = (text: string): string[] =>
 export function Workbench(props: WorkbenchProps) {
   const { sessionId, t } = props
   const running = props.useSession(snapshot => snapshot.running)
-  const [open, setOpen] = useState(props.autoOpen ?? false)
-  const [tab, setTab] = useState<Tab>(props.initialTab ?? 'overview')
-  const [advancedOpen, setAdvancedOpen] = useState(Boolean(props.initialTab && advancedTabKeys.includes(props.initialTab)))
+  const [open, setOpen] = useState(true)
+  const [tab, setTab] = useState<Tab>(props.initialTab)
   const [view, setView] = useState<WorkbenchView>({ revision: 0, records: [] })
   const [configuration, setConfiguration] = useState<WorkbenchConfiguration>()
   const [draft, setDraft] = useState<Record<string, string>>({})
@@ -78,8 +71,6 @@ export function Workbench(props: WorkbenchProps) {
   const [detail, setDetail] = useState('')
   const [detailFormat, setDetailFormat] = useState<'raw' | 'markdown'>('raw')
   const [busy, setBusy] = useState(0)
-  const [shared, setShared] = useState(false)
-  const [searchResults, setSearchResults] = useState<WorkbenchView | undefined>()
   const generation = useRef(0)
   const activeSession = useRef(sessionId)
   const priorActivity = useRef({ sessionId, running, open })
@@ -89,26 +80,20 @@ export function Workbench(props: WorkbenchProps) {
   activeSession.current = sessionId
   useEffect(() => {
     generation.current++
-    setOpen(props.autoOpen ?? false)
+    setOpen(true)
     setView({ revision: 0, records: [] })
     setConfiguration(undefined)
     setDraft({})
     setError('')
     setDetail('')
-    setSearchResults(undefined)
-    setTab(props.initialTab ?? 'overview')
-    setAdvancedOpen(Boolean(props.initialTab && advancedTabKeys.includes(props.initialTab)))
-    setShared(false)
   }, [sessionId])
   useEffect(() => {
     const snapshot = props.snapshot
     if (snapshot) setView(previous => snapshot.revision >= previous.revision ? snapshot : previous)
   }, [sessionId, props.snapshot])
   useEffect(() => {
-    const next = props.initialTab ?? 'overview'
-    setTab(next)
-    if (advancedTabKeys.includes(next)) setAdvancedOpen(true)
-  }, [props.initialTab])
+    setTab(props.initialTab)
+  }, [sessionId, props.initialTab])
   useEffect(() => {
     const target = `${sessionId}:${props.focusCheckId ?? ''}`
     if (tab !== 'checks' || !props.focusCheckId || focusedCheck.current === target) return
@@ -139,7 +124,7 @@ export function Workbench(props: WorkbenchProps) {
       setConfiguration(config)
     }
   }
-  useEffect(() => { if (props.autoOpen) void perform(load) }, [sessionId, props.autoOpen])
+  useEffect(() => { void perform(load) }, [sessionId])
   useEffect(() => {
     const previous = priorActivity.current
     priorActivity.current = { sessionId, running, open }
@@ -155,7 +140,6 @@ export function Workbench(props: WorkbenchProps) {
     setView({ revision: 0, records: [] })
     setConfiguration(undefined)
     setDetail('')
-    setSearchResults(undefined)
     if (open) void perform(load)
   }), [props.subscribeReset, sessionId, open])
   const command = async (action: SecurityCommand['action']) => {
@@ -166,7 +150,6 @@ export function Workbench(props: WorkbenchProps) {
     )
     if (activeSession.current === sessionId && generation.current === current) {
       setView(next)
-      setSearchResults(undefined)
       if (action.kind === 'create' || action.kind === 'select' || action.kind === 'leave') {
         setTab('overview')
         setDraft({})
@@ -236,29 +219,12 @@ export function Workbench(props: WorkbenchProps) {
   const childReports = view.records.filter(item => item.kind === 'binding' && item.value.report)
   return (
     <>
-      {!props.autoOpen && <div className={css.launcher}>
-        <button
-          className={css.launchButton}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          onClick={() => {
-            setOpen(true)
-            void perform(load)
-          }}
-        >
-          {t('title')}
-        </button>
-        <button className={css.launchButton} aria-haspopup="dialog" onClick={() => {
-          setTab('overview'); setOpen(true); void perform(load)
-        }}>{t('startWithMaterials')}</button>
-        <span className={css.launchHint}>{t('workflowHint')}</span>
-      </div>}
       {open && !configuration && (error ? <p role="alert">{error}
         <button disabled={busy > 0} onClick={() => void perform(load)}>{t('refresh')}</button>
       </p> : <progress aria-label={t('dashboardLoading')} />)}
       {open && configuration && (
-        <section className={`${css.panel} ${project?.kind === 'engagement' && project.value.unsealed ? css.unsealed : ''}`} data-embedded={props.autoOpen || undefined} role={props.autoOpen ? 'region' : 'dialog'}
-          aria-label={t(props.autoOpen ? 'advancedDetails' : 'title')}>
+        <section className={`${css.panel} ${project?.kind === 'engagement' && project.value.unsealed ? css.unsealed : ''}`} role="region"
+          aria-label={t('advancedDetails')}>
           <header className={css.header}>
             <strong title={project?.kind === 'engagement' ? project.value.title : undefined}>
               {t('title')}
@@ -285,18 +251,11 @@ export function Workbench(props: WorkbenchProps) {
                 {t(project.value.stopped ? 'resume' : 'stop')}
               </button>
             )}
-            {!props.autoOpen && <button
-              onClick={() => {
-                setOpen(false)
-              }}
-            >
-              {t('close')}
-            </button>}
           </header>
           <div className={css.workspace}>
             <nav className={css.tabs} aria-label={t('title')}>
               <div className={css.primaryTabs}>
-                {(props.settingsOnly ? ['environments', 'checks', 'planApprovals', 'reviews', 'knowledge'] as const : tabKeys).map(item => (
+                {settingsTabs.map(item => (
                   <button
                     key={item}
                     aria-pressed={tab === item}
@@ -309,24 +268,6 @@ export function Workbench(props: WorkbenchProps) {
                   </button>
                 ))}
               </div>
-              {!props.settingsOnly && <div className={css.advancedNavigation} data-open={advancedOpen}>
-                <button className={css.advancedToggle} aria-expanded={advancedOpen} onClick={() => {
-                  setAdvancedOpen(value => !value)
-                }}>
-                  <span>{t('advancedDetails')}</span>
-                  {advancedTabKeys.includes(tab) && <small>{t(tab)}</small>}
-                </button>
-                <div className={css.advancedReveal} aria-hidden={!advancedOpen}>
-                  <div className={css.advancedTabs}>
-                    {advancedTabKeys.map(item => (
-                      <button key={item} tabIndex={advancedOpen ? 0 : -1} aria-pressed={tab === item} onClick={() => {
-                        setTab(item)
-                        setDetail('')
-                      }}>{t(item)}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>}
             </nav>
             <div className={css.main}>
               {error && (
@@ -368,7 +309,7 @@ export function Workbench(props: WorkbenchProps) {
                     return saved
                   }} />}
                 {tab !== 'planApprovals' && <ToolPreferences key={sessionId} {...props} />}
-                {project && (tab === 'overview' || tab === 'assets') && <MaterialPanel key={sessionId + project.value.id} t={t}
+                {project && tab === 'overview' && <MaterialPanel key={sessionId + project.value.id} t={t}
                   disabled={busy > 0 || project.value.stopped}
                   limits={configuration.materialLimits}
                   submit={async (material, title) => {
@@ -540,82 +481,6 @@ export function Workbench(props: WorkbenchProps) {
                         </div>
                       )}
                     </details>
-                  </>
-                )}
-                {tab === 'assets' && (
-                  <>
-                    <div className={css.form}>
-                      {select('environment', configuration.environments.map(item => ({ id: item.id, label: item.label })))}
-                      {field('webLabel')}
-                      {field('pathPrefix')}
-                      <button disabled={busy > 0 || !project} onClick={() => void perform(() => command({ kind: 'web-target', environmentId: draft.environment ?? '', label: draft.webLabel ?? '', pathPrefix: draft.pathPrefix || '/' }))}>{t('registerWeb')}</button>
-                    </div>
-                    <details className={css.secondaryDetails}>
-                      <summary>{t('httpTargets')}</summary>
-                      <div className={css.form}>
-                        {select('environment', configuration.environments.filter(item => item.kind === 'local' || item.kind === 'docker')
-                          .map(item => ({ id: item.id, label: item.label })))}
-                        <p>{t('httpEnvironmentHint')}</p>
-                        {field('webLabel')}
-                        {field('httpOrigin')}
-                        {field('httpPrefix')}
-                        {field('httpAddresses', true)}
-                        <button disabled={busy > 0 || !project || !draft.environment || !draft.webLabel?.trim()
-                          || !draft.httpOrigin?.trim() || !draft.httpAddresses?.trim()}
-                        onClick={() => void perform(() => command({ kind: 'external-web-target',
-                          environmentId: draft.environment ?? '', label: draft.webLabel ?? '',
-                          origin: draft.httpOrigin ?? '', pathPrefix: draft.httpPrefix || '/',
-                          allowedAddresses: (draft.httpAddresses ?? '').split(/\s+/u).filter(Boolean),
-                        }))}>{t('httpRegister')}</button>
-                      </div>
-                    </details>
-                    {assets.map(item => (
-                      <article key={item.value.id} className={css.card}>
-                        <strong>{item.value.label}</strong>
-                        <p>
-                          {'kind' in item.value ? (item.value.kind === 'web' || item.value.kind === 'external-web') ? item.value.origin + item.value.pathPrefix : t('sourceSnapshot') : item.value.format + ' · ' + t('measured')}
-                        </p>
-                        <TechnicalDetails t={t} value={item.value} />
-                        {!('kind' in item.value) && <>
-                          <p>{t('captureFileBytes')} {item.value.artifact.size}</p>
-                          {configuration.providers.some(provider => provider.id === 'packet-capture') && <CaptureControls t={t}
-                            disabled={busy > 0 || project?.kind !== 'engagement' || project.value.stopped}
-                            environments={configuration.environments.filter(environment => project?.kind === 'engagement' && project.value.environmentIds.includes(environment.id))}
-                            analyze={async (operation, protocol, environmentId) => { await perform(async () => {
-                              const next = await props.observe(sessionId, JSON.stringify({ provider: 'packet-capture', operation,
-                                assetId: item.value.id, environmentId, parameters: { protocol }, impact: 'observe' }))
-                              if (activeSession.current === sessionId) { setView(previous => next.revision >= previous.revision ? next : previous); setTab('evidence') }
-                            }) }} />}
-                        </>}
-                        {'kind' in item.value && item.value.kind === 'source' && (
-                          <div className={css.form}>
-                            {field('sourcePath')}
-                            {field('sourceLine')}
-                            {field('sourceQuery')}
-                            {(['list', 'read', 'search'] as const).map(operation => (
-                              <button key={operation}
-                                disabled={busy > 0 || !draft.environment || (operation === 'read' && !draft.sourcePath) || (operation === 'search' && !draft.sourceQuery)}
-                                onClick={() => void perform(async () => {
-                                  const parameters = operation === 'list' ? {} : operation === 'read'
-                                    ? { path: draft.sourcePath, startLine: Number(draft.sourceLine || 1) }
-                                    : { query: draft.sourceQuery, ...(draft.sourcePath ? { path: draft.sourcePath } : {}) }
-                                  const next = await props.observe(sessionId, JSON.stringify({
-                                    provider: 'source', operation, assetId: item.value.id,
-                                    environmentId: draft.environment, parameters, impact: 'observe',
-                                  }))
-                                  if (activeSession.current === sessionId) { setView(next); setTab('evidence') }
-                                })}>{t(operation === 'list' ? 'inspectSource' : operation === 'read' ? 'readSource' : 'searchSource')}</button>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          disabled={busy > 0}
-                          onClick={() => void perform(() => command({ kind: 'template', assetId: item.value.id }))}
-                        >
-                          {t('template')}
-                        </button>
-                      </article>
-                    ))}
                   </>
                 )}
                 {tab === 'reviews' && view.records.filter(item => item.kind === 'review').map(item => (
@@ -860,7 +725,7 @@ export function Workbench(props: WorkbenchProps) {
                                 throw new Error(t('planExecutionFailed'), { cause: error })
                               throw error
                             }
-                            if (activeSession.current === sessionId) { setView(next); setSearchResults(undefined) }
+                            if (activeSession.current === sessionId) setView(next)
                           })} />
                       ))}
                   </>
@@ -898,73 +763,10 @@ export function Workbench(props: WorkbenchProps) {
                     const next = await props.refine(sessionId)
                     if (generation.current === current && activeSession.current === sessionId) {
                       setView(next)
-                      setSearchResults(undefined)
                     }
                   })}
                 />}
                 {tab === 'knowledge' && !project && <p className={css.emptyState}>{t('notSelected')}</p>}
-                {tab === 'evidence' && (
-                  <>
-                    <div className={css.form}>
-                      {field('query')}
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={shared}
-                          onChange={(event) => {
-                            setShared(event.target.checked)
-                          }}
-                        />
-                        {t('shared')}
-                      </label>
-                      <button
-                        disabled={busy > 0}
-                        onClick={() =>
-                          void perform(async () => {
-                            const result = await props.search(sessionId, draft.query ?? '', shared)
-                            if (activeSession.current === sessionId) setSearchResults(result)
-                          })
-                        }
-                      >
-                        {t('search')}
-                      </button>
-                    </div>
-                    {(searchResults ?? view).records
-                      .filter(item => item.kind === 'evidence' || item.kind === 'knowledge')
-                      .filter(item => item.kind === 'evidence' || (item.value.published && item.value.entry && !item.value.supersededBy && !item.value.excluded))
-                      .map(item => (
-                        <article key={item.value.id} className={css.card}>
-                          <strong>{item.value.title}</strong>
-                          {item.kind === 'evidence' ? (
-                            <>
-                              <p>{item.value.summary}</p>
-                              {item.value.operation === 'analysis-log' && <p>{t('scriptAnalysisLog')}</p>}
-                              {item.value.method && <p>{t(item.value.method === 'static' ? 'staticObservation' : item.value.method === 'simulation' ? 'offlineSimulation' : 'deviceObservation')}</p>}
-                              {item.value.failure && <p className={css.error}>{item.value.failure}</p>}
-                              {item.value.cleanup && <p>{t('cleanup')}: {item.value.cleanup}</p>}
-                              {item.value.incomplete && <p className={css.error}>{t('incomplete')}</p>}
-                              <button
-                                onClick={() =>
-                                  void perform(async () => {
-                                    await preview(props.artifact(sessionId, item.value.artifact.sha256))
-                                  })
-                                }
-                              >
-                                {t('preview')}
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <p>{item.value.entry?.summary}</p>
-                              <p>{item.value.entry?.conditions}</p>
-
-                            </>
-                          )}
-                          <TechnicalDetails t={t} value={item.value} />
-                        </article>
-                      ))}
-                  </>
-                )}
                 {detail && (detailFormat === 'markdown' ? <div className={css.report}><MarkdownText text={detail} labels={{ code: { copyLabel: t('markdownCopy'), copiedLabel: t('markdownCopied') }, footnotes: t('markdownFootnotes') }} /></div> : <pre className={css.detail}>{detail}</pre>)}
               </div>
             </div>

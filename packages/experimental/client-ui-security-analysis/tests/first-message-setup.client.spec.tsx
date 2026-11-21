@@ -22,7 +22,7 @@ function props(preset = 'security'): Props {
   const configuration = workbenchConfiguration()
   const useResource = () => ({ status: 'live' as const, value: configuration, failure: undefined })
   return { t: makeTranslate(en, common), sessionId: id, useSessions: select => select(sessions),
-    useDirectory: select => select({ projects: [], failed: false }), usePreparation: select => select({}),
+    useDirectory: select => select({ received: true, projects: [], failed: false }), usePreparation: select => select({}),
     useResource: useResource as Props['useResource'], saveSetup: vi.fn(async () => {}), saveDefaults: vi.fn(async () => {}),
     refreshSetup: vi.fn(), editSetup: vi.fn(), editTools: vi.fn(), toolsReady: vi.fn(),
     toolPreferenceOptions: vi.fn(async () => ({ tools: [], collections: [] })),
@@ -93,7 +93,7 @@ it('keeps cleared task authorization separate from workspace defaults in the edi
 it('shows the actual environment and editable preferences in an associated blank restart draft', async () => {
   const api = props()
   api.toolPreferenceOptions = vi.fn(async () => preferenceOptions)
-  api.useDirectory = select => select({ failed: false, projects: [{
+  api.useDirectory = select => select({ received: true, failed: false, projects: [{
     project: engagementSchema.parse({ id: 'restarted', title: 'Restarted', objective: 'Review owned files',
       environmentIds: ['mining'], maxAttempts: 3, stopped: false }),
     sessions: [{ sessionId: api.sessionId, role: 'coordinator', active: true }], state: 'idle',

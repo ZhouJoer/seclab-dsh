@@ -2,15 +2,17 @@
 /** Dashboard navigation does not create analysis state until an explicit action. @module */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SidebarRightTabInfo, PaneId, TabId } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as common } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { engagementSchema, recordSchema } from '@deepseek-ai/dsh-experimental-security-analysis/src/workbench/model.ts'
 import type { TaskContext, WorkbenchView } from '@deepseek-ai/dsh-experimental-security-analysis/client'
+import { SecurityDirectory, type SecurityDirectorySnapshot } from '../src/client/directory.ts'
 import { Dashboard } from '../src/client/Dashboard.tsx'
 import { SidebarWorkbench } from '../src/client/SidebarWorkbench.tsx'
 import { deviceActions } from './device-fixture.client.ts'
@@ -30,7 +32,17 @@ const evidence = recordSchema.parse({ kind: 'evidence', value: { id: 'e1', engag
   title: 'Authorization check', summary: 'A recorded observation', artifact: { sha256: 'a'.repeat(64), size: 4, mediaType: 'text/plain' },
   provider: 'source', operation: 'read', toolVersion: '1', request: {}, source: { sessionId: 's1', callId: 'c1' },
   incomplete: false, method: 'static', createdAt: 1 } })
-function harness(extra: object = {}) {
+function taskDirectory(projects: (typeof alpha.value)[], received = true): SecurityDirectorySnapshot {
+  return { received, failed: false, projects: projects.map(project => ({
+    project, sessions: [{ sessionId: project.id === 'Alpha' ? 's1' : 's2', role: 'coordinator', active: true }],
+    runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [],
+    next: '', state: project.archived ? 'removed' : project.stopped ? 'stopped' : 'idle',
+  })) }
+}
+function harness(extra: object = {}, directory = taskDirectory([alpha.value, beta.value])) {
+  const source = createSnapshotStore(directory)
+  const subscribe = (listener: () => void) => source.subscribe(listener)
+  const getSnapshot = () => source.getSnapshot()
   const release = vi.fn()
   const unavailable = () => { throw new Error('This endpoint is outside the dashboard fixture') }
   const api = {
@@ -51,12 +63,9 @@ function harness(extra: object = {}) {
       workspace: { ...workbenchConfiguration().workspace!, revision: 1,
         taskContext: (JSON.parse(input) as { taskContext: TaskContext }).taskContext },
     })),
-    followProjects: async function* (signal: AbortSignal) {
-      yield [alpha, beta].map(item => ({ project: item.value, sessions: [{ sessionId: item === alpha ? 's1' : 's2', role: 'coordinator', active: true }], runningAgentCount: 0, runningInvocationCount: 0, pendingPlanIds: [], interruptedCheckIds: [], blockedCheckIds: [], next: '', state: item.value.stopped ? 'stopped' as const : 'idle' as const }))
-      if (!signal.aborted) await new Promise<void>((resolve) =>{  signal.addEventListener('abort', () =>{  resolve() }, { once: true }) })
-    },
+    useDirectory: <T,>(select: (state: SecurityDirectorySnapshot) => T) => select(useSyncExternalStore(subscribe, getSnapshot)),
+    refreshDirectory: vi.fn(),
     observe: vi.fn(async (_id: string, _input: string) => ({ revision: 2, records: [alpha, evidence] })),
-    projects: vi.fn(async () => JSON.stringify([alpha.value, beta.value])),
     project: vi.fn(async (id: string): Promise<WorkbenchView> => ({ revision: 1, records: id === 'Alpha' ? [alpha, evidence] : [beta] })),
     followActivity: async function* (id: string, signal: AbortSignal) {
       yield { type: 'snapshot' as const, briefs: [], cursor: 0, view: { revision: 1, records: id === 'Alpha' ? [alpha, evidence] : [beta] }, usage: [] }
@@ -77,7 +86,8 @@ function harness(extra: object = {}) {
       const binding = { sessionId: id } as SessionBinding
       return { sessionId: id, binding, ready: Promise.resolve(binding), release, [Symbol.dispose]: release }
     }),
-    subscribeReset: () => () => {}, manageProject: vi.fn(async (_projectId: string, _input: string) => '[]'), laboratory: vi.fn(),
+    subscribeReset: () => () => {}, manageProject: vi.fn<Parameters<typeof Dashboard>[0]['manageProject']>().mockResolvedValue(undefined),
+    laboratory: vi.fn(),
     t: makeTranslate(en, common), useWorkspaces: (select: (state: object) => unknown) => select({ items: [{ workspaceId: 'workspace', path: '/owned', title: 'Owned' }] }),
     SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
     renderSettings: () => <textarea aria-label="Assistant draft" defaultValue="" />,
@@ -85,8 +95,82 @@ function harness(extra: object = {}) {
     ...extra,
   }
   // The fixture supplies only framework seats consumed by this component.
-  return { api, release, props: api as Parameters<typeof Dashboard>[0] }
+  return { api, release, source, props: api as Parameters<typeof Dashboard>[0] }
 }
+it('retries the shared directory and displays recovered task status', async () => {
+  const { props, source } = harness()
+  const projects = source.getSnapshot().projects
+  let connections = 0
+  const directory = new SecurityDirectory(async function* (signal) {
+    connections++
+    yield [...projects]
+    if (connections > 1 && !signal.aborted) {
+      await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
+    }
+  }, vi.fn())
+  function useDirectory<T>(select: (state: SecurityDirectorySnapshot) => T) {
+    return select(useSyncExternalStore(directory.subscribe, directory.getSnapshot))
+  }
+  const mounted = render(<Dashboard {...props} useDirectory={useDirectory} refreshDirectory={() => { directory.start() }} />)
+  try {
+    directory.start()
+    const retry = await screen.findByRole('button', { name: en.dashboardRetry })
+    const row = (await screen.findByText('Alpha')).closest('button')!
+    expect(row.textContent).toContain(en.taskDirectoryUnavailable)
+    fireEvent.click(retry)
+    await waitFor(() => { expect(row.textContent).toContain(en.taskIdle) })
+    expect(screen.queryByText(en.taskDirectoryUnavailable)).toBeNull()
+    expect(connections).toBe(2)
+  } finally {
+    mounted.unmount()
+    await directory.close()
+  }
+})
+
+it('distinguishes a pending first frame from an empty directory and shows cached rows offline', () => {
+  let snapshot = taskDirectory([], false)
+  const { api, props } = harness({ useDirectory: <T,>(select: (value: SecurityDirectorySnapshot) => T) => select(snapshot) })
+  const mounted = render(<Dashboard {...props} />)
+  expect(screen.getByText(en.dashboardLoading)).toBeTruthy()
+  expect(screen.queryByText(en.dashboardEmpty)).toBeNull()
+  snapshot = taskDirectory([])
+  mounted.rerender(<Dashboard {...props} />)
+  expect(screen.getByText(en.dashboardEmpty)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: en.refresh }))
+  expect(api.refreshDirectory).toHaveBeenCalledOnce()
+  mounted.unmount()
+  snapshot = { ...taskDirectory([alpha.value]), failed: true }
+  render(<Dashboard {...props} />)
+  expect(screen.getByRole('button', { name: /Alpha/ }).textContent).toContain(en.taskDirectoryUnavailable)
+  expect(screen.queryByText(en.dashboardEmpty)).toBeNull()
+})
+
+it('keeps newer directory rows through a late archive confirmation and the exit animation', async () => {
+  const response = Promise.withResolvers<undefined>()
+  let snapshot = taskDirectory([alpha.value])
+  const { props } = harness({ manageProject: () => response.promise,
+    useDirectory: <T,>(select: (value: SecurityDirectorySnapshot) => T) => select(snapshot) })
+  const mounted = render(<Dashboard {...props} />)
+  const row = screen.getByRole('button', { name: /Alpha/ }).closest('article')!
+  fireEvent.click(within(row).getByRole('button', { name: en.removeProject }))
+  fireEvent.click(within(row).getByRole('button', { name: en.deleteProjectConfirm }))
+  const archived = { ...alpha.value, archived: true, stopped: true }
+  snapshot = taskDirectory([archived, beta.value])
+  mounted.rerender(<Dashboard {...props} />)
+  expect(screen.getByRole('button', { name: /Beta/ })).toBeTruthy()
+  expect(row.isConnected).toBe(true)
+  await act(async () => { response.resolve(undefined); await response.promise })
+  expect(row.getAttribute('data-deleting')).toBe('true')
+  snapshot = taskDirectory([archived, beta.value, project('Gamma').value])
+  mounted.rerender(<Dashboard {...props} />)
+  expect(screen.getByRole('button', { name: /Gamma/ })).toBeTruthy()
+  fireEvent.animationEnd(row)
+  fireEvent(row, new Event('webkitAnimationEnd', { bubbles: true }))
+  expect(row.isConnected).toBe(false)
+  expect(screen.getByRole('button', { name: /Beta/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Gamma/ })).toBeTruthy()
+})
+
 it('keeps one execution-mode card through refreshes and preserves its action after unsealing', async () => {
   const { api, props } = harness()
   render(<Dashboard {...props} />)
@@ -380,8 +464,7 @@ it('retries a failed evidence read when its project revision has not changed', a
 })
 it('confirms deletion, waits for the exit animation and supports undo', async () => {
   const saved = [{ ...alpha.value, archived: true, stopped: true }, beta.value]
-  const { api, props } = harness({ manageProject: vi.fn().mockResolvedValueOnce(JSON.stringify(saved))
-    .mockResolvedValueOnce(JSON.stringify([alpha.value, beta.value])) })
+  const { api, props, source } = harness()
   render(<Dashboard {...props} />)
   const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
   fireEvent.click(within(row).getByRole('button', { name: 'Delete task' }))
@@ -392,17 +475,20 @@ it('confirms deletion, waits for the exit animation and supports undo', async ()
   fireEvent.click(within(row).getByRole('button', { name: 'Confirm deletion' }))
   await waitFor(() => { expect(row.getAttribute('data-deleting')).toBe('true') })
   expect(screen.getByRole('button', { name: /Alpha/ })).toBeTruthy()
+  act(() => { source.set(taskDirectory(saved)) })
   fireEvent.animationEnd(row)
   // jsdom lacks AnimationEvent; React registers the WebKit fallback for this environment.
   fireEvent(row, new Event('webkitAnimationEnd', { bubbles: true }))
   expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull()
   expect(api.createSession).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Undo deletion' }))
+  await waitFor(() => { expect(api.manageProject).toHaveBeenCalledTimes(2) })
+  act(() => { source.set(taskDirectory([alpha.value, beta.value])) })
   await screen.findByRole('button', { name: /Alpha/ })
   expect((JSON.parse(api.manageProject.mock.calls[1]![1]) as { action: unknown }).action).toEqual({ kind: 'restore' })
 })
 it('keeps failed deletions visible for retry instead of animating them away', async () => {
-  const deletion = Promise.withResolvers<string>()
+  const deletion = Promise.withResolvers<undefined>()
   const { api, props } = harness({ manageProject: vi.fn(() => deletion.promise) })
   render(<Dashboard {...props} />)
   const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
@@ -418,14 +504,15 @@ it('keeps failed deletions visible for retry instead of animating them away', as
 it('restores a deleted task from its row without navigating or resuming analysis', async () => {
   const archived = { ...alpha.value, archived: true, stopped: true }
   const restored = { ...archived, archived: false }
-  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
-    manageProject: vi.fn(async () => JSON.stringify([restored, beta.value])) })
+  const { api, props, source } = harness({}, taskDirectory([archived, beta.value]))
   render(<Dashboard {...props} />)
   await screen.findByRole('button', { name: /Beta/ })
   fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
   const row = (await screen.findByRole('button', { name: /Alpha/ })).closest('article')!
   fireEvent.click(within(row).getByRole('button', { name: en.restoreProject }))
-  await waitFor(() => { expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull() })
+  await waitFor(() => { expect(api.notifyImprovement).toHaveBeenCalledWith(en.restoreProjectDone) })
+  act(() => { source.set(taskDirectory([restored, beta.value])) })
+  expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull()
   expect(api.manageProject).toHaveBeenCalledWith('Alpha', expect.any(String))
   expect(JSON.parse(api.manageProject.mock.calls[0]![1])).toMatchObject({ expectedRevision: 1, action: { kind: 'restore' } })
   expect(api.selectDestination).not.toHaveBeenCalled()
@@ -438,9 +525,8 @@ it('restores a deleted task from its row without navigating or resuming analysis
 })
 it('keeps a deleted task available for restore after a failed request', async () => {
   const archived = { ...alpha.value, archived: true, stopped: true }
-  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
-    manageProject: vi.fn().mockRejectedValueOnce(new Error('Restore failed'))
-      .mockResolvedValueOnce(JSON.stringify([{ ...archived, archived: false }, beta.value])) })
+  const { api, props, source } = harness({ manageProject: vi.fn().mockRejectedValueOnce(new Error('Restore failed'))
+    .mockResolvedValue(undefined) }, taskDirectory([archived, beta.value]))
   render(<Dashboard {...props} />)
   await screen.findByRole('button', { name: /Beta/ })
   fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
@@ -450,14 +536,15 @@ it('keeps a deleted task available for restore after a failed request', async ()
   const restore = within(row).getByRole<HTMLButtonElement>('button', { name: en.restoreProject })
   expect(restore.disabled).toBe(false)
   fireEvent.click(restore)
-  await waitFor(() => { expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull() })
+  await waitFor(() => { expect(api.notifyImprovement).toHaveBeenCalledWith(en.restoreProjectDone) })
+  act(() => { source.set(taskDirectory([{ ...archived, archived: false }, beta.value])) })
+  expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull()
   expect(api.manageProject).toHaveBeenCalledTimes(2)
   expect(api.selectDestination).not.toHaveBeenCalled()
 })
 it('requires a second confirmation for long project names and offers no undo afterward', async () => {
   const archived = { ...alpha.value, title: 'Alpha ' + 'Long project name '.repeat(12), archived: true, stopped: true }
-  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])),
-    manageProject: vi.fn(async () => JSON.stringify([beta.value])) })
+  const { api, props, source } = harness({}, taskDirectory([archived, beta.value]))
   render(<Dashboard {...props} />)
   await screen.findByRole('button', { name: /Beta/ })
   fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
@@ -473,6 +560,7 @@ it('requires a second confirmation for long project names and offers no undo aft
   fireEvent.click(confirm)
   await waitFor(() => { expect(row.getAttribute('data-deleting')).toBe('true') })
   expect((JSON.parse(api.manageProject.mock.calls[0]![1]) as { action: unknown }).action).toEqual({ kind: 'purge' })
+  act(() => { source.set(taskDirectory([beta.value])) })
   fireEvent.animationEnd(row)
   fireEvent(row, new Event('webkitAnimationEnd', { bubbles: true }))
   expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull()
@@ -481,9 +569,9 @@ it('requires a second confirmation for long project names and offers no undo aft
 })
 it('retries permanent cleanup with the original request after its task records were erased', async () => {
   const archived = { ...alpha.value, archived: true, stopped: true }
-  const manageProject = vi.fn(async (_id: string, _input: string) => JSON.stringify([beta.value]))
+  const manageProject = vi.fn<Parameters<typeof Dashboard>[0]['manageProject']>().mockResolvedValue(undefined)
     .mockRejectedValueOnce(new Error('Cleanup interrupted'))
-  const { api, props } = harness({ projects: vi.fn(async () => JSON.stringify([archived, beta.value])), manageProject })
+  const { api, props, source } = harness({ manageProject }, taskDirectory([archived, beta.value]))
   render(<Dashboard {...props} />)
   await screen.findByRole('button', { name: /Beta/ })
   fireEvent.click(screen.getByRole('button', { name: 'Deleted tasks' }))
@@ -492,6 +580,7 @@ it('retries permanent cleanup with the original request after its task records w
   fireEvent.click(within(row).getByRole('button', { name: 'Confirm permanent deletion' }))
   await screen.findByRole('alert')
   await waitFor(() => { expect(within(row).getByRole<HTMLButtonElement>('button', { name: 'Confirm permanent deletion' }).disabled).toBe(false) })
+  act(() => { source.set(taskDirectory([beta.value])) })
   api.project.mockRejectedValue(new Error('Unknown project'))
   fireEvent.click(within(row).getByRole('button', { name: 'Confirm permanent deletion' }))
   await waitFor(() => { expect(row.getAttribute('data-deleting')).toBe('true') })

@@ -40,7 +40,7 @@ function useSelection(props: SelectionProps) {
     })()
     return () => { abort.abort() }
   }, [sessionId, epoch])
-  return { view, setView, loaded, epoch, setEpoch, error, setError }
+  return { view, setView, loaded, epoch, setEpoch, error }
 }
 
 /** Read-only tool-count streams and sidebar navigation for the compact chat entry. */

@@ -34,6 +34,7 @@ async function harness() {
         tools: [{ id: 'docker', command: 'docker', versionArgs: ['--version'], source: 'Host' }] }],
     maxDurationMs: 1000,
     maxOutputBytes: 32768,
+    reportMaxFindings: 5,
     approvalTtlMs: 60000,
     sessionSelfApprove: false,
     maxArtifactBytes: 65536,

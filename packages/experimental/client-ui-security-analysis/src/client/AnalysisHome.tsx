@@ -6,6 +6,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Dashboard, type DashboardActions } from './Dashboard.tsx'
 import { AnalysisCreation, type AnalysisCreationActions } from './AnalysisCreation.tsx'
+import type { DirectoryHooks } from './directory.ts'
 import type { NS } from './locales.ts'
 import css from './Dashboard.module.css'
 
@@ -14,7 +15,7 @@ export type AnalysisDestination = { kind: 'overview' } | { kind: 'create'; works
   | { kind: 'project'; projectId: string; sessionId?: SessionId }
 /** Navigation source bound by the renderer. */
 export interface AnalysisHomeInjected {
-  hooks: { destination: ObservableSnapshot<AnalysisDestination> }
+  hooks: DirectoryHooks & { destination: ObservableSnapshot<AnalysisDestination> }
 }
 
 /** Render creation or the exact task requested by native navigation; successful creation returns the global destination to overview.

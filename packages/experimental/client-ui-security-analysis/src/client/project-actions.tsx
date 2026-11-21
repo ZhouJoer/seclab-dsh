@@ -6,8 +6,7 @@ import type { ToolboxActions } from './Toolbox.tsx'
 
 /** Authenticated project reads and explicit laboratory gestures. */
 export interface ProjectActions extends ToolboxActions {
-  manageProject(this: void, projectId: string, input: string): Promise<string>
-  projects(): Promise<string>
+  manageProject(this: void, projectId: string, input: string): Promise<void>
   project(id: string): Promise<WorkbenchView>
   laboratory(projectId: string, action: string, id: string): Promise<WorkbenchView>
   report(this: void, projectId: string, reportId: string,

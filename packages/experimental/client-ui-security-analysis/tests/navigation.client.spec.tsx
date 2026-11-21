@@ -67,9 +67,9 @@ it('shares names and reserved identities without replacing historical conversati
 it('opens the exact associated task from a blank chat and its sidebar badge', () => {
   const openWorkbench = vi.fn()
   const props = { t, sessionId: id, openWorkbench,
-    useDirectory: <T,>(select: (state: { projects: typeof summary[]; failed: boolean }) => T) =>
+    useDirectory: <T,>(select: (state: { received: boolean; projects: typeof summary[]; failed: boolean }) => T) =>
       select({ projects: [{ ...summary, project: engagementSchema.parse({ ...project, id: 'earlier', title: 'Earlier task' }),
-        sessions: [{ sessionId: id, role: 'coordinator', active: false }] }, summary], failed: false }) }
+        sessions: [{ sessionId: id, role: 'coordinator', active: false }] }, summary], received: true, failed: false }) }
   render(<><SecuritySessionBadge {...props} /><SecurityConversationNavigation {...props} /></>)
   fireEvent.click(screen.getByRole('button', { name: en.dashboardEntry + ' · ' + project.title }))
   fireEvent.click(screen.getByRole('button', { name: en.dashboardEntry }))

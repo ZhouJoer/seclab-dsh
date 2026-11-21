@@ -9,6 +9,7 @@
   ],
   "references": [
     { "path": "../../fs/fs" },
+    { "path": "../../client/connection/tsconfig.host.json" },
     { "path": "../../sandbox/sandbox-policy" },
     {
       "path": "../../preset/agent-preset-registry"

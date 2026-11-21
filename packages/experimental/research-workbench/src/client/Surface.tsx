@@ -106,7 +106,7 @@ function Document(props: DocumentProps) {
       const result = await props.save(doc.resource, content, doc.draft)
       if (!result.ok) { actions.notice(`${t('saveFailed')} (${result.error.code})`); return }
       actions.saved(doc.resource.id, doc.draft, result.value); actions.notice(t('saved'))
-      if (close) actions.closeSaved(doc.resource.id, doc.draft)
+      if (close) actions.close(doc.resource.id, doc.draft)
     } catch (error) { actions.notice(`${t('saveFailed')} ${error instanceof Error ? error.message : String(error)}`) }
     finally { setSaving(false) }
   }

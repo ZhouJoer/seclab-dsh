@@ -213,15 +213,13 @@ export function commandReceipt(before: WorkbenchView, after: WorkbenchView, maxB
   const previous = new Map(before.records.map(item => [item.kind + ':' + recordId(item), JSON.stringify(item)]))
   const changed = after.records.filter(item => previous.get(item.kind + ':' + recordId(item)) !== JSON.stringify(item))
     .map(item => ({ kind: item.kind, id: recordId(item) }))
-  const completedId = after.records.find(item => item.kind === 'engagement')?.value.completion?.reportId
-  const reports = after.records.filter(item => item.kind === 'report')
-  const published = reports.find(item => item.value.id === completedId) ?? reports.at(-1)
-  const savedDetail = after.records.find(item => item.kind === 'engagement')?.value.completion
+  const completion = after.records.find(item => item.kind === 'engagement')?.value.completion
+  const published = after.records.find(item => item.kind === 'report' && item.value.id === completion?.reportId)
   const receipt: CommandReceipt = { revision: after.revision, committed: true, changed, totalChanged: changed.length, hasMore: false,
-    ...(published ? { report: { id: published.value.id, path: '/api/security.report?' + new URLSearchParams({
+    ...(published?.kind === 'report' ? { report: { id: published.value.id, path: '/api/security.report?' + new URLSearchParams({
       projectId: published.value.engagementId, reportId: published.value.id,
     }).toString() } } : {}),
-    ...(savedDetail?.status === 'saved' && savedDetail.detail ? { advisory: savedDetail.detail } : {}),
+    ...(completion?.status === 'saved' && completion.detail ? { advisory: completion.detail } : {}),
   }
   while (Buffer.byteLength(JSON.stringify(receipt)) > maxBytes && receipt.changed.length) {
     receipt.changed.pop()

@@ -42,7 +42,7 @@ export function SkillUsage(props: PropsLocale<typeof NS> & {
     <summary>{t('skillUsageTitle')}</summary>
     {open && <>
       {failed && <p role="alert" className={css.error}>{t('skillUsageFailed')}</p>}
-      {busy && !page && <div className={css.skeleton} aria-busy="true" />}
+      {busy && !page && <div aria-busy="true" />}
       {page && <>
         {(page.unavailableSessions.length > 0 || page.unattributedReads > 0) && <p role="status">{t('skillUsagePartial')} {page.unavailableSessions.length} / {page.unattributedReads}</p>}
         {!usage.size && <p className={css.muted}>{t('skillUsageEmpty')}</p>}

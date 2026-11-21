@@ -1,15 +1,14 @@
 /** Native conversation and sidebar entries addressing the exact security task. @module */
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { MenuItemButton, Tooltip, IconShieldOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SecurityDirectorySnapshot } from './directory.ts'
+import type { DirectoryHooks, SecurityDirectorySnapshot } from './directory.ts'
 import type { NS } from './locales.ts'
 import css from './Navigation.module.css'
 
 /** Shared business facts and identity-preserving navigation. */
 export interface SecurityNavigationInjected {
-  hooks: { directory: ObservableSnapshot<SecurityDirectorySnapshot> }
+  hooks: DirectoryHooks
   openWorkbench(projectId: string, sessionId: SessionId): void
 }
 type Props = InjectFace<SecurityNavigationInjected> & PropsLocale<typeof NS> & { sessionId: SessionId }

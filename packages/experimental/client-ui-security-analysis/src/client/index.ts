@@ -131,7 +131,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       importToolPack: (input, revision, replace) => unwrap(remote.importToolPack(input, revision, replace)),
       exportToolPack: id => unwrap(remote.exportToolPack(id)),
       manageProject: (id, input) => unwrap(remote.manageProject(id, input)),
-      projects: () => unwrap(remote.projects()), project: id => unwrap(remote.project(id)),
+      project: id => unwrap(remote.project(id)),
       laboratory: (project, action, id) => unwrap(remote.laboratory(project, action, id)),
       report: (project, id, format) => unwrap(remote.report(project, id, format)),
       subscribeReset: listener => scoped.on('connection/reset', listener),
@@ -245,14 +245,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       importMaterials: (id, input) => unwrap(remote.importMaterials(id, input)),
       subscribeReset: projectActions.subscribeReset,
       load: id => unwrap(remote.view(id)),
-      observe: (id, input) => unwrap(remote.observe(id, input)),
       refine: id => unwrap(remote.refineKnowledge(id)),
       command: (id, command) => unwrap(remote.command(id, command)),
       configuration: id => unwrap(remote.configuration(id)),
       configureWorkspace: (id, input) => unwrap(remote.configureWorkspace(id, input)),
       environment: (id, environment, action) => unwrap(remote.environment(id, environment, action)),
       execute: (id, plan, operation, revision) => unwrap(remote.execute(id, plan, operation, revision)),
-      search: (id, query, shared) => unwrap(remote.search(id, query, shared)),
       artifact: (id, hash) => unwrap(remote.artifact(id, hash)),
       report: projectActions.report,
     }
@@ -271,7 +269,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       openChat: (id) => { scoped.uiWorkspace.openSession(id) },
       selectDestination: (id) => { openWorkbench(id) },
       configureWorkspace: (id, input) => actions.configureWorkspace(id, input),
-      followProjects: signal => directory.followProjects(signal),
+      refreshDirectory: () => { directory.start() },
       httpHistory: (project, input) => unwrap(remote.httpHistory(project, input)),
       httpExchange: (project, evidence, step, part, offset) => unwrap(remote.httpExchange(project, evidence, step, part, offset)),
       httpIdentities: (project, target) => unwrap(remote.httpIdentities(project, target)),
@@ -324,7 +322,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.slots.inject('main', () => scoped.slots.register({
       name: 'main', key: panel, locale: NS,
       children: { 'security.workbench.session': { kind: 'single', scope: 'session' } },
-      inject: () => ({ ...dashboardActions, hooks: { destination },
+      inject: () => ({ ...dashboardActions, hooks: { destination, directory },
         configurationForWorkspace: (id: import('@deepseek-ai/dsh-api-workspace-controller/client').WorkspaceId) => unwrap(remote.configurationForWorkspace(id)),
         configureAnalysisWorkspace: (id: import('@deepseek-ai/dsh-api-workspace-controller/client').WorkspaceId, input: string) => unwrap(remote.configureAnalysisWorkspace(id, input)),
         startAnalysis: async (id: import('@deepseek-ai/dsh-api-workspace-controller/client').WorkspaceId, input: string) => {
@@ -345,7 +343,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     scoped.slots.inject('sidebar.right.pane.tab', () => scoped.slots.register({
       name: 'sidebar.right.pane.tab', key: workbenchId, locale: NS,
       children: { 'security.workbench.sidebar.session': { kind: 'single', scope: 'session' } },
-      inject: () => dashboardActions,
+      inject: () => ({ ...dashboardActions, hooks: { directory } }),
     }, SidebarWorkbench))
     scoped.slots.inject('security.workbench.sidebar.session', () => scoped.slots.register({
       name: 'security.workbench.sidebar.session', locale: NS, inject: () => actions,

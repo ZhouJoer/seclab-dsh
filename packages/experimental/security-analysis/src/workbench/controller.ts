@@ -40,7 +40,7 @@ import {
   type SecurityDelegation,
   type SecurityDelegationId,
 } from './model.ts'
-import type { SecurityJournal } from './journal.ts'
+import { primaryProjectId, type SecurityJournal } from './journal.ts'
 import type { SecurityActivityStore } from './activity.ts'
 import { canObserve, toolsForRole, resolveTask } from './roles.ts'
 import { findingHash } from './assessment.ts'
@@ -70,18 +70,16 @@ function supportsExternalHttp(environment: SecurityEnvironment | undefined): env
   return environment !== undefined && (environment.kind === 'local' || environment.kind === 'docker')
 }
 /** Fixed deployment limits and import authority. */
-export interface WorkbenchOptions {
+export interface WorkbenchOptions extends ReportLimits {
   taskContextMaxBytes: number
   importRoots: string[]
   environments: SecurityEnvironment[]
   maxDurationMs: number
-  maxOutputBytes: number
   approvalTtlMs: number
   /** Whether a bound Session may create its own task and approve its own plans without an operator gesture. */
   sessionSelfApprove: boolean
   maxDerivedAssets: number
   maxArtifactBytes: number
-  reportLimits?: ReportLimits
 }
 
 /** Business owner shared by tools, Remote and provider consumers. */
@@ -123,7 +121,7 @@ export class SecurityController {
   private readonly observations = new Map<string, { fingerprint: string; pending: Promise<SecurityRecord> }>()
   private readonly reports = new Map<string, { fingerprint: string; pending: Promise<WorkbenchView> }>()
   private readonly artifactWriters = new Set<Promise<unknown>>()
-  private readonly exportReads = new Map<AbortController, { project: string; done: Promise<void> }>()
+  private readonly reportReads = new Map<AbortController, { project: string; done: Promise<void> }>()
   private disposed = false
   private purging: Promise<void> | undefined
   private async withArtifactWrite<T>(action: () => Promise<T>): Promise<T> {
@@ -138,7 +136,7 @@ export class SecurityController {
     const gate = Promise.withResolvers<void>()
     this.purging = gate.promise
     try {
-      const reads = [...this.exportReads].filter(([, read]) => projectId === undefined || read.project === projectId)
+      const reads = [...this.reportReads].filter(([, read]) => projectId === undefined || read.project === projectId)
       for (const [abort] of reads) abort.abort(new Error('Project evidence is being permanently deleted'))
       await Promise.all(reads.map(([, read]) => read.done))
       // Writers remain registered until their journal references are committed.
@@ -544,9 +542,10 @@ export class SecurityController {
    * @returns primary Session if it still belongs to this project.
    */
   mainSession(projectId: string): string | undefined {
-    const project = this.project(this.journal.view(), projectId)
-    const id = project.mainSessionId ?? this.journal.mainSession(projectId)
-    const binding = this.journal.view().records.find(item => item.kind === 'binding' && item.value.sessionId === id)
+    const view = this.journal.view()
+    this.project(view, projectId)
+    const id = this.journal.mainSession(projectId)
+    const binding = view.records.find(item => item.kind === 'binding' && item.value.sessionId === id)
     if (binding?.kind === 'binding' && binding.value.engagementId !== projectId) throw new Error('Primary conversation belongs to another task')
     return id
   }
@@ -557,20 +556,18 @@ export class SecurityController {
    */
   restartView(sessionId: string): WorkbenchView {
     const view = this.journal.view()
-    const binding = view.records.find(item => item.kind === 'binding' && item.value.sessionId === sessionId)
-    const project = this.projects(true).find(project => binding?.kind === 'binding' && binding.value.engagementId === project.id
-      && (project.mainSessionId ?? this.journal.mainSession(project.id)) === sessionId)
-    return { revision: view.revision, records: project ? view.records.filter(item =>
-      (item.kind === 'engagement' ? item.value.id : item.value.engagementId) === project.id) : [] }
+    const id = primaryProjectId(this.journal, view, sessionId)
+    return { revision: view.revision, records: id ? view.records.filter(item =>
+      (item.kind === 'engagement' ? item.value.id : item.value.engagementId) === id) : [] }
   }
 
   /** Edit or remove a project from an authenticated operator gesture.
    * @param projectId - existing project identity.
-     * @param input - revision-checked management request; omitted task context preserves it, null clears it.
+   * @param input - revision-checked management request; omitted task context preserves it, null clears it.
    * @param deferSettlement - owner retaining cancellation settlement outside a registry mutation.
-   * @returns committed project list, including archived entries for recovery.
+   * @returns completion of the requested change.
    */
-  async manageProject(projectId: string, input: unknown, deferSettlement?: (settled: Promise<void>) => void): Promise<Engagement[]> {
+  async manageProject(projectId: string, input: unknown, deferSettlement?: (settled: Promise<void>) => void): Promise<void> {
     const request = z.object({ operationId: text, expectedRevision: z.number().int().nonnegative(),
       action: z.discriminatedUnion('kind', [
         z.object({ kind: z.literal('rename'), title: text }).strict(),
@@ -588,7 +585,6 @@ export class SecurityController {
         await this.journal.purge(request.operationId, request.expectedRevision, projectId,
           (removed, retained) => unsharedArtifacts(this.artifacts, removed, retained))
         await this.finishPurges()
-        return this.projects(true)
       }, projectId)
     }
     await this.journal.commit(request.operationId, request.expectedRevision, { projectId, request }, (view) => {
@@ -618,7 +614,6 @@ export class SecurityController {
       if (deferSettlement) deferSettlement(settled)
       else await settled
     }
-    return this.projects(true)
   }
 
   /** Attach operator-selected materials, creating the first project atomically when needed.
@@ -1435,8 +1430,8 @@ export class SecurityController {
     if (binding.role !== 'coordinator') throw new Error('Coordinator role required')
     const project = this.project(snapshot, binding.engagementId)
     const input = { sessionId, operator, action: command.action }
-    if (this.journal.replay(command.operationId, input)) return this.view(sessionId)
-    this.journal.replay(command.operationId + ':outcome', input)
+    if (this.journal.hasCommitted(command.operationId, input)) return this.view(sessionId)
+    this.journal.hasCommitted(command.operationId + ':outcome', input)
     const key = project.id
     const fingerprint = JSON.stringify(input)
     const running = this.reports.get(key)
@@ -1447,7 +1442,6 @@ export class SecurityController {
     if (project.stopped || project.archived) throw new Error('Resume the task before generating its report')
     if (command.expectedRevision > snapshot.revision) throw new Error('Security state changed; reload before retrying')
     const expectedRevision = { revision: command.expectedRevision, projectId: project.id, sessionId }
-    const limits = this.options.reportLimits
     const recordsOf = (view: WorkbenchView) => view.records.filter(record => record.kind !== 'binding' && record.kind !== 'report' &&
       (record.kind === 'engagement' ? record.value.id : record.value.engagementId) === project.id)
     const sourceOf = (records: SecurityRecord[]) => JSON.stringify(records.map((record) => {
@@ -1463,7 +1457,7 @@ export class SecurityController {
       const action = command.action
       if (action.kind === 'complete-task' || project.completion) {
         const outcomeOperation = action.kind === 'complete-task' ? command.operationId : command.operationId + ':outcome'
-        const saved = this.journal.replay(outcomeOperation, input)
+        const saved = this.journal.hasCommitted(outcomeOperation, input)
         await this.journal.commit(saved ? randomUUID() : outcomeOperation, expectedRevision, input, async (view) => {
           combined.throwIfAborted()
           const current = this.project(view, project.id)
@@ -1509,7 +1503,6 @@ export class SecurityController {
       }
       if (action.kind === 'complete-task') return this.view(sessionId)
       if (!project.completion) throw new Error('Submit task results before publishing a report')
-      if (!limits) throw new Error('Report output limits are unavailable')
       const observed = this.journal.view()
       const records = recordsOf(observed)
       const source = sourceOf(records)
@@ -1525,7 +1518,7 @@ export class SecurityController {
         } } }] : [])]
       })
       if (cached?.kind === 'report') { await settle(cached); return this.view(sessionId) }
-      const rendered = renderReport(records, limits)
+      const rendered = renderReport(records, this.options)
       const markdown = await this.artifacts.put(Buffer.from(rendered.markdown), 'text/markdown')
       const findingsMarkdown = rendered.findingsMarkdown === undefined ? undefined
         : await this.artifacts.put(Buffer.from(rendered.findingsMarkdown), 'text/markdown')
@@ -1592,6 +1585,19 @@ export class SecurityController {
     return { revision: view.revision, records: view.records.filter(item => item.kind !== 'binding' &&
       (item.kind === 'engagement' ? item.value.id : item.value.engagementId) === projectId) }
   }
+  private openReportRead(projectId: string, reportId: string, signal: AbortSignal) {
+    const record = this.projectView(projectId).records.find(item => item.kind === 'report' && item.value.id === reportId)
+    if (record?.kind !== 'report') throw new Error('Report is outside the project scope')
+    const abort = new AbortController()
+    const combined = AbortSignal.any([signal, abort.signal])
+    const done = Promise.withResolvers<void>()
+    this.reportReads.set(abort, { project: projectId, done: done.promise })
+    const release = () => {
+      this.reportReads.delete(abort)
+      done.resolve()
+    }
+    return { report: record.value, signal: combined, release }
+  }
   /** Read one immutable report while preventing deletion of its artifacts.
    * @param projectId - owning project.
    * @param reportId - report selected in that project.
@@ -1602,20 +1608,15 @@ export class SecurityController {
   async readReport(projectId: string, reportId: string,
     format: 'markdown' | 'json' | 'findingsMarkdown' | 'recommendationsMarkdown', signal: AbortSignal): Promise<string> {
     if (this.disposed || this.purging) throw new Error('Report reads are unavailable during cleanup')
-    const report = this.projectView(projectId).records.find(item => item.kind === 'report' && item.value.id === reportId)
-    if (report?.kind !== 'report') throw new Error('Report is outside the project scope')
-    const artifact = report.value[format]
-    if (!artifact) throw new Error('This report does not contain the requested artifact')
-    const abort = new AbortController()
-    const combined = AbortSignal.any([signal, abort.signal])
-    const done = Promise.withResolvers<void>()
-    this.exportReads.set(abort, { project: projectId, done: done.promise })
+    const read = this.openReportRead(projectId, reportId, signal)
     try {
-      combined.throwIfAborted()
+      const artifact = read.report[format]
+      if (!artifact) throw new Error('This report does not contain the requested artifact')
+      read.signal.throwIfAborted()
       const bytes = await this.artifacts.read(artifact)
-      combined.throwIfAborted()
+      read.signal.throwIfAborted()
       return bytes.toString('utf8')
-    } finally { this.exportReads.delete(abort); done.resolve() }
+    } finally { read.release() }
   }
   /** Export the selected immutable report while retaining its artifact reads.
    * @param projectId - authenticated operator's selected project.
@@ -1626,16 +1627,11 @@ export class SecurityController {
    */
   async exportReport(projectId: string, reportId: string, maxBytes: number, request: Request): Promise<Response> {
     if (this.disposed || this.purging) throw new Error('Evidence exports are unavailable during cleanup')
-    const report = this.projectView(projectId).records.find(item => item.kind === 'report' && item.value.id === reportId)
-    if (report?.kind !== 'report') throw new Error('Report is outside the project scope')
-    const abort = new AbortController()
-    const done = Promise.withResolvers<void>()
-    this.exportReads.set(abort, { project: projectId, done: done.promise })
-    const released = () => { this.exportReads.delete(abort); done.resolve() }
+    const read = this.openReportRead(projectId, reportId, request.signal)
     try {
-      return await reportExportResponse(this.artifacts, report.value, maxBytes,
-        new Request(request, { signal: AbortSignal.any([request.signal, abort.signal]) }), released)
-    } catch (error) { released(); throw error }
+      return await reportExportResponse(this.artifacts, read.report, maxBytes,
+        new Request(request, { signal: read.signal }), read.release)
+    } catch (error) { read.release(); throw error }
   }
   /** Read active coordinator bindings without opening or rebinding a Session.
    * @param projectId - existing project identifier.
@@ -1963,7 +1959,7 @@ export class SecurityController {
    * @returns completion after every active provider reaches cleanup. */
   async dispose(): Promise<void> {
     this.disposed = true
-    const reads = [...this.exportReads]
+    const reads = [...this.reportReads]
     for (const [abort] of reads) abort.abort(new Error('Security workbench disposed'))
     const runs = [...this.active.values(), ...[...this.delegated].map(([controller, job]) => ({ ...job, controller }))]
     runs.forEach((run) => {

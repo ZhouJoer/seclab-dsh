@@ -15,7 +15,10 @@ const zh = { open: '大窗口预览', compare: '加入比较', unavailable: '此
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { 'research-security': keyof typeof en } }
 /** Independently disabled bridge dependencies. */
 export const inject = ['researchWorkbench', 'remote', 'remote.securityWorkbench', 'slots', 'locale']
-type Props = PropsRuntime<'security.resource.actions.item'> & PropsLocale<'research-security'> & { open(resource: ResearchResource, compare: boolean): void }
+type Props = PropsRuntime<'security.resource.actions.item'> & PropsLocale<'research-security'> & {
+  preview(resource: ResearchResource): void
+  compare(resource: ResearchResource): void
+}
 function Actions(props: Props) {
   const item = props.resource
   const resource: ResearchResource = { source: 'security', group: `security:${props.projectId}`,
@@ -23,8 +26,8 @@ function Actions(props: Props) {
     label: item.label, ...(props.sessionId ? { sessionId: props.sessionId } : {}),
     locator: item.kind === 'material' ? { project: props.projectId, kind: item.kind, asset: item.assetId, path: item.path, ...(item.sourceRoot ? { sourceRoot: item.sourceRoot } : {}) }
       : { project: props.projectId, kind: item.kind, evidence: item.evidenceId, sha256: item.sha256 } }
-  return <><Button size="sm" onClick={() =>{  props.open(resource, false) }}>{props.t('open')}</Button>
-    <Button size="sm" onClick={() =>{  props.open(resource, true) }}>{props.t('compare')}</Button></>
+  return <><Button size="sm" onClick={() => { props.preview(resource) }}>{props.t('open')}</Button>
+    <Button size="sm" onClick={() => { props.compare(resource) }}>{props.t('compare')}</Button></>
 }
 /** Register the adapter and resource commands; disabling removes both.
  * @param ctx - optional research and security services. */
@@ -57,8 +60,8 @@ export function apply(ctx: Context): void {
     return { ok: false, error: new RemoteError('gateway/bad-request', ctx.locale.bind('research-security')('unavailable'), {}) }
   } }))
   ctx.slots.inject('security.resource.actions.item', () => ctx.slots.register({ name: 'security.resource.actions.item', id: 'research-security', locale: 'research-security',
-    inject: () => ({ open: (resource: ResearchResource, compare: boolean) => {
-      if (compare) ctx.researchWorkbench.compare(resource)
-      else ctx.researchWorkbench.open(resource, { floating: true })
-    } }) }, Actions))
+    inject: () => ({
+      preview: (resource: ResearchResource) => { ctx.researchWorkbench.open(resource, { floating: true }) },
+      compare: (resource: ResearchResource) => { ctx.researchWorkbench.compare(resource) },
+    }) }, Actions))
 }

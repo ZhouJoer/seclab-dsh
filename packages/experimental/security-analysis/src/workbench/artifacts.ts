@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, realpath, stat, link, unlink, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep, dirname, resolve } from 'node:path'
-import type { Artifact, FileAsset } from './model.ts'
+import type { Artifact, FileAsset, SecurityRecord } from './model.ts'
 
 /** Host-owned evidence storage; filenames are SHA-256 digests, never model paths. */
 export class ArtifactStore {
@@ -142,6 +142,19 @@ export class ArtifactStore {
     }
     await rm(directory, { recursive: true, force: true })
   }
+}
+
+/** Find the artifacts named directly by a record, excluding source-manifest members.
+ * @param record - one record within the caller's scope.
+ * @returns direct file, evidence, script or report references.
+ */
+export function recordArtifacts(record: SecurityRecord): Artifact[] {
+  if ((record.kind === 'asset' || record.kind === 'evidence' || record.kind === 'legacy') && 'artifact' in record.value)
+    return [record.value.artifact]
+  if (record.kind === 'plan' && record.value.operation.script) return [record.value.operation.script]
+  if (record.kind !== 'report') return []
+  const { markdown, findingsMarkdown, recommendationsMarkdown, json } = record.value
+  return [markdown, findingsMarkdown, recommendationsMarkdown, json].filter(artifact => artifact !== undefined)
 }
 
 /** Recognize supported binary headers without executing the selected content.

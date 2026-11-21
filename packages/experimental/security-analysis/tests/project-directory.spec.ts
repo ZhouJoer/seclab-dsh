@@ -11,25 +11,40 @@ function fixture(): WorkbenchView {
       hash: 'a'.repeat(64), environmentHash: 'b'.repeat(64), status: 'draft', operation: { provider: 'external-web', operation: 'sequence', environmentId: 'local', assetId: 'asset', parameters: {}, impact: 'observe', approvalUse: 'single-execution' } }) },
   ] }
 }
-it('shows thinking before any tool call and keeps approval visible while running', () => {
-  const [item] = projectDirectory(fixture(), new Map([['project', 1]]), new Map())
-  expect(item).toMatchObject({ state: 'running', runningAgentCount: 1, runningInvocationCount: 0, pendingPlanIds: ['plan'] })
+it('counts only running Sessions with active bindings and keeps approval visible while running', () => {
+  const view = fixture()
+  view.records.push({ kind: 'engagement', value: engagementSchema.parse({
+    id: 'other', title: 'Other', objective: 'Review', environmentIds: ['local'], stopped: false, maxAttempts: 3,
+  }) })
+  for (const [engagementId, sessionId, active] of [
+    ['project', 'current', true], ['project', 'previous', false], ['project', 'idle', true],
+    ['other', 'another', true], ['other', 'child', true],
+  ] as const) {
+    view.records.push(recordSchema.parse({ kind: 'binding', value: { sessionId, engagementId, role: 'coordinator', assetIds: [], active } }))
+  }
+  const directory = projectDirectory(view, new Set(['current', 'previous', 'unbound', 'another', 'child']), new Map([['other', 2]]))
+  expect(directory).toMatchObject([
+    { project: { id: 'project' }, state: 'running', runningAgentCount: 1, runningInvocationCount: 0, pendingPlanIds: ['plan'],
+      sessions: [{ sessionId: 'current', active: true }, { sessionId: 'previous', active: false }, { sessionId: 'idle', active: true }] },
+    { project: { id: 'other' }, state: 'running', runningAgentCount: 2, runningInvocationCount: 2, pendingPlanIds: [],
+      sessions: [{ sessionId: 'another', active: true }, { sessionId: 'child', active: true }] },
+  ])
 })
 it('shows background execution, stop cleanup and pause independently of agent activity', () => {
   const view = fixture()
   view.records.push(recordSchema.parse({ kind: 'execution', value: { id: 'execution', engagementId: 'project', assetId: 'asset', planId: 'plan', status: 'running', detail: '' } }))
-  expect(projectDirectory(view, new Map(), new Map())[0]?.state).toBe('running')
+  expect(projectDirectory(view, new Set(), new Map())[0]).toMatchObject({ state: 'running', pendingPlanIds: [] })
   const project = view.records.find(item => item.kind === 'engagement')!
   project.value.stopped = true
-  expect(projectDirectory(view, new Map(), new Map())[0]?.state).toBe('stopping')
+  expect(projectDirectory(view, new Set(), new Map())[0]?.state).toBe('stopping')
   view.records = view.records.filter(item => item.kind !== 'execution')
-  expect(projectDirectory(view, new Map(), new Map())[0]?.state).toBe('stopped')
+  expect(projectDirectory(view, new Set(), new Map())[0]?.state).toBe('stopped')
 })
 it('exposes interrupted checks and returns idle after reconciliation, without marking a task complete', () => {
   const view = fixture(); view.records = view.records.filter(item => item.kind !== 'plan')
   const check = view.records.find(item => item.kind === 'check')!
   check.value.status = 'interrupted'
-  expect(projectDirectory(view, new Map(), new Map())[0]).toMatchObject({ state: 'interrupted', interruptedCheckIds: ['check'] })
+  expect(projectDirectory(view, new Set(), new Map())[0]).toMatchObject({ state: 'interrupted', interruptedCheckIds: ['check'] })
   check.value.status = 'planned'
-  expect(projectDirectory(view, new Map(), new Map())[0]?.state).toBe('idle')
+  expect(projectDirectory(view, new Set(), new Map())[0]?.state).toBe('idle')
 })

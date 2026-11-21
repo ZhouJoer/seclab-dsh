@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest'
 import { renderReport } from '../src/workbench/report.ts'
 import { engagementSchema, evidenceSchema, findingSchema, workspaceAssetSchema, type SecurityRecord } from '../src/workbench/model.ts'
-const limits = { maxFindings: 1, outputBytes: 16384 }
+const limits = { reportMaxFindings: 1, maxOutputBytes: 16384 }
 function fixture(): SecurityRecord[] {
   return [{ kind: 'engagement', value: engagementSchema.parse({ id: 'project', title: '源码调查', objective: '检查登录路径',
     environmentIds: [], stopped: false, maxAttempts: 3, completion: { status: 'running', updatedAt: 1, detail: '',
@@ -68,7 +68,7 @@ it('renders older uncertain evidence without asserting completeness', () => {
 })
 it('rejects missing evidence and oversized complete output', () => {
   expect(() => renderReport(fixture().filter(item => item.kind !== 'evidence'), limits)).toThrow('missing evidence')
-  expect(() => renderReport(fixture(), { ...limits, outputBytes: 10 })).toThrow('byte budget')
+  expect(() => renderReport(fixture(), { ...limits, maxOutputBytes: 10 })).toThrow('byte budget')
 })
 it('requires a saved submission and never manufactures one', () => {
   const records = fixture()
